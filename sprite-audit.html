@@ -1,0 +1,15 @@
+<!doctype html><meta charset="utf-8"><title>Character sprite audit</title>
+<style>body{background:#ddd;color:#111;font:12px Verdana;margin:20px}section{display:grid;grid-template-columns:repeat(8,96px);gap:4px;margin-bottom:15px}canvas{background:#eee;image-rendering:pixelated}dialog{display:none}h2{font-size:13px}</style>
+<h1>Original character sprites — direction and pose audit</h1><p id="status">Preparing…</p><main></main><div id="scene" tabindex="0"></div>
+<script type="module">
+import {createAppearance} from './src/appearance.js';import {prepareImage} from './src/sprite-image.js';
+const a=await createAppearance({prepareImage,onApply(){},onOpen(){}}),catalog=await(await fetch('/assets/appearance/catalog.json')).json();
+const look={hair:{model:'1',color:'#302525'},skin:{model:'1',color:'#704734'},top:{model:'1',color:'#6b8c64'},bottom:{model:'1',color:'#55677e'},shoes:{model:'1',color:'#d5ad60'}};
+async function row(title,next,pose=null,frame=0){const h=document.createElement('h2');h.textContent=title;const section=document.createElement('section');for(let d=0;d<8;d++)section.append(await a.previewFrame(next,d,-1,false,pose,frame));document.querySelector('main').append(h,section);}
+let count=0;
+try{
+for(const [group,models] of Object.entries(catalog.choices))for(const model of models){const next=structuredClone(look);next[group]={model,color:catalog.colors[group][0]};await row(group+' '+model,next);count++;document.querySelector('#status').textContent=`Rendered ${count} styles across eight directions`;}
+for(const action of ['wave','dance'])for(let step=0;step<(action==='wave'?2:8);step++)await row(action+' frame '+step,look,action,step);
+document.querySelector('#status').textContent=`Complete: ${count} styles across eight directions, plus every wave and dance frame.`;
+}catch(error){document.querySelector('#status').textContent='FAILED: '+error.message;throw error;}
+</script>

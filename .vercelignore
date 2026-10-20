@@ -1,0 +1,12 @@
+.env*
+.vercel
+node_modules
+dist
+test
+sprite-audit.html
+*-preview.png
+appearance-catalogue-audit.json
+furniture-catalogue-audit.json
+furniture-audit.html
+tools
+ADMIN-ENTRY.md

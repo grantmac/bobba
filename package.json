@@ -1,0 +1,27 @@
+{
+  "name": "little-lobby",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "convex": "^1.47.0",
+    "three": "0.186.1"
+  },
+  "devDependencies": {
+    "@edge-runtime/vm": "^5.0.0",
+    "convex-test": "^0.0.62",
+    "vite": "8.3.4",
+    "vitest": "^4.1.11"
+  },
+  "overrides": {
+    "tinypool": "^2.1.2"
+  },
+  "engines": {
+    "node": "22.x"
+  }
+}

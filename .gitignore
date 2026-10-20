@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env*
+!.env.example
+ADMIN-ENTRY.md
+.vercel/
+*-preview.png
+.DS_Store
+.vercel

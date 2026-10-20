@@ -1,0 +1,27 @@
+<!doctype html><meta charset="utf-8"><title>Furniture interaction check</title>
+<link rel="stylesheet" href="/src/style.css"><style>body{overflow:auto;color:white;padding:20px}#results{white-space:pre-wrap}.furniture-panel{top:100px;max-height:550px}</style>
+<button id="run">Run furniture checks</button><pre id="results">Loading…</pre>
+<script type="module">
+import {createFurniture} from '/src/furniture.js';
+import {prepareImage} from '/src/sprite-image.js';
+const visuals=new Set(),results=document.querySelector('#results');let sitting=0;
+const furniture=await createFurniture({prepareImage,initialItems:[{id:'rug',type:'carpet_armas',rotation:0,x:1,z:1},{id:'chair',type:'small_chair_armas',rotation:0,x:4,z:4},{id:'cinema',type:'cine_bench',rotation:2,x:6,z:6}],
+ makeVisual(canvas){const mesh={canvas,material:{}};visuals.add(mesh);return mesh;},disposeVisual(mesh){visuals.delete(mesh);},positionVisual(mesh,x,y){Object.assign(mesh,{x,y});},markTiles(){},worldPoint:(x,z)=>({x:x*500,y:z*500}),isTile:()=>true,getAvatar:()=>({x:0,z:0}),stopWalking(){},onChanged(){},onSit(){sitting++;},focusRoom(){}
+});
+function hit(index){const v=[...visuals][index],pixels=v.canvas.getContext('2d').getImageData(0,0,v.canvas.width,v.canvas.height).data;for(let i=3;i<pixels.length;i+=4)if(pixels[i]>40)return {x:v.x+((i-3)/4)%v.canvas.width,y:v.y+Math.floor((i-3)/4/v.canvas.width)};throw Error('Empty sprite');}
+function assert(value,message){if(!value)throw Error(message);}
+document.querySelector('#run').onclick=()=>{try{
+ furniture.connect({admin:false,onSave:async()=>{}});
+ assert(furniture.pointer(hit(0),{x:1,z:1},true)===false,'Rug click must reach floor walking');
+ assert(document.querySelector('.furniture-actions').hidden,'Visitor rug popup must be hidden');
+ furniture.pointer(hit(1),{x:4,z:4},true);assert(sitting===1,'Visitor chair click must sit');
+ assert(document.querySelector('.furniture-actions').hidden,'Visitor chair popup must be hidden');
+ furniture.pointer(hit(2),{x:6,z:6},true);assert(sitting===2,'Recovered cinema bench must be seatable');
+ furniture.connect({admin:true,onSave:async()=>{}});furniture.pointer(hit(1),{x:4,z:4},true);
+ assert(!document.querySelector('.furniture-actions').hidden,'Admin editing popup must remain');
+ furniture.open('Catalogue');assert(document.querySelectorAll('.furniture-card').length===48,'Catalogue must paginate');
+ assert(document.querySelector('.furniture-pages').textContent.includes('1223'),'Full catalogue count missing');
+ results.textContent='PASS: visitor furniture popup hidden; chairs and recovered benches sit; rug clicks reach floor; admin controls retained; 1,223 pieces with 48 per page.';
+}catch(error){results.textContent='FAIL: '+error.message;throw error;}};
+results.textContent='Ready';
+</script>
