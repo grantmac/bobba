@@ -1,4 +1,5 @@
 import {randomAppearance} from './random-appearance.js';
+import {appearanceChoices,appearanceGender,changeAppearanceGender} from './appearance-options.js';
 const ROOT = '/assets/appearance/';
 const KEY = 'habbo-room-appearance-v1';
 const LABELS = {hair:'Hair',skin:'Faces',top:'Tops',bottom:'Trousers',shoes:'Shoes',hats:'Hats',headwear:'Headwear',glasses:'Glasses',facewear:'Facewear',jackets:'Jackets',waist:'Waist'};
@@ -35,6 +36,9 @@ export async function createAppearance({prepareImage, onApply, onOpen}) {
   let current=normalize(DEFAULT);
   try {const saved=JSON.parse(localStorage.getItem(KEY));if(saved&&validate(saved))current=normalize(saved);} catch {}
   let draft=copy(current), category='hair', version=0, busy=false, previewDirection=2,entry=null,page=0,colorChannel='color';
+  let preferredGender='M';
+  try{if(localStorage.getItem(KEY+'-gender')==='F')preferredGender='F';}catch{}
+  let gender=appearanceGender(catalog,current,preferredGender),genderDrafts={};
   const painted=new Map();
   function paintedPart(asset,tint){
     const key=asset.file+tint;
@@ -109,7 +113,7 @@ export async function createAppearance({prepareImage, onApply, onOpen}) {
     <div class="entry-name" hidden><label for="entry-name">Your name</label><input id="entry-name" autocomplete="nickname" minlength="2" maxlength="20" placeholder="Choose a name"><p class="entry-note"></p></div>
     <div class="appearance-body">
       <div class="appearance-character"><div class="preview-stage"><canvas id="appearance-preview" width="96" height="112" aria-label="Character preview"></canvas></div><div class="turn-controls"><button type="button" aria-label="Turn preview left">◀</button><span>Your Habbo</span><button type="button" aria-label="Turn preview right">▶</button></div></div>
-      <div class="appearance-choices"><nav aria-label="Appearance categories"></nav><h2 id="choice-title">Choose your hair</h2><div class="item-grid" aria-label="Styles"></div><div class="style-pages"><button type="button" aria-label="Previous styles">◀</button><span></span><button type="button" aria-label="Next styles">▶</button></div><h2>Colour <button type="button" class="color-channel" hidden>Primary</button></h2><div class="color-grid" aria-label="Colours"></div></div>
+      <div class="appearance-choices"><div class="appearance-gender" role="group" aria-label="Character style"><button type="button" data-gender="M">Man</button><button type="button" data-gender="F">Woman</button></div><nav aria-label="Appearance categories"></nav><h2 id="choice-title">Choose your hair</h2><div class="item-grid" aria-label="Styles"></div><div class="style-pages"><button type="button" aria-label="Previous styles">◀</button><span></span><button type="button" aria-label="Next styles">▶</button></div><h2>Colour <button type="button" class="color-channel" hidden>Primary</button></h2><div class="color-grid" aria-label="Colours"></div></div>
     </div>
     <p class="appearance-status" role="status" aria-live="polite"></p>
     <footer><button type="button" class="appearance-cancel">Cancel</button><button type="button" class="appearance-apply">Apply</button></footer>`;
@@ -117,6 +121,12 @@ export async function createAppearance({prepareImage, onApply, onOpen}) {
   const preview=dialog.querySelector('#appearance-preview'), status=dialog.querySelector('.appearance-status');
   const apply=dialog.querySelector('.appearance-apply');
   const nav=dialog.querySelector('nav'), itemGrid=dialog.querySelector('.item-grid'), colorGrid=dialog.querySelector('.color-grid');
+  dialog.querySelectorAll('[data-gender]').forEach(button=>button.onclick=()=>{
+    if(busy||gender===button.dataset.gender)return;
+    genderDrafts[gender]=copy(draft);gender=button.dataset.gender;
+    draft=copy(genderDrafts[gender]??changeAppearanceGender(catalog,draft,gender));
+    page=0;colorChannel='color';update();
+  });
   for(const [id,label] of Object.entries(LABELS)){
     const button=document.createElement('button');button.type='button';button.textContent=label;button.dataset.category=id;
     button.onclick=()=>{if(busy)return;category=id;page=0;colorChannel='color';update();};
@@ -126,11 +136,12 @@ export async function createAppearance({prepareImage, onApply, onOpen}) {
   async function update() {
     const request=++version, look=copy(draft), selectedCategory=category;
     apply.disabled=true;status.textContent='';
+    dialog.querySelectorAll('[data-gender]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.gender===gender)));
     nav.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.category===category)));
     dialog.querySelector('#choice-title').textContent=`Choose your ${LABELS[category].toLowerCase()}`;
     itemGrid.replaceChildren();colorGrid.replaceChildren();
     itemGrid.hidden=false;
-    const models=catalog.choices[category],pages=Math.ceil(models.length/15);page=Math.max(0,Math.min(page,pages-1));
+    const models=appearanceChoices(catalog,category,gender),pages=Math.ceil(models.length/15);page=Math.max(0,Math.min(page,pages-1));
     const pageButtons=dialog.querySelectorAll('.style-pages button');pageButtons[0].disabled=page===0;pageButtons[1].disabled=page>=pages-1;
     dialog.querySelector('.style-pages span').textContent=`${page+1} / ${pages} · ${models.length} styles`;
     const channel=dialog.querySelector('.color-channel');channel.hidden=!catalog.sets[category][look[category].model].parts.some(p=>p.colorindex>1);channel.textContent=colorChannel==='color'?'Primary':'Secondary';
@@ -162,7 +173,7 @@ export async function createAppearance({prepareImage, onApply, onOpen}) {
     if(dialog.open)return;
     dialog.querySelector('.entry-name').hidden=true;dialog.querySelector('h1').textContent='Your appearance';
     apply.textContent='Apply';dialog.querySelector('.appearance-close').hidden=false;dialog.querySelector('.appearance-cancel').hidden=false;
-    draft=copy(current);page=0;previewDirection=2;dialog.showModal();onOpen();update();
+    draft=copy(current);gender=appearanceGender(catalog,current,preferredGender);genderDrafts={};page=0;previewDirection=2;dialog.showModal();onOpen();update();
   }
   function close(){if(busy||entry)return;version++;dialog.close();document.querySelector('#scene').focus({preventScroll:true});}
   dialog.querySelector('.appearance-close').onclick=close;
@@ -177,7 +188,8 @@ export async function createAppearance({prepareImage, onApply, onOpen}) {
       const next=copy(draft), rendered=await frames(next);
       if(entry)await entry.onEnter(dialog.querySelector('#entry-name').value,next,{appearanceChanged:JSON.stringify(next)!==JSON.stringify(current)});
       await onApply(rendered,next,{entry:!!entry});current=next;
-      let saved=true;try{localStorage.setItem(KEY,JSON.stringify(current));}catch{saved=false;}
+      preferredGender=gender;
+      let saved=true;try{localStorage.setItem(KEY,JSON.stringify(current));localStorage.setItem(KEY+'-gender',gender);}catch{saved=false;}
       version++;dialog.close();document.querySelector('#scene').focus({preventScroll:true});
       const entered=entry;entry=null;entered?.resolve();
     }catch(error){status.textContent=error.message;}
@@ -188,7 +200,7 @@ export async function createAppearance({prepareImage, onApply, onOpen}) {
     async useLook(look){if(!validate(look))throw new Error('Invalid saved appearance.');current=normalize(look);const result=await frames(current);return result;},
     enter({name='',admin=false,onEnter}){
       return new Promise(resolve=>{
-        entry={onEnter,resolve};draft=admin?copy(current):randomAppearance(catalog);category='hair';page=0;previewDirection=2;
+        entry={onEnter,resolve};draft=admin?copy(current):randomAppearance(catalog);gender=appearanceGender(catalog,draft,preferredGender);genderDrafts={};category='hair';page=0;previewDirection=2;
         dialog.querySelector('h1').textContent=admin?'Welcome back, Grant':'Welcome to the room';
         dialog.querySelector('.entry-name').hidden=false;
         const nameInput=dialog.querySelector('#entry-name');nameInput.value=admin?'Grant':name;nameInput.readOnly=admin;

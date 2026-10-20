@@ -29,3 +29,26 @@ describe('visitor and touch controls',()=>{
     for(const rotation of [2,4])expect(()=>validateFurniture([{id:'table',type:'small_table_armas',rotation:0,x:2,z:2},{id:'mac',type:mac.id,rotation,x:2,z:2,supportId:'table'}],DEFAULT_ROOM)).not.toThrow();
   });
 });
+
+import {appearanceChoices,appearanceGender,changeAppearanceGender} from '../src/appearance-options.js';
+describe('Man/Woman appearance switch',()=>{
+  it('includes every matching top and unisex jackets in both choices',()=>{
+    expect(appearanceChoices(catalog,'top','M')).toHaveLength(28);
+    expect(appearanceChoices(catalog,'top','F')).toHaveLength(40);
+    expect(appearanceChoices(catalog,'jackets','M')).toEqual(appearanceChoices(catalog,'jackets','F'));
+    for(const group of Object.keys(catalog.choices))for(const gender of ['M','F'])expect(appearanceChoices(catalog,group,gender).length).toBeGreaterThan(0);
+  });
+  it('changes incompatible styles, keeps colours and leaves the saved look untouched',()=>{
+    const original=randomAppearance(catalog,()=>.1),saved=structuredClone(original);
+    const next=changeAppearanceGender(catalog,original,'F');
+    expect(original).toEqual(saved);expect(()=>validateLook(next)).not.toThrow();
+    for(const group of Object.keys(next)){expect(appearanceChoices(catalog,group,'F')).toContain(next[group].model);expect(next[group].color).toBe(original[group].color);}
+    expect(appearanceGender(catalog,next)).toBe('F');
+  });
+  it('randomizes new visitors within one style category',()=>{
+    for(let i=0;i<50;i++){
+      const look=randomAppearance(catalog),genders=new Set(Object.entries(look).map(([group,p])=>catalog.sets[group][p.model].gender).filter(g=>g==='M'||g==='F'));
+      expect(genders.size).toBeLessThanOrEqual(1);
+    }
+  });
+});

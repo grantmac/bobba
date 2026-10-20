@@ -3,7 +3,7 @@ import {v} from 'convex/values';
 import {DEFAULT_ROOM,fail,validName,validateLook,validateRoom,validateFurniture,tileSet,isPlaced,cells,blocked,atTime,freePosition,findPath,playerTiles} from './lib/rules.js';
 import {internal} from './_generated/api.js';
 import {furniture} from './lib/catalog.js';
-import {STICKY_COLORS,STICKY_LIMIT,STICKY_TEXT_LIMIT,validWallPosition,relocateStickies} from '../shared/stickies.js';
+import {STICKY_COLORS,STICKY_LIMIT,STICKY_TEXT_LIMIT,validWallPosition,validPosterPosition,relocateStickies} from '../shared/stickies.js';
 const SESSION_AGE=30*24*60*60*1000,ADMIN_AGE=12*60*60*1000;
 async function hash(value){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))].map(b=>b.toString(16).padStart(2,'0')).join('');}
 function equal(a,b){if(a.length!==b.length)return false;let diff=0;for(let i=0;i<a.length;i++)diff|=a.charCodeAt(i)^b.charCodeAt(i);return diff===0;}
@@ -162,25 +162,27 @@ export const setOptions=mutation({args:{token:v.string(),options:v.any(),revisio
 }});
 const wallPosition=v.object({x:v.number(),z:v.number(),side:v.union(v.literal('left'),v.literal('right')),u:v.number(),height:v.number()});
 function stickyText(text){if(text.length>STICKY_TEXT_LIMIT||/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text))fail('Notes can contain up to 2,000 characters.');}
-export const createSticky=mutation({args:{token:v.string(),id:v.string(),position:wallPosition},handler:async(ctx,{token,id,position})=>{
+export const createSticky=mutation({args:{token:v.string(),id:v.string(),position:wallPosition,poster:v.optional(v.literal('neu'))},handler:async(ctx,{token,id,position,poster})=>{
   await playerFor(ctx,token,true);const room=await getRoom(ctx),notes=room.stickies??[];
   if(!/^[a-f0-9-]{36}$/.test(id))fail('Invalid note.');
   if(notes.some(n=>n.id===id))return;
   if(notes.length>=STICKY_LIMIT)fail('The room has reached its 100-note limit.');
-  if(!validWallPosition(position,tileSet(room.options)))fail('Place the note on a wall.');
-  await ctx.db.patch(room._id,{stickies:[...notes,{id,...position,text:'',color:STICKY_COLORS[0],revision:0}]});
+  if(!(poster?validPosterPosition:validWallPosition)(position,tileSet(room.options)))fail('Place the item on a continuous section of wall.');
+  await ctx.db.patch(room._id,{stickies:[...notes,{id,...position,text:'',color:STICKY_COLORS[0],revision:0,...(poster?{poster}:{})}]});
 }});
 export const editSticky=mutation({args:{token:v.string(),id:v.string(),revision:v.number(),text:v.string(),color:v.string(),position:v.optional(wallPosition)},handler:async(ctx,args)=>{
   await playerFor(ctx,args.token,true);const room=await getRoom(ctx),notes=room.stickies??[],note=notes.find(n=>n.id===args.id);
   if(!note)fail('This note has been removed.');
   if(note.revision!==args.revision)fail('This note changed. Close without saving and reopen it to see the latest text.');
+  if(note.poster&&(args.text!==''||args.color!==note.color))fail('Poster artwork cannot be edited.');
   stickyText(args.text);if(!STICKY_COLORS.includes(args.color))fail('Invalid note colour.');
-  if(args.position&&!validWallPosition(args.position,tileSet(room.options)))fail('Place the note on a wall.');
+  if(args.position&&!(note.poster?validPosterPosition:validWallPosition)(args.position,tileSet(room.options)))fail('Place the item on a continuous section of wall.');
   await ctx.db.patch(room._id,{stickies:notes.map(n=>n.id===note.id?{...n,...args.position,text:args.text,color:args.color,revision:n.revision+1}:n)});
 }});
 export const appendSticky=mutation({args:{token:v.string(),id:v.string(),text:v.string()},handler:async(ctx,{token,id,text})=>{
   await playerFor(ctx,token);const room=await getRoom(ctx),notes=room.stickies??[],note=notes.find(n=>n.id===id);
   if(!note)fail('This note has been removed.');
+  if(note.poster)fail('Text cannot be added to a poster.');
   if(!text.trim())return;stickyText(note.text+text);
   await ctx.db.patch(room._id,{stickies:notes.map(n=>n.id===id?{...n,text:n.text+text,revision:n.revision+1}:n)});
 }});

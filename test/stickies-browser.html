@@ -1,24 +1,24 @@
 <!doctype html><meta charset="utf-8"><title>Sticky note interaction checks</title>
 <link rel="stylesheet" href="/src/style.css"><style>body{color:#eee;padding:18px;overflow:auto}#results{white-space:pre-wrap}#wall{position:relative;width:400px;height:220px;background:#747f9c;clip-path:polygon(0 50%,50% 0,100% 50%,50% 100%)}#wall canvas{position:absolute;image-rendering:pixelated;transform-origin:top left;transform:scale(2)}button{padding:8px}.sticky-dialog{margin:auto}</style>
-<button id="run">Run sticky checks</button><button id="open">Show original-style note</button><pre id="results">Loading…</pre><div id="wall"></div>
+<button id="run">Run sticky checks</button><button id="posters">Run poster checks</button><button id="open">Show original-style note</button><pre id="results">Loading…</pre><div id="wall"></div>
 <script type="module">
 import {createStickies} from '/src/stickies.js';import {prepareImage} from '/src/sprite-image.js';
 let notes=[],stickies;const worldPoint=(x,z)=>({x:100+(x-z)*32,y:90+(x+z)*16}),wall=document.querySelector('#wall'),result=document.querySelector('#results');
 const sync=()=>stickies.receive(notes);
 const network={
- async createSticky(id,position){notes.push({id,...position,text:'',color:'#ffff33',revision:0});sync();},
+ async createSticky(id,position,poster){notes.push({id,...position,...(poster?{poster}:{}),text:'',color:'#ffff33',revision:0});sync();},
  async editSticky(args){notes=notes.map(n=>n.id===args.id?{...n,...args.position,text:args.text,color:args.color,revision:n.revision+1}:n);sync();},
  async appendSticky(id,text){notes=notes.map(n=>n.id===id?{...n,text:n.text+text,revision:n.revision+1}:n);sync();},
  async deleteSticky(id){notes=notes.filter(n=>n.id!==id);sync();}
 };
-stickies=await createStickies({network,prepareImage,getTiles:()=>new Set(['0,0','0,1','1,0','1,1']),worldPoint,makeVisual(canvas){wall.append(canvas);return {canvas,material:{}};},disposeVisual(mesh){mesh.canvas.remove();},positionVisual(mesh,x,y){mesh.canvas.style.left=x*2+'px';mesh.canvas.style.top=y*2+'px';},focusRoom(){},onPlace(){}});
+stickies=await createStickies({network,prepareImage,getTiles:()=>new Set(['0,0','0,1','1,0','1,1']),worldPoint,makeVisual(canvas){wall.append(canvas);return {canvas,material:{}};},disposeVisual(mesh){mesh.canvas.remove();},positionVisual(mesh,x,y,w,h){mesh.canvas.style.width=w+"px";mesh.canvas.style.height=h+"px";mesh.canvas.style.left=x*2+'px';mesh.canvas.style.top=y*2+'px';},focusRoom(){},onPlace(){}});
 stickies.connect(true);result.textContent='Ready';
 const delay=()=>new Promise(r=>setTimeout(r,30)),assert=(v,m)=>{if(!v)throw Error(m);};
 const field=()=>document.querySelector('.sticky-dialog textarea');
 function hit(){const n=notes[0],p=worldPoint(n.x,n.z);return {x:p.x+(n.side==='left'?-1:1)*n.u*32,y:p.y+n.u*16-n.height};}
 const close=async()=>{document.querySelector('[aria-label="Close sticky note"]').click();await delay();};
 document.querySelector('#run').onclick=async()=>{try{
- stickies.begin();stickies.pointer({x:84,y:28},true);await delay();assert(notes.length===1,'Place on left wall');assert(document.querySelector('.sticky-dialog').open,'New note opens editor');
+ notes=[];sync();stickies.connect(true);stickies.begin();stickies.pointer({x:84,y:28},true);await delay();assert(notes.length===1,'Place on left wall');assert(document.querySelector('.sticky-dialog').open,'New note opens editor');
  field().value='Welcome!';field().dispatchEvent(new Event('input'));document.querySelector('[data-color="#9cceff"]').click();await close();assert(notes[0].text==='Welcome!'&&notes[0].color==='#9cceff','Text and colour save on close');
  stickies.connect(false);stickies.pointer(hit(),true);assert(document.querySelector('.sticky-delete').hidden,'Guests cannot delete');field().value='Replace';field().dispatchEvent(new Event('input'));assert(field().value==='Welcome!','Guest cannot change existing text');
  field().value+='\nHello from a visitor';field().dispatchEvent(new Event('input'));await close();assert(notes[0].text.includes('visitor'),'Guest appended text');
@@ -26,6 +26,16 @@ document.querySelector('#run').onclick=async()=>{try{
  stickies.pointer(hit(),true);document.querySelector('.sticky-delete').click();await delay();assert(notes.length===0,'Delete removes note');
  stickies.begin();stickies.pointer({x:84,y:28},true);await delay();field().value='Welcome to the room!\n\nLeave a little note for Grant.';field().dispatchEvent(new Event('input'));await close();
  result.textContent='PASS: wall placement, editor opens, save on close, colours, guest append-only, move, delete.';
+ }catch(e){result.textContent='FAIL: '+e.message;throw e;}};
+document.querySelector('#posters').onclick=async()=>{try{
+ notes=[];sync();stickies.connect(true);stickies.begin(null,'neu');stickies.pointer({x:76,y:45},true);await delay();
+ assert(notes[0]?.poster==='neu','Poster must save artwork type');assert(!document.querySelector('.sticky-dialog').open,'Poster places without note editor');
+ stickies.connect(false);assert(!stickies.pointer(hit(),true),'Visitors do not open poster controls');
+ stickies.connect(true);stickies.pointer(hit(),true);assert(document.querySelector('.sticky-dialog').classList.contains('poster-dialog'),'Poster editing controls');
+ document.querySelector('.sticky-move').click();await delay();stickies.pointer({x:124,y:45},true);await delay();assert(notes[0].side==='right','Poster uses opposite wall projection');
+ stickies.pointer(hit(),true);document.querySelector('.sticky-delete').click();await delay();assert(!notes.length,'Poster deletion');
+ stickies.begin(null,'neu');stickies.pointer({x:76,y:45},true);await delay();stickies.begin(null,'neu');stickies.pointer({x:124,y:45},true);await delay();
+ result.textContent='PASS: poster catalogue placement, both wall angles, visitor controls hidden, move and delete.';
  }catch(e){result.textContent='FAIL: '+e.message;throw e;}};
 document.querySelector('#open').onclick=()=>stickies.pointer(hit(),true);
 </script>

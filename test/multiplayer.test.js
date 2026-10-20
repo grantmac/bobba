@@ -198,3 +198,23 @@ describe('sticky notes',()=>{
     const note=(await t.query(api.room.preview,{})).room.stickies[0];expect(note.id).toBe(id);expect(note.revision).toBe(1);
   });
 });
+
+describe('wall posters',()=>{
+  const id='22222222-2222-4222-8222-222222222222',position={x:0,z:2,side:'left',u:.5,height:65};
+  it('saves artwork and permits Grant to move it to the other wall',async()=>{
+    await admin();await guest();
+    await t.mutation(api.room.createSticky,{token:adminToken,id,position,poster:'neu'});
+    expect((await t.query(api.room.preview,{})).room.stickies[0]).toMatchObject({poster:'neu',...position});
+    await t.mutation(api.room.editSticky,{token:adminToken,id,revision:0,text:'',color:'#ffff33',position:{x:2,z:0,side:'right',u:.5,height:65}});
+    expect((await t.query(api.room.preview,{})).room.stickies[0].side).toBe('right');
+    await expect(t.mutation(api.room.appendSticky,{token,id,text:'change artwork'})).rejects.toThrow('poster');
+    await expect(t.mutation(api.room.editSticky,{token:adminToken,id,revision:1,text:'change',color:'#ffff33'})).rejects.toThrow('artwork');
+    await expect(t.mutation(api.room.deleteSticky,{token,id,revision:1})).rejects.toThrow('Only Grant');
+  });
+  it('rejects unsupported poster types, non-admin placement and prints extending past a wall',async()=>{
+    await admin();await guest();
+    await expect(t.mutation(api.room.createSticky,{token,id,position,poster:'neu'})).rejects.toThrow('Only Grant');
+    await expect(t.mutation(api.room.createSticky,{token:adminToken,id,position,poster:'other'})).rejects.toThrow();
+    for(const bad of [{...position,z:0},{...position,height:24},{...position,height:100}])await expect(t.mutation(api.room.createSticky,{token:adminToken,id,position:bad,poster:'neu'})).rejects.toThrow('wall');
+  });
+});

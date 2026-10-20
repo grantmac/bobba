@@ -1,4 +1,5 @@
-import {STICKY_COLORS,STICKY_TEXT_LIMIT,wallExists} from '../shared/stickies.js';
+import {STICKY_COLORS,STICKY_TEXT_LIMIT,wallExists,POSTERS,validPosterPosition} from '../shared/stickies.js';
+import {LinearFilter} from 'three';
 
 export async function createStickies({network,prepareImage,makeVisual,disposeVisual,positionVisual,worldPoint,getTiles,focusRoom,onPlace}){
   const images=await Promise.all(['left','right'].map(side=>new Promise((resolve,reject)=>{
@@ -6,10 +7,20 @@ export async function createStickies({network,prepareImage,makeVisual,disposeVis
   })));
   const frames=new Map();
   for(const [i,side] of ['left','right'].entries())for(const color of STICKY_COLORS)frames.set(side+color,prepareImage(images[i],{matte:true,tint:color}));
+  for(const [id,definition] of Object.entries(POSTERS)){
+    const image=await new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(img);img.onerror=()=>reject(new Error('Poster artwork could not be loaded.'));img.src=definition.file;});
+    for(const side of ['left','right']){
+      // Keep the supplied artwork intact, projected onto the room's wall plane.
+      const canvas=document.createElement('canvas');canvas.width=150;canvas.height=225;
+      const ctx=canvas.getContext('2d');ctx.scale(3,3);ctx.transform(1,side==='left'?-.5:.5,0,1,1,side==='left'?25:1);
+      ctx.fillStyle='#333';ctx.fillRect(0,0,48,48);ctx.drawImage(image,1,1,46,46);
+      frames.set(id+side,canvas);
+    }
+  }
   let notes=[],visuals=[],admin=false,joined=false,pending=null,target=null,active=null,busy=false;
   const dialog=document.createElement('dialog');dialog.className='sticky-dialog';dialog.setAttribute('aria-label','Sticky note');
   dialog.innerHTML=`<header><span>Sticky note</span><button type="button" aria-label="Close sticky note"><img src="/assets/stickies/close.png" alt=""></button></header>
-    <textarea aria-label="Note text" maxlength="${STICKY_TEXT_LIMIT}" spellcheck="false"></textarea>
+    <img class="poster-artwork" alt="" hidden><textarea aria-label="Note text" maxlength="${STICKY_TEXT_LIMIT}" spellcheck="false"></textarea>
     <footer><div class="sticky-colors">${STICKY_COLORS.map((color,i)=>`<button type="button" aria-label="${['Yellow','Green','Pink','Blue'][i]} note" data-color="${color}" style="background:${color}"></button>`).join('')}</div><button type="button" class="sticky-move">Move</button><button type="button" class="sticky-delete" aria-label="Delete sticky note"><img src="/assets/stickies/trash.png" alt=""></button></footer>
     <p class="sticky-error" role="alert" hidden></p><button type="button" class="sticky-discard" hidden>Close without saving</button>`;
   const placing=document.createElement('section');placing.className='furniture-placement sticky-placement';placing.hidden=true;
@@ -24,8 +35,13 @@ export async function createStickies({network,prepareImage,makeVisual,disposeVis
   function open(note){
     if(busy)return;
     active=structuredClone(note);acceptedText=note.text;text.value=note.text;text.readOnly=!joined;color(note.color);
+    dialog.classList.toggle('poster-dialog',!!note.poster);text.hidden=!!note.poster;
+    const artwork=dialog.querySelector('.poster-artwork');artwork.hidden=!note.poster;
+    if(note.poster){artwork.src=POSTERS[note.poster].file;artwork.alt=POSTERS[note.poster].name;}
+    dialog.querySelector('header span').textContent=note.poster?POSTERS[note.poster].name:'Sticky note';
+    dialog.setAttribute('aria-label',note.poster?POSTERS[note.poster].name:'Sticky note');
     error.hidden=true;discard.hidden=true;
-    dialog.querySelector('.sticky-colors').hidden=!admin;
+    dialog.querySelector('.sticky-colors').hidden=!admin||!!note.poster;
     dialog.querySelector('.sticky-delete').hidden=!admin;dialog.querySelector('.sticky-move').hidden=!admin;
     text.setAttribute('aria-label',admin?'Note text':joined?'Note text — add to the end':'Note text');
     dialog.showModal();text.focus();text.setSelectionRange(text.value.length,text.value.length);
@@ -64,25 +80,27 @@ export async function createStickies({network,prepareImage,makeVisual,disposeVis
   };
   function cancel(){pending=null;target=null;placing.hidden=true;redraw();focusRoom();}
   placing.querySelector('button').onclick=()=>{if(!busy)cancel();};
-  function begin(note=null){
+  function begin(note=null,poster=null){
     if(!admin||busy)return;
-    onPlace();pending=note??{id:crypto.randomUUID(),text:'',color:STICKY_COLORS[0],revision:0,new:true};target=null;
-    placing.querySelector('span').textContent='Click a wall to place the sticky note.';placing.hidden=false;redraw();focusRoom();
+    onPlace();pending=note??{id:crypto.randomUUID(),text:'',color:STICKY_COLORS[0],revision:0,new:true,...(poster?{poster}:{})};target=null;
+    placing.querySelector('span').textContent=pending.poster?'Click a clear section of wall to place the poster.':'Click a wall to place the sticky note.';placing.hidden=false;redraw();focusRoom();
   }
   function screenPosition(note){
     const p=worldPoint(note.x,note.z);
-    return {x:p.x+(note.side==='left'?-1:1)*note.u*32-7,y:p.y+note.u*16-note.height-9};
+    return {x:p.x+(note.side==='left'?-1:1)*note.u*32-(note.poster?25:7),y:p.y+note.u*16-note.height-(note.poster?37.5:9)};
   }
   function redraw(){
     visuals.forEach(v=>disposeVisual(v.mesh));visuals=[];
     const tiles=getTiles();
-    const shown=notes.filter(n=>n.id!==pending?.id&&wallExists(n,tiles));
+    const shown=notes.filter(n=>n.id!==pending?.id&&(n.poster?validPosterPosition(n,tiles):wallExists(n,tiles)));
     if(pending&&target)shown.push({...pending,...target,ghost:true});
     for(const note of shown){
-      const canvas=frames.get(note.side+note.color);if(!canvas)continue;
+      const canvas=frames.get(note.poster?note.poster+note.side:note.side+note.color);if(!canvas)continue;
       const mesh=makeVisual(canvas),p=screenPosition(note);mesh.material.opacity=note.ghost?.65:1;
-      positionVisual(mesh,p.x,p.y,canvas.width,canvas.height,95);
-      visuals.push({note,mesh,p,width:canvas.width,height:canvas.height});
+      const density=note.poster?3:1;
+      if(note.poster){mesh.scale?.setScalar(1/3);if(mesh.material.map){mesh.material.map.minFilter=LinearFilter;mesh.material.map.magFilter=LinearFilter;}}
+      positionVisual(mesh,p.x,p.y,canvas.width/density,canvas.height/density,94+(note.poster?0:1));
+      visuals.push({note,mesh,p,width:canvas.width/density,height:canvas.height/density,canvas,density});
     }
   }
   function wallAt(point){
@@ -95,17 +113,17 @@ export async function createStickies({network,prepareImage,makeVisual,disposeVis
         if(u>=0&&u<=1&&height>=12&&height<=112)hits.push({x,z,side,u:Math.max(.25,Math.min(.75,u)),height:Math.max(24,Math.min(100,height))});
       }
     }
-    return hits.sort((a,b)=>(b.x+b.z)-(a.x+a.z))[0]??null;
+    return hits.filter(p=>!pending?.poster||validPosterPosition(p,tiles)).sort((a,b)=>(b.x+b.z)-(a.x+a.z))[0]??null;
   }
   async function place(){
     if(!target||busy)return;
     const note={...pending,...target};setBusy(true);placing.querySelector('button').disabled=true;
     try{
       const {x,z,side,u,height}=target;
-      if(pending.new)await network.createSticky(note.id,{x,z,side,u,height});
+      if(pending.new)await network.createSticky(note.id,{x,z,side,u,height},note.poster);
       else await network.editSticky({id:note.id,revision:note.revision,text:note.text,color:note.color,position:{x,z,side,u,height}});
       pending=null;target=null;placing.hidden=true;redraw();
-      setBusy(false);if(note.new)open({...note,revision:0});
+      setBusy(false);if(note.new&&!note.poster)open({...note,revision:0});
     }catch(e){placing.querySelector('span').textContent=e.message;}
     finally{setBusy(false);placing.querySelector('button').disabled=false;}
   }
@@ -119,7 +137,11 @@ export async function createStickies({network,prepareImage,makeVisual,disposeVis
     },
     pointer(point,click=false){
       if(pending){if(!busy){target=wallAt(point);redraw();if(click)place();}return true;}
-      const hit=[...visuals].reverse().find(v=>point.x>=v.p.x-3&&point.x<v.p.x+v.width+3&&point.y>=v.p.y-3&&point.y<v.p.y+v.height+3);
+      const hit=[...visuals].reverse().sort((a,b)=>Number(!!a.note.poster)-Number(!!b.note.poster)).find(v=>{
+        const x=point.x-v.p.x,y=point.y-v.p.y;
+        if(x<0||y<0||x>=v.width||y>=v.height||v.note.poster&&!admin)return false;
+        return v.canvas.getContext('2d').getImageData(Math.floor(x*v.density),Math.floor(y*v.density),1,1).data[3]>40;
+      });
       if(hit&&click)open(hit.note);return !!hit;
     },
     key(event){if(pending&&event.key==='Escape'){if(!busy)cancel();return true;}return false;},

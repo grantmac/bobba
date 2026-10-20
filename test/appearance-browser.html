@@ -1,0 +1,7 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Appearance switch preview</title>
+<link rel="stylesheet" href="/src/style.css"><main id="scene" tabindex="0"></main>
+<script type="module">
+import {createAppearance} from '/src/appearance.js';import {prepareImage} from '/src/sprite-image.js';
+const editor=await createAppearance({prepareImage,onApply:async()=>{},onOpen(){}});
+editor.enter({onEnter:async()=>{}});
+</script>

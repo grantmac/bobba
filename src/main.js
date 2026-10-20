@@ -318,7 +318,7 @@ function updatePeers(players){
 function positionCharacter(mesh,point,seat){
   const p=iso(point.x,point.z);p.y+=seat?.offsetY??0;
   place(mesh,Math.round(p.x)-48,Math.round(p.y)-101,96,112);
-  mesh.renderOrder=300+(seat?Math.max(...seat.cells.map(([x,z])=>x+z)):point.x+point.z-1)*10+9.5;
+  mesh.renderOrder=300+(point.x+point.z-1)*10+9.5;
   return p;
 }
 function characterFrame(player,point,time,seat){
@@ -390,7 +390,7 @@ try{
   const furnitureMarks=new THREE.Group();scene.add(furnitureMarks);
   furniture=await createFurniture({initialItems:initialRoom.room.furniture,
     prepareImage,worldPoint:iso,isTile:valid,getAvatar:()=>position,stopWalking,onChanged:()=>{ensureFreeTile();positionAwayPoster();},onSit:sitOn,
-    focusRoom:()=>container.focus({preventScroll:true}),onPlaceSticky:()=>stickies.begin(),
+    focusRoom:()=>container.focus({preventScroll:true}),onPlaceSticky:()=>stickies.begin(),onPlacePoster:id=>stickies.begin(null,id),
     makeVisual:canvas=>sprite(canvas,0,0,300),
     disposeVisual:mesh=>{scene.remove(mesh);mesh.geometry.dispose();mesh.material.map.dispose();mesh.material.dispose();},
     positionVisual:(mesh,x,y,w,h,order)=>{place(mesh,x,y,w,h);mesh.renderOrder=order;},
