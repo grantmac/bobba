@@ -33,6 +33,16 @@ const iso = (x, z) => ({ x: (x-z)*32-roomCenterX, y: (x+z)*16 });
 const valid = (x, z) => walkable.has(`${x},${z}`);
 let furniture,network,toolbar,selfPlayer,infoStand,actionControls;
 let grantOnline=false,awayPoster;
+let initialFurniture=[],posterWalls=[];
+function positionAwayPoster(){
+  if(!awayPoster||!posterWalls.length)return;
+  const sofa=(furniture?.getItems()??initialFurniture).find(item=>item.type==='exe_sofa'&&Number.isInteger(item.x));
+  // Centre the note on the wall behind the three-seat Executive sofa.
+  const target=sofa?{x:sofa.x,z:sofa.z+(sofa.rotation%4===2?1:0)}:{x:0,z:4};
+  const tile=posterWalls.reduce((best,tile)=>Math.hypot(tile[0]-target.x,tile[1]-target.z)<Math.hypot(best[0]-target.x,best[1]-target.z)?tile:best);
+  const p=iso(...tile);
+  place(awayPoster,p.x-38,p.y-108,44,72);
+}
 const peers=new Map();
 const canWalk=(x,z)=>valid(x,z)&&!furniture?.blocks(x,z);
 const images = new Map();
@@ -124,9 +134,10 @@ function buildRoom(options){
   }
   const minX=Math.min(...leftWalls.map(t=>t[0]));const entrance=leftWalls.filter(t=>t[0]===minX).sort((a,b)=>b[1]-a[1]);
   if(entrance.length){const p=iso(...entrance[Math.min(1,entrance.length-1)]);sprite(prepareImage(roomAssets.door,{matte:true}),p.x-32,p.y-84,90);}
-  if(entrance.length>1){
-    const tile=entrance.length>3?entrance[3]:entrance[0],p=iso(...tile);
-    awayPoster=sprite(createAwayPoster(),p.x-32,p.y-94,91);
+  posterWalls=leftWalls;awayPoster=null;
+  if(leftWalls.length){
+    awayPoster=sprite(createAwayPoster(),0,0,91);
+    positionAwayPoster();
     awayPoster.visible=!grantOnline;
   }
   if(options.window&&rightWalls.length>=3){
@@ -330,6 +341,7 @@ try{
   network=createMultiplayer();
   const [catalogResponse,paletteResponse,initialRoom]=await Promise.all([fetch('/assets/room-options/catalog.json'),fetch('/assets/room-options/source-palette.json'),network.loadPreview()]);
   grantOnline=initialRoom.players.some(player=>player.role==='admin');
+  initialFurniture=initialRoom.room.furniture;
   if(!catalogResponse.ok||!paletteResponse.ok)throw new Error('Room choices could not be loaded.');
   roomCatalog=await catalogResponse.json();roomCatalog.sourcePalette=await paletteResponse.json();
   const files=['left_wallpart_0_a_0_0_0.png','right_wallpart_0_a_0_2_0.png','left_wallpart_1_a_0_0_0.png','right_wallpart_1_a_0_2_0.png','flat_floor_0_a_0_0_0.png','flat_floor_1_a_0_0_0.png','flat_floor_2_a_0_0_0.png'];
@@ -349,7 +361,7 @@ try{
   setAppearance(appearance.initial);
   const furnitureMarks=new THREE.Group();scene.add(furnitureMarks);
   furniture=await createFurniture({initialItems:initialRoom.room.furniture,
-    prepareImage,worldPoint:iso,isTile:valid,getAvatar:()=>position,stopWalking,onChanged:ensureFreeTile,onSit:sitOn,
+    prepareImage,worldPoint:iso,isTile:valid,getAvatar:()=>position,stopWalking,onChanged:()=>{ensureFreeTile();positionAwayPoster();},onSit:sitOn,
     focusRoom:()=>container.focus({preventScroll:true}),
     makeVisual:canvas=>sprite(canvas,0,0,300),
     disposeVisual:mesh=>{scene.remove(mesh);mesh.geometry.dispose();mesh.material.map.dispose();mesh.material.dispose();},
@@ -373,7 +385,7 @@ try{
       stopPreview=network.preview(state=>{
         const rk=JSON.stringify(state.room.options),fk=JSON.stringify(state.room.furniture);
         if(rk!==roomKey){roomKey=rk;roomEditor.receive(state.room.options);}
-        if(fk!==furnitureKey){furnitureKey=fk;furniture.receive(state.room.furniture);}
+        if(fk!==furnitureKey){furnitureKey=fk;furniture.receive(state.room.furniture);positionAwayPoster();}
         updatePeers(state.players);resolve();
       },message=>reject(new Error(message)));
     });
@@ -395,7 +407,7 @@ try{
     network.watch(state=>{
       const nextRoom=JSON.stringify(state.room.options),nextFurniture=JSON.stringify(state.room.furniture);
       if(nextRoom!==roomKey){roomKey=nextRoom;roomEditor.receive(state.room.options);}
-      if(nextFurniture!==furnitureKey){furnitureKey=nextFurniture;furniture.receive(state.room.furniture);}
+      if(nextFurniture!==furnitureKey){furnitureKey=nextFurniture;furniture.receive(state.room.furniture);positionAwayPoster();}
       selfPlayer=state.me;updatePeers(state.players);
       const nextLook=JSON.stringify(state.me.look);
       if(nextLook!==ownLook){ownLook=nextLook;const version=++lookVersion;appearance.useLook(state.me.look).then(frames=>{if(version===lookVersion)setAppearance(frames);}).catch(error=>toolbar.status(error.message));}
