@@ -329,6 +329,7 @@ function characterFrame(player,point,time,seat){
   return `${point.direction}:${seat?'sit':-1}`;
 }
 function animate(now){
+  furniture?.animate(now);
   if(ready&&selfPlayer){
     const time=network.now(),sample=samplePlayer(selfPlayer,time);
     Object.assign(position,{x:sample.x,z:sample.z});direction=sample.direction;

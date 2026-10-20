@@ -1,6 +1,7 @@
 <!doctype html><meta charset="utf-8"><title>Macintosh screen preview</title><style>body{margin:24px;background:#222;color:#ddd;font:14px sans-serif}#views{display:flex;gap:24px}canvas{width:204px;height:212px}section{display:none}</style><p>Macintosh screen · both rotations</p><div id="views"></div><script type="module">
 import {createFurniture} from '/src/furniture.js';import {prepareImage} from '/src/sprite-image.js';
 for(const rotation of [2,4]){
- await createFurniture({prepareImage,initialItems:[{id:'mac',type:'custom_macintosh',rotation,x:0,z:0}],worldPoint:()=>({x:0,y:0}),isTile:()=>true,getAvatar:()=>({x:5,z:5}),stopWalking(){},onChanged(){},onSit(){},focusRoom(){},markTiles(){},makeVisual(canvas){document.querySelector('#views').append(canvas);return {material:{},scale:{setScalar(){}}};},disposeVisual(){},positionVisual(){}});
+ const furniture=await createFurniture({prepareImage,initialItems:[{id:'mac',type:'custom_macintosh',rotation,x:0,z:0}],worldPoint:()=>({x:0,y:0}),isTile:()=>true,getAvatar:()=>({x:5,z:5}),stopWalking(){},onChanged(){},onSit(){},focusRoom(){},markTiles(){},makeVisual(canvas){document.querySelector('#views').append(canvas);return {material:{},scale:{setScalar(){}}};},disposeVisual(){},positionVisual(){}});
+ function animate(now){furniture.animate(now);requestAnimationFrame(animate);}requestAnimationFrame(animate);
 }
 </script>

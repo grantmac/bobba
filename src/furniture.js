@@ -1,7 +1,7 @@
 import {footprint,isPlaced,canPlace,blocksTile,restoreItems,canStack,surfaceHeight,moveWithContents,pickupWithContents} from './furniture-model.js';
 import {LinearFilter} from 'three';
 import {POSTERS} from '../shared/stickies.js';
-import {drawMacintoshScreen} from './macintosh-screen.js';
+import {drawMacintoshScreen,macintoshScreenPhase} from './macintosh-screen.js';
 
 const ROOT='/assets/furniture/';
 export async function createFurniture({prepareImage,makeVisual,disposeVisual,positionVisual,markTiles,worldPoint,isTile,getAvatar,stopWalking,onChanged,onSit,focusRoom,onPlaceSticky,onPlacePoster,initialItems=[]}){
@@ -20,23 +20,23 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
       let left=Math.min(...layers.map(p=>-p.reg.x)),top=Math.min(...layers.map(p=>-p.reg.y));
       let right=Math.max(...layers.map(p=>-p.reg.x+p.width)),bottom=Math.max(...layers.map(p=>-p.reg.y+p.height));
       const density=def.spriteDensity??1;
-      function paint(parts){
-        const canvas=document.createElement('canvas');canvas.width=(right-left)*density;canvas.height=(bottom-top)*density;
+      function paint(parts,phase=5,existing){
+        const canvas=existing??document.createElement('canvas');canvas.width=(right-left)*density;canvas.height=(bottom-top)*density;
         const ctx=canvas.getContext('2d');
         ctx.imageSmoothingEnabled=density>1;ctx.scale(density,density);
         if(view.mirror){ctx.translate(right-left,0);ctx.scale(-1,1);}
         parts.forEach(p=>{
           const x=-p.reg.x-left,y=-p.reg.y-top;
           ctx.drawImage(p.canvas,x,y,p.width,p.height);
-          if(def.id==='custom_macintosh')drawMacintoshScreen(ctx,x,y,p.width,p.height);
+          if(def.id==='custom_macintosh')drawMacintoshScreen(ctx,x,y,p.width,p.height,phase,view.mirror);
         });
         return {canvas,pixels:ctx.getImageData(0,0,canvas.width,canvas.height).data};
       }
       const full=paint(layers);
       // Original chair/sofa layers straddle the seated avatar's depth.
       const slices=def.category==='Seating'?layers.filter(p=>p.width>1&&p.height>1).map(p=>({...paint([p]),orderShift:p.z/100})):null;
-      if(view.mirror)left=64-right;
-      const frame={...full,density,left:left-32,top:top+16};
+      const frame={...full,density,left:(view.mirror?64-right:left)-32,top:top+16};
+      if(def.id==='custom_macintosh')frame.animate=phase=>paint(layers,phase,frame.canvas);
       if(slices?.length)frame.slices=slices.map(slice=>({...frame,...slice}));
       frames.set(`${def.id}:${view.direction}`,frame);
     }
@@ -99,6 +99,18 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     }
   }
   function frameFor(item){return frames.get(`${item.type}:${item.rotation}`);}
+  let screenPhase=-1;
+  function animate(now){
+    const phase=macintoshScreenPhase(now);
+    if(phase===screenPhase)return;
+    screenPhase=phase;
+    const updated=new Set();
+    for(const {frame,mesh} of visuals){
+      if(!frame.animate)continue;
+      if(!updated.has(frame)){frame.animate(phase);updated.add(frame);}
+      if(mesh.material.map)mesh.material.map.needsUpdate=true;
+    }
+  }
   function visible(item){return isPlaced(item)&&footprint(item,definitions.get(item.type)).every(([x,z])=>isTile(x,z));}
   function redraw(){
     visuals.forEach(v=>disposeVisual(v.mesh));visuals=[];
@@ -271,7 +283,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     return {id,cells:footprint(item,definitions.get(item.type)),direction:item.rotation,offsetY:item.type==='throne'?4:16};
   }
   render();
-  return {open,pointer,key,roomChanged,redraw,seat,blocks:(x,z)=>blocksTile(x,z,items,definitions),close:()=>{cancel();selected=null;panel.hidden=true;render();},get placing(){return !!pending;},
+  return {open,pointer,key,roomChanged,redraw,seat,animate,blocks:(x,z)=>blocksTile(x,z,items,definitions),close:()=>{cancel();selected=null;panel.hidden=true;render();},get placing(){return !!pending;},
     getItems:()=>structuredClone(items),
     connect({admin,onSave}){editable=admin;networkSave=onSave;history=[];render();},
     receive(next){items=restoreItems(next,definitions);if(pending&&selected&&!items.some(i=>i.id===selected))pending=null;render();}
