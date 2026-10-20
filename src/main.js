@@ -8,6 +8,7 @@ import { createFurniture } from './furniture.js';
 import { createInfoStand } from './info-stand.js';
 import { createChat } from './chat.js';
 import { createMultiplayer, samplePlayer } from './multiplayer.js';
+import {createAwayPoster} from './away-poster.js';
 
 const container = document.querySelector('#scene');
 const scene = new THREE.Scene();
@@ -31,6 +32,7 @@ let editingRoom=false,viewOffsetX=0,positionBeforeEdit;
 const iso = (x, z) => ({ x: (x-z)*32-roomCenterX, y: (x+z)*16 });
 const valid = (x, z) => walkable.has(`${x},${z}`);
 let furniture,network,toolbar,selfPlayer,infoStand,actionControls;
+let grantOnline=false,awayPoster;
 const peers=new Map();
 const canWalk=(x,z)=>valid(x,z)&&!furniture?.blocks(x,z);
 const images = new Map();
@@ -122,6 +124,11 @@ function buildRoom(options){
   }
   const minX=Math.min(...leftWalls.map(t=>t[0]));const entrance=leftWalls.filter(t=>t[0]===minX).sort((a,b)=>b[1]-a[1]);
   if(entrance.length){const p=iso(...entrance[Math.min(1,entrance.length-1)]);sprite(prepareImage(roomAssets.door,{matte:true}),p.x-32,p.y-84,90);}
+  if(entrance.length>1){
+    const tile=entrance.length>3?entrance[3]:entrance[0],p=iso(...tile);
+    awayPoster=sprite(createAwayPoster(),p.x-32,p.y-94,91);
+    awayPoster.visible=!grantOnline;
+  }
   if(options.window&&rightWalls.length>=3){
     const row=rightWalls.filter(t=>t[1]===Math.min(...rightWalls.map(t=>t[1]))).sort((a,b)=>a[0]-b[0]);
     const p=iso(...row[Math.max(0,Math.floor(row.length/2)-1)]);
@@ -251,6 +258,9 @@ function disposePeer(peer){
   peer.version++;scene.remove(peer.mesh);peer.mesh.geometry.dispose();peer.mesh.material.dispose();peer.textures.forEach(t=>t.dispose());peer.label.remove();
 }
 function updatePeers(players){
+  grantOnline=players.some(player=>player.role==='admin');
+  if(awayPoster)awayPoster.visible=!grantOnline;
+  container.dataset.grantOnline=String(grantOnline);
   const present=new Set(players.filter(p=>p.id!==network.me?.id).map(p=>p.id));
   for(const [id,peer] of peers)if(!present.has(id)){disposePeer(peer);peers.delete(id);}
   for(const data of players){
@@ -319,6 +329,7 @@ try{
   toolbar=createToolbar({admin:false,onRoomEdit:()=>{if(ready&&network.me?.role==='admin')roomEditor.open();},onFurniture:view=>{if(ready)furniture.open(view);},onChat:(body,mode)=>{if(ready)return network.chat(body,mode);}});
   network=createMultiplayer();
   const [catalogResponse,paletteResponse,initialRoom]=await Promise.all([fetch('/assets/room-options/catalog.json'),fetch('/assets/room-options/source-palette.json'),network.loadPreview()]);
+  grantOnline=initialRoom.players.some(player=>player.role==='admin');
   if(!catalogResponse.ok||!paletteResponse.ok)throw new Error('Room choices could not be loaded.');
   roomCatalog=await catalogResponse.json();roomCatalog.sourcePalette=await paletteResponse.json();
   const files=['left_wallpart_0_a_0_0_0.png','right_wallpart_0_a_0_2_0.png','left_wallpart_1_a_0_0_0.png','right_wallpart_1_a_0_2_0.png','flat_floor_0_a_0_0_0.png','flat_floor_1_a_0_0_0.png','flat_floor_2_a_0_0_0.png'];
@@ -366,7 +377,8 @@ try{
         updatePeers(state.players);resolve();
       },message=>reject(new Error(message)));
     });
-    await appearance.enter({admin:network.adminEntry,onEnter:(name,look)=>network.join(name,look)});
+    if(network.adminEntry){const saved=await network.entryAppearance();if(saved)setAppearance(await appearance.useLook(saved));}
+    await appearance.enter({admin:network.adminEntry,onEnter:(name,look,options)=>network.join(name,look,options)});
     stopPreview();
   }
   const admin=network.me.role==='admin';

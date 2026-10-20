@@ -1,12 +1,14 @@
 <!doctype html><meta charset="utf-8"><title>Furniture interaction check</title>
 <link rel="stylesheet" href="/src/style.css"><style>body{overflow:auto;color:white;padding:20px}#results{white-space:pre-wrap}.furniture-panel{top:100px;max-height:550px}</style>
-<button id="run">Run furniture checks</button><pre id="results">Loading…</pre>
+<button id="run">Run furniture checks</button><pre id="results">Loading…</pre><div style="position:absolute;left:390px;top:120px;color:white"><p>Tabletop placement</p><canvas id="stack-view" width="128" height="128" style="width:256px;height:256px;image-rendering:pixelated;background:#ddd"></canvas><p>Offline wall poster</p><div id="poster-preview"></div></div>
 <script type="module">
 import {createFurniture} from '/src/furniture.js';
 import {prepareImage} from '/src/sprite-image.js';
+import {createAwayPoster} from '/src/away-poster.js';
+const poster=createAwayPoster();poster.style.width='102px';poster.style.height='174px';document.querySelector('#poster-preview').append(poster);
 const visuals=new Set(),results=document.querySelector('#results');let sitting=0;
-const furniture=await createFurniture({prepareImage,initialItems:[{id:'rug',type:'carpet_armas',rotation:0,x:1,z:1},{id:'chair',type:'small_chair_armas',rotation:0,x:4,z:4},{id:'cinema',type:'cine_bench',rotation:2,x:6,z:6}],
- makeVisual(canvas){const mesh={canvas,material:{}};visuals.add(mesh);return mesh;},disposeVisual(mesh){visuals.delete(mesh);},positionVisual(mesh,x,y){Object.assign(mesh,{x,y});},markTiles(){},worldPoint:(x,z)=>({x:x*500,y:z*500}),isTile:()=>true,getAvatar:()=>({x:0,z:0}),stopWalking(){},onChanged(){},onSit(){sitting++;},focusRoom(){}
+const furniture=await createFurniture({prepareImage,initialItems:[{id:'rug',type:'carpet_armas',rotation:0,x:1,z:1},{id:'chair',type:'small_chair_armas',rotation:0,x:4,z:4},{id:'cinema',type:'cine_bench',rotation:2,x:6,z:6},{id:'table',type:'small_table_armas',rotation:0,x:10,z:10}],
+ makeVisual(canvas){const mesh={canvas,material:{}};visuals.add(mesh);return mesh;},disposeVisual(mesh){visuals.delete(mesh);},positionVisual(mesh,x,y,w,h,order){Object.assign(mesh,{x,y,renderOrder:order});requestAnimationFrame(()=>{const ctx=document.querySelector('#stack-view').getContext('2d');ctx.clearRect(0,0,128,128);[...visuals].filter(v=>v.x>4900).sort((a,b)=>a.renderOrder-b.renderOrder).forEach(v=>ctx.drawImage(v.canvas,v.x-5000+45,v.y-5000+70));});},markTiles(){},worldPoint:(x,z)=>({x:x*500,y:z*500}),isTile:()=>true,getAvatar:()=>({x:0,z:0}),stopWalking(){},onChanged(){},onSit(){sitting++;},focusRoom(){}
 });
 function hit(index){const v=[...visuals][index],pixels=v.canvas.getContext('2d').getImageData(0,0,v.canvas.width,v.canvas.height).data;for(let i=3;i<pixels.length;i+=4)if(pixels[i]>40)return {x:v.x+((i-3)/4)%v.canvas.width,y:v.y+Math.floor((i-3)/4/v.canvas.width)};throw Error('Empty sprite');}
 function assert(value,message){if(!value)throw Error(message);}
@@ -21,7 +23,9 @@ document.querySelector('#run').onclick=()=>{try{
  assert(!document.querySelector('.furniture-actions').hidden,'Admin editing popup must remain');
  furniture.open('Catalogue');assert(document.querySelectorAll('.furniture-card').length===48,'Catalogue must paginate');
  assert(document.querySelector('.furniture-pages').textContent.includes('1223'),'Full catalogue count missing');
- results.textContent='PASS: visitor furniture popup hidden; chairs and recovered benches sit; rug clicks reach floor; admin controls retained; 1,223 pieces with 48 per page.';
+ const search=document.querySelector('[aria-label="Search furniture"]');search.value='Rubber duck';search.dispatchEvent(new Event('input'));document.querySelector('[aria-label="Place Rubber duck"]').click();
+ furniture.pointer(hit(3),{x:10,z:10},true);assert(furniture.getItems().some(i=>i.type==='duck'&&i.supportId==='table'),'Duck must be placed on the table');
+ results.textContent='PASS: tabletop placement persists;  visitor furniture popup hidden; chairs and recovered benches sit; rug clicks reach floor; admin controls retained; 1,223 pieces with 48 per page.';
 }catch(error){results.textContent='FAIL: '+error.message;throw error;}};
 results.textContent='Ready';
 </script>

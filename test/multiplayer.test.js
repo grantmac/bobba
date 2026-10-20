@@ -22,6 +22,17 @@ describe('room access and persistence',()=>{
     await expect(t.mutation(api.room.join,{token,name:'Grant',look,entryCode:'wrong'})).rejects.toThrow('not valid');
     const owner=await admin();expect(owner.name).toBe('Grant');expect(owner.role).toBe('admin');
   });
+  it('keeps Grant’s saved look on re-entry unless the editor deliberately changes it',async()=>{
+    await admin();
+    const styled={...look,hair:{...look.hair,color:'#b34c43'}};
+    await t.mutation(api.room.appearance,{token:adminToken,look:styled});
+    await expect(t.query(api.room.entryAppearance,{entryCode:'wrong'})).rejects.toThrow('not valid');
+    expect(await t.query(api.room.entryAppearance,{entryCode:secret})).toEqual(styled);
+    const resumed=await t.mutation(api.room.join,{token:otherToken,name:'Grant',look,entryCode:secret});
+    expect(resumed.look).toEqual(styled);
+    const edited=await t.mutation(api.room.join,{token,name:'Grant',look,entryCode:secret,replaceLook:true});
+    expect(edited.look).toEqual(look);
+  });
   it('rejects every editing endpoint for a guest',async()=>{
     await guest();
     for(const [fn,args] of [[api.room.setOptions,{options:DEFAULT_ROOM,revision:0}],[api.room.setFurniture,{items:[],revision:0}],[api.room.seed,{options:DEFAULT_ROOM,items:[]}]])await expect(t.mutation(fn,{token,...args})).rejects.toThrow('Only Grant');
@@ -94,6 +105,24 @@ describe('room access and persistence',()=>{
     await t.mutation(api.room.setFurniture,{token:adminToken,items:[rug],revision:0});
     const result=await t.mutation(api.room.move,{token,x:4,z:4});
     expect(result.route.at(-1)).toEqual({x:4.5,z:4.5});
+  });
+  it('persists supported tabletop items and rejects orphaned or overlapping stacks',async()=>{
+    await admin();await guest();
+    const table={id:'table',type:'small_table_armas',rotation:0,x:4,z:4};
+    const duck={id:'duck',type:'duck',rotation:furniture.duck.views[0].direction,x:4,z:4,supportId:'table'};
+    await t.mutation(api.room.setFurniture,{token:adminToken,items:[table,duck],revision:0});
+    expect((await t.query(api.room.state,{token})).room.furniture).toEqual([table,duck]);
+    await expect(t.mutation(api.room.setFurniture,{token,items:[table,duck],revision:1})).rejects.toThrow('Only Grant');
+    await expect(t.mutation(api.room.setFurniture,{token:adminToken,items:[duck],revision:1})).rejects.toThrow('tabletop');
+    await expect(t.mutation(api.room.setFurniture,{token:adminToken,items:[table,duck,{...duck,id:'other'}],revision:1})).rejects.toThrow('tabletop');
+    await expect(t.mutation(api.room.setFurniture,{token:adminToken,items:[table,{...duck,height:99}],revision:1})).rejects.toThrow('Invalid furniture');
+  });
+  it('accepts both fridge facings',async()=>{
+    await admin();
+    for(const [revision,rotation] of [2,4].entries()){
+      await t.mutation(api.room.setFurniture,{token:adminToken,items:[{id:'fridge',type:'fridge',rotation,x:4,z:4}],revision});
+      expect((await t.query(api.room.state,{token:adminToken})).room.furniture[0].rotation).toBe(rotation);
+    }
   });
   it('removes a closing connection without removing other tabs for the same player',async()=>{
     await guest();await admin();const a='d'.repeat(64),b='e'.repeat(64);

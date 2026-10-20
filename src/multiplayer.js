@@ -20,9 +20,10 @@ export function createMultiplayer(){
   return {
     get adminEntry(){return !!entryCode;},get me(){return me;},get state(){return state;},now:()=>Date.now()+offset,
     async resume(){if(entryCode||!token)return null;try{me=await client.query(api.room.me,{token});return me;}catch(error){if(error?.data){token='';try{localStorage.removeItem(KEY);}catch{}return null;}throw new Error('The room server could not be reached. Please try again.');}},
-    async join(name,look){
+    async entryAppearance(){if(!entryCode)return null;try{return await client.query(api.room.entryAppearance,{entryCode});}catch(error){throw new Error(errorMessage(error));}},
+    async join(name,look,{appearanceChanged=false}={}){
       if(!token||entryCode)token=randomToken();
-      try{me=await client.mutation(api.room.join,{token,name,look,...(entryCode?{entryCode}:{})});}catch(error){throw new Error(errorMessage(error));}
+      try{me=await client.mutation(api.room.join,{token,name,look,...(entryCode?{entryCode,replaceLook:appearanceChanged}:{})});}catch(error){throw new Error(errorMessage(error));}
       entryCode='';try{localStorage.setItem(KEY,token);}catch{}return me;
     },
     loadPreview:()=>client.query(api.room.preview,{}),

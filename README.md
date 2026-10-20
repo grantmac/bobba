@@ -2,7 +2,7 @@
 
 A single shared Habbo Origins room in Three.js, using sprites and behaviour recovered from the locally installed game. Convex stores the room, furniture, appearances, chat and live player state.
 
-Live room: https://habbo-room.vercel.app/
+Live room: https://chat.grantm.ac/ (also https://habbo-room.vercel.app/)
 
 Vercel project: `grantmaclennans-projects/habbo-room`. Production uses the same existing Convex deployment as local development, so both share the room.
 
@@ -57,7 +57,7 @@ The original extraction workspace remains at `/Users/grantmac/Documents/Codex/20
 - The active Balloon Manager uses seven balloons, 21px steps, 4000ms idle scrolling and a 400-character limit. Its 125px bottom anchor is mapped from the original 480px stage into the responsive room.
 - Original window artwork supplies the appearance modal frame, header and close control. The larger picker, paging and accessory grouping are adaptations for the complete catalogue.
 
-Wave uses the recovered two-frame animation for three seconds; dance uses the recovered eight-frame sequence. Action timing and multiplayer protocol are app adaptations. Added notification popups were removed; the original delete confirmation remains. Furniture is floor-mounted and shown in its default static state; wall mounting, stacking, lying on beds and furniture-specific animations are not implemented. Bed furniture can be placed as decoration. Furniture labels and categories beyond the original 31 pieces are inferred from source asset names. Floor z-shifts identify walkable rugs and floor tiles. Agent/MCP integration is not yet implemented.
+Wave uses the recovered two-frame animation for three seconds; dance uses the recovered eight-frame sequence. Action timing and multiplayer protocol are app adaptations. Added notification popups were removed; the original delete confirmation remains. Furniture is floor-mounted and shown in its default static state; wall mounting, arbitrary multi-level stacks, lying on beds and furniture-specific animations are not implemented. Bed furniture can be placed as decoration. Furniture labels and categories beyond the original 31 pieces are inferred from source asset names. Floor z-shifts identify walkable rugs and floor tiles. Agent/MCP integration is not yet implemented.
 
 ## Rebuild the furniture catalogue
 
@@ -68,6 +68,10 @@ python3 tools/import-furniture.py --source /Users/grantmac/Documents/Codex/2026-
 The importer keeps full-size floor pieces with inventory icons and valid footprints, skips half-size duplicates and wall-mounted pieces, and generates both client assets and server placement metadata. `furniture-catalogue-audit.json` records the 1,223 included pieces and skipped candidates. Furniture images load when placed or previewed, and the catalogue has search, categories and 48-item pages.
 
 Visitors can sit on chairs and walk over rugs without seeing the furniture editing panel. Only Grant sees that panel.
+
+Place decor, plants or lights onto a free table surface. Items must fit within the table and cannot overlap other tabletop items. Contents move and rotate with the table; picking up or deleting a table puts its contents in inventory. The original Object Mover uses surface IDs and placement altitude; this app derives tabletop heights from sprite registration because the original server height metadata is absent. The fridge has a mirrored second facing; no rear artwork is invented.
+
+A BRB poster appears on the wall while Grant is offline and disappears when Grant returns. Grant’s private entry loads the server-saved appearance and only replaces it when the editor choices change.
 
 ## Validation
 

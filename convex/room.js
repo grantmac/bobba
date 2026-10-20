@@ -18,13 +18,21 @@ async function playerFor(ctx,token,admin=false){
 }
 async function getRoom(ctx){return await ctx.db.query('rooms').withIndex('by_key',q=>q.eq('key','main')).unique();}
 function publicPlayer(p){return {id:p._id,name:p.name,role:p.role,look:p.look,route:p.route,startedAt:p.startedAt,direction:p.direction,seatId:p.seatId,lastSeen:p.lastSeen,action:p.action??null,actionStarted:p.actionStarted??0};}
-export const join=mutation({args:{token:v.string(),name:v.string(),look:v.any(),entryCode:v.optional(v.string())},handler:async(ctx,args)=>{
+async function checkEntryCode(code){
+  if(!code||code.length>200||!process.env.GRANT_ENTRY_HASH||!equal(await hash(code),process.env.GRANT_ENTRY_HASH))fail('This private entry link is not valid.');
+}
+export const entryAppearance=query({args:{entryCode:v.string()},handler:async(ctx,{entryCode})=>{
+  await checkEntryCode(entryCode);
+  const player=await ctx.db.query('players').withIndex('by_name',q=>q.eq('nameKey','grant')).unique();
+  return player?.look??null;
+}});
+export const join=mutation({args:{token:v.string(),name:v.string(),look:v.any(),entryCode:v.optional(v.string()),replaceLook:v.optional(v.boolean())},handler:async(ctx,args)=>{
   validToken(args.token);validateLook(args.look);const named=validName(args.name),digest=await hash(args.token);
   const oldSession=await ctx.db.query('sessions').withIndex('by_token',q=>q.eq('tokenHash',digest)).unique();
   if(oldSession){const p=await playerFor(ctx,args.token);if(p.name.toLowerCase()!==named.key)fail('Please start a new session.');return publicPlayer(p);}
   let admin=false;
   if(args.entryCode){
-    if(args.entryCode.length>200||!process.env.GRANT_ENTRY_HASH||!equal(await hash(args.entryCode),process.env.GRANT_ENTRY_HASH))fail('This private entry link is not valid.');
+    await checkEntryCode(args.entryCode);
     admin=true;
   }
   if(!admin&&named.key==='grant')fail('That name is reserved. Please choose another name.');
@@ -41,7 +49,7 @@ export const join=mutation({args:{token:v.string(),name:v.string(),look:v.any(),
   let playerId;
   if(player){
     playerId=player._id;
-    await ctx.db.patch(playerId,{look:args.look,lastSeen:now,route:[position],startedAt:now,seatId:null});
+    await ctx.db.patch(playerId,{look:args.replaceLook?args.look:player.look,lastSeen:now,route:[position],startedAt:now,seatId:null});
   }else playerId=await ctx.db.insert('players',{name:admin?'Grant':named.name,nameKey:key,role:admin?'admin':'guest',look:args.look,route:[position],startedAt:now,direction:2,seatId:null,lastSeen:now,lastChat:0});
   await ctx.db.insert('sessions',{tokenHash:digest,playerId,expiresAt:now+(admin?ADMIN_AGE:SESSION_AGE)});
   return publicPlayer(await ctx.db.get(playerId));
@@ -144,6 +152,10 @@ export const setOptions=mutation({args:{token:v.string(),options:v.any(),revisio
   await playerFor(ctx,token,true);const room=await getRoom(ctx);
   if(room.revision!==revision)fail('The room changed. Please try that edit again.');validateRoom(options);
   const tiles=tileSet(options),items=room.furniture.map(item=>isPlaced(item)&&cells(item).some(cell=>!tiles.has(cell.join(',')))?{...item,x:null,z:null}:item);
+  for(const item of items){
+    if(item.supportId&&(!isPlaced(item)||!items.some(table=>table.id===item.supportId&&isPlaced(table)))){item.x=null;item.z=null;delete item.supportId;}
+  }
+  validateFurniture(items,options);
   const next={...room,options,furniture:items};freePosition(next);
   await ctx.db.patch(room._id,{options,furniture:items,revision:revision+1});await resetPlayers(ctx,next);
 }});

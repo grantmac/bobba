@@ -1,4 +1,4 @@
-import {footprint,isPlaced,canPlace,blocksTile,restoreItems} from './furniture-model.js';
+import {footprint,isPlaced,canPlace,blocksTile,restoreItems,canStack,surfaceHeight,moveWithContents,pickupWithContents} from './furniture-model.js';
 
 const ROOT='/assets/furniture/';
 export async function createFurniture({prepareImage,makeVisual,disposeVisual,positionVisual,markTiles,worldPoint,isTile,getAvatar,stopWalking,onChanged,onSit,focusRoom,initialItems=[]}){
@@ -28,12 +28,12 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
   }
   await Promise.all([...new Set(initialItems.filter(isPlaced).map(i=>i.type))].filter(id=>definitions.has(id)).map(id=>loadDefinition(definitions.get(id))));
   let page=0;const pageSize=48;
-  let items=[],history=[],selected=null,pending=null,visuals=[],tab='Catalogue',filter='',category='All',editable=true,networkSave=null,saving=false;
+  let viewItems=[],items=[],history=[],selected=null,pending=null,visuals=[],tab='Catalogue',filter='',category='All',editable=true,networkSave=null,saving=false;
   items=restoreItems(initialItems,definitions);
   function fitStoredItems(){
     const fitted=[];
-    for(const item of items){
-      if(isPlaced(item)&&!canPlace(item,fitted,definitions,isTile)){item.x=null;item.z=null;}
+    for(const item of [...items].sort((a,b)=>Number(!!a.supportId)-Number(!!b.supportId))){
+      if(isPlaced(item)&&!canPlace(item,fitted,definitions,isTile)){item.x=null;item.z=null;delete item.supportId;}
       fitted.push(item);
     }
   }
@@ -56,7 +56,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
   confirmation.querySelector('[data-confirm="delete"]').onclick=()=>{
     const id=deleteId;confirmation.close();deleteId=null;
     if(!items.some(item=>item.id===id))return;
-    change(()=>{items=items.filter(item=>item.id!==id);selected=null;});
+    change(()=>{items=pickupWithContents(items,id,true);selected=null;});
     focusRoom();
   };
   async function change(mutate,record=true){
@@ -73,24 +73,27 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
   function visible(item){return isPlaced(item)&&footprint(item,definitions.get(item.type)).every(([x,z])=>isTile(x,z));}
   function redraw(){
     visuals.forEach(v=>disposeVisual(v.mesh));visuals=[];
-    for(const item of items){
-      if(!visible(item)||pending?.id===item.id)continue;
+    viewItems=pending?moveWithContents(items,pending,definitions):items;
+    for(const item of viewItems){
+      if(!visible(item))continue;
       const frame=frameFor(item);
       if(!frame){loadDefinition(definitions.get(item.type)).then(redraw).catch(error=>{panel.querySelector('.furniture-description').textContent=error.message;});continue;}
-      const mesh=makeVisual(frame.canvas);visuals.push({item,frame,mesh});
+      const mesh=makeVisual(frame.canvas);if(pending&&(item.id===pending.id||item.supportId===pending.id))mesh.material.opacity=.65;visuals.push({item,frame,mesh});
     }
-    if(pending&&isPlaced(pending)){const frame=frameFor(pending);if(frame){const mesh=makeVisual(frame.canvas);mesh.material.opacity=.65;visuals.push({item:pending,frame,mesh});}else loadDefinition(definitions.get(pending.type)).then(redraw).catch(error=>{panel.querySelector('.furniture-description').textContent=error.message;});}
+
     refreshPositions();
   }
   function refreshPositions(){
     for(const {item,frame,mesh} of visuals){
       const def=definitions.get(item.type),p=worldPoint(item.x,item.z),cells=footprint(item,def);
-      const order=def.category==='Rugs'?20:300+Math.max(...cells.map(([x,z])=>x+z))*10+9;
-      positionVisual(mesh,p.x+frame.left,p.y+frame.top,frame.canvas.width,frame.canvas.height,order);
+      const table=viewItems.find(t=>t.id===item.supportId),orderCells=table?footprint(table,definitions.get(table.type)):cells;
+      const order=def.category==='Rugs'?20:300+Math.max(...orderCells.map(([x,z])=>x+z))*10+9+(table?0.1+(item.x+item.z)/100:0);
+      const height=surfaceHeight(item,viewItems,definitions);
+      positionVisual(mesh,p.x+frame.left,p.y+frame.top-height,frame.canvas.width,frame.canvas.height,order);
     }
     const item=pending||items.find(i=>i.id===selected);
     const cells=item&&visible(item)?footprint(item,definitions.get(item.type)):[];
-    markTiles(cells,pending?(canPlace(pending,items,definitions,isTile,getAvatar())?'#65e58c':'#ff7777'):'#f8e39a');
+    markTiles(cells,pending?(validPlacement(pending)?'#65e58c':'#ff7777'):'#f8e39a');
   }
   function renderList(){
     panel.querySelectorAll('[data-tab]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tab===tab)));
@@ -115,7 +118,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
   function render(){
     renderList();redraw();const item=items.find(i=>i.id===selected),def=item&&definitions.get(item.type);
     actions.hidden=!editable||!item||!isPlaced(item)||!!pending;
-    if(!actions.hidden){actions.querySelector('img').src=ROOT+def.icon;actions.querySelector('strong').textContent=def.name;actions.querySelector('.furniture-location').textContent=`Tile ${item.x+1}, ${item.z+1}`;actions.querySelector('[data-action="Rotate"]').disabled=def.views.length<2;}
+    if(!actions.hidden){actions.querySelector('img').src=ROOT+def.icon;actions.querySelector('strong').textContent=def.name;actions.querySelector('.furniture-location').textContent=item.supportId?'On table':`Tile ${item.x+1}, ${item.z+1}`;actions.querySelector('[data-action="Rotate"]').disabled=def.views.length<2;}
     actions.querySelectorAll('[data-action]').forEach(button=>{button.hidden=!editable;if(saving)button.disabled=true;else if(button.dataset.action!=='Rotate')button.disabled=false;});
     placement.hidden=!pending;
     if(pending){placement.querySelector('span').textContent=definitions.get(pending.type).name;placement.querySelector('[data-placement="rotate"]').disabled=definitions.get(pending.type).views.length<2;}
@@ -136,17 +139,17 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
   function cancel(){pending=null;render();}
   function commit(){
     if(!pending)return false;
-    if(!canPlace(pending,items,definitions,isTile,getAvatar())){return true;}
+    if(!validPlacement(pending)){return true;}
     const item={...pending};pending=null;selected=item.id;
-    change(()=>{const index=items.findIndex(i=>i.id===item.id);if(index>=0)items[index]=item;else items.push(item);});return true;
+    change(()=>{items=moveWithContents(items,item,definitions);});return true;
   }
   function rotate(){
     const item=pending||items.find(i=>i.id===selected);if(!item)return;
     const views=definitions.get(item.type).views;if(views.length<2)return;
     const rotation=views[(views.findIndex(v=>v.direction===item.rotation)+1)%views.length].direction;
     if(pending){pending.rotation=rotation;render();return;}
-    if(!canPlace({...item,rotation},items,definitions,isTile,getAvatar())){return;}
-    change(()=>item.rotation=rotation);
+    if(!validPlacement({...item,rotation})){return;}
+    change(()=>{items=moveWithContents(items,{...item,rotation},definitions);});
   }
   panel.querySelector('.furniture-close').onclick=()=>{panel.hidden=true;focusRoom();};
   panel.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;page=0;renderList();});
@@ -163,7 +166,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     switch(button.dataset.action){
       case 'Move':begin(item);break;
       case 'Rotate':rotate();break;
-      case 'Pick up':change(()=>{item.x=null;item.z=null;selected=null;});break;
+      case 'Pick up':change(()=>{items=pickupWithContents(items,item.id);selected=null;});break;
       case 'Delete':{
         deleteId=item.id;const def=definitions.get(item.type);
         confirmation.querySelector('img').src=ROOT+def.icon;confirmation.querySelector('strong').textContent=def.name;
@@ -173,16 +176,37 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
   });
   placement.querySelector('[data-placement="cancel"]').onclick=cancel;placement.querySelector('[data-placement="rotate"]').onclick=rotate;
   function open(view){if(!editable)return;cancel();selected=null;tab=view;page=0;panel.hidden=false;render();panel.querySelector('input').focus();}
-  function pointer(point,cell,click=false){
-    if(pending){
-      const changed=pending.x!==(cell?.x??null)||pending.z!==(cell?.z??null);
-      if(cell){pending.x=cell.x;pending.z=cell.z;}else{pending.x=null;pending.z=null;}
-      if(changed)redraw();if(click){commit();render();}return true;
-    }
-    const hit=[...visuals].sort((a,b)=>b.mesh.renderOrder-a.mesh.renderOrder).find(({item,frame})=>{
-      const p=worldPoint(item.x,item.z),x=Math.floor(point.x-p.x-frame.left),y=Math.floor(point.y-p.y-frame.top);
+  function validPlacement(item){
+    const next=moveWithContents(items,item,definitions);
+    return next.filter(i=>i.id===item.id||i.supportId===item.id).every(i=>canPlace(i,next,definitions,isTile,getAvatar()));
+  }
+  function hitVisual(point){
+    return [...visuals].sort((a,b)=>b.mesh.renderOrder-a.mesh.renderOrder).find(({item,frame})=>{
+      if(pending&&(item.id===pending.id||item.supportId===pending.id))return false;
+      const p=worldPoint(item.x,item.z),x=Math.floor(point.x-p.x-frame.left),y=Math.floor(point.y-p.y-frame.top+surfaceHeight(item,viewItems,definitions));
       return x>=0&&y>=0&&x<frame.canvas.width&&y<frame.canvas.height&&frame.pixels[(y*frame.canvas.width+x)*4+3]>40;
     });
+  }
+  function placementTarget(point,cell){
+    if(!canStack(definitions.get(pending.type)))return {...cell};
+    const hit=hitVisual(point)?.item;
+    const table=hit?.supportId?items.find(i=>i.id===hit.supportId):hit;
+    if(!table||table.id===pending.id||definitions.get(table.type).category!=='Tables')return {...cell};
+    const p=worldPoint(table.x,table.z),height=definitions.get(table.type).surfaceHeight;
+    const dx=point.x-p.x,dy=point.y+height-p.y;
+    const cells=footprint(table,definitions.get(table.type));
+    const x=Math.max(table.x,Math.min(Math.max(...cells.map(c=>c[0])),table.x+Math.floor(dx/64+dy/32)));
+    const z=Math.max(table.z,Math.min(Math.max(...cells.map(c=>c[1])),table.z+Math.floor(dy/32-dx/64)));
+    return {x,z,supportId:table.id};
+  }
+  function pointer(point,cell,click=false){
+    if(pending){
+      const target=placementTarget(point,cell);
+      const changed=pending.x!==(target?.x??null)||pending.z!==(target?.z??null)||pending.supportId!==target.supportId;
+      delete pending.supportId;Object.assign(pending,{x:target.x??null,z:target.z??null},target);
+      if(changed)redraw();if(click){commit();render();}return true;
+    }
+    const hit=hitVisual(point);
     if(click){selected=editable?(hit?.item.id??null):null;render();if(hit&&definitions.get(hit.item.type).category==='Seating')onSit(seat(hit.item.id));}
     return !!hit&&definitions.get(hit.item.type).category!=='Rugs';
   }

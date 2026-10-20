@@ -174,7 +174,7 @@ export async function createAppearance({prepareImage, onApply, onOpen}) {
     dialog.querySelectorAll('button').forEach(b=>b.disabled=true);
     try {
       const next=copy(draft), rendered=await frames(next);
-      if(entry)await entry.onEnter(dialog.querySelector('#entry-name').value,next);
+      if(entry)await entry.onEnter(dialog.querySelector('#entry-name').value,next,{appearanceChanged:JSON.stringify(next)!==JSON.stringify(current)});
       await onApply(rendered,next,{entry:!!entry});current=next;
       let saved=true;try{localStorage.setItem(KEY,JSON.stringify(current));}catch{saved=false;}
       version++;dialog.close();document.querySelector('#scene').focus({preventScroll:true});
