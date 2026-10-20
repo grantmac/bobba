@@ -1,6 +1,7 @@
 import {footprint,isPlaced,canPlace,blocksTile,restoreItems,canStack,surfaceHeight,moveWithContents,pickupWithContents} from './furniture-model.js';
 import {LinearFilter} from 'three';
 import {POSTERS} from '../shared/stickies.js';
+import {drawMacintoshScreen} from './macintosh-screen.js';
 
 const ROOT='/assets/furniture/';
 export async function createFurniture({prepareImage,makeVisual,disposeVisual,positionVisual,markTiles,worldPoint,isTile,getAvatar,stopWalking,onChanged,onSit,focusRoom,onPlaceSticky,onPlacePoster,initialItems=[]}){
@@ -24,7 +25,11 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
         const ctx=canvas.getContext('2d');
         ctx.imageSmoothingEnabled=density>1;ctx.scale(density,density);
         if(view.mirror){ctx.translate(right-left,0);ctx.scale(-1,1);}
-        parts.forEach(p=>ctx.drawImage(p.canvas,-p.reg.x-left,-p.reg.y-top,p.width,p.height));
+        parts.forEach(p=>{
+          const x=-p.reg.x-left,y=-p.reg.y-top;
+          ctx.drawImage(p.canvas,x,y,p.width,p.height);
+          if(def.id==='custom_macintosh')drawMacintoshScreen(ctx,x,y,p.width,p.height);
+        });
         return {canvas,pixels:ctx.getImageData(0,0,canvas.width,canvas.height).data};
       }
       const full=paint(layers);
