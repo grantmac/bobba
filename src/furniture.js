@@ -1,7 +1,8 @@
 import {footprint,isPlaced,canPlace,blocksTile,restoreItems,canStack,surfaceHeight,moveWithContents,pickupWithContents} from './furniture-model.js';
+import {LinearFilter} from 'three';
 
 const ROOT='/assets/furniture/';
-export async function createFurniture({prepareImage,makeVisual,disposeVisual,positionVisual,markTiles,worldPoint,isTile,getAvatar,stopWalking,onChanged,onSit,focusRoom,initialItems=[]}){
+export async function createFurniture({prepareImage,makeVisual,disposeVisual,positionVisual,markTiles,worldPoint,isTile,getAvatar,stopWalking,onChanged,onSit,focusRoom,onPlaceSticky,initialItems=[]}){
   const response=await fetch(ROOT+'catalog.json');
   if(!response.ok)throw new Error('Furniture could not be loaded.');
   const catalog=await response.json(),definitions=new Map(catalog.map(d=>[d.id,d]));
@@ -16,12 +17,14 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
       const layers=parts.filter(p=>p.direction===view.source).sort((a,b)=>a.z-b.z||a.layer.localeCompare(b.layer));
       let left=Math.min(...layers.map(p=>-p.reg.x)),top=Math.min(...layers.map(p=>-p.reg.y));
       let right=Math.max(...layers.map(p=>-p.reg.x+p.width)),bottom=Math.max(...layers.map(p=>-p.reg.y+p.height));
-      const canvas=document.createElement('canvas');canvas.width=right-left;canvas.height=bottom-top;
+      const density=def.spriteDensity??1;
+      const canvas=document.createElement('canvas');canvas.width=(right-left)*density;canvas.height=(bottom-top)*density;
       const ctx=canvas.getContext('2d');
-      if(view.mirror){ctx.translate(canvas.width,0);ctx.scale(-1,1);}
-      layers.forEach(p=>ctx.drawImage(p.canvas,-p.reg.x-left,-p.reg.y-top));
+      ctx.imageSmoothingEnabled=density>1;ctx.scale(density,density);
+      if(view.mirror){ctx.translate(right-left,0);ctx.scale(-1,1);}
+      layers.forEach(p=>ctx.drawImage(p.canvas,-p.reg.x-left,-p.reg.y-top,p.width,p.height));
       if(view.mirror)left=64-right;
-      frames.set(`${def.id}:${view.direction}`,{canvas,left:left-32,top:top+16,pixels:ctx.getImageData(0,0,canvas.width,canvas.height).data});
+      frames.set(`${def.id}:${view.direction}`,{canvas,density,left:left-32,top:top+16,pixels:ctx.getImageData(0,0,canvas.width,canvas.height).data});
     }
     })();
     loading.set(def.id,promise);return promise;
@@ -41,6 +44,10 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
   const panel=document.createElement('section');panel.className='furniture-panel';panel.hidden=true;panel.setAttribute('aria-label','Furniture');
   panel.innerHTML=`<header><h1>Furniture</h1><button class="furniture-close" aria-label="Close furniture">×</button></header><nav aria-label="Furniture views">${['Catalogue','Inventory','In room'].map(name=>`<button type="button" data-tab="${name}">${name}</button>`).join('')}</nav><div class="furniture-filters"><input type="search" aria-label="Search furniture" placeholder="Search furniture"><select aria-label="Furniture category">${['All',...new Set(catalog.map(d=>d.category))].map(name=>`<option>${name}</option>`).join('')}</select></div><p class="furniture-description"></p><div class="furniture-grid"></div><div class="furniture-pages"><button type="button" aria-label="Previous furniture page">◀</button><span></span><button type="button" aria-label="Next furniture page">▶</button></div><footer><button class="furniture-undo">Undo</button><span class="furniture-count"></span></footer>`;
   const actions=document.createElement('section');actions.className='furniture-actions';actions.hidden=true;actions.setAttribute('aria-label','Selected furniture');
+  const stickyButton=document.createElement('button');stickyButton.type='button';stickyButton.className='sticky-catalogue';
+  stickyButton.innerHTML='<img src="/assets/stickies/icon.png" alt=""> Sticky note';
+  stickyButton.onclick=()=>{panel.hidden=true;cancel();onPlaceSticky?.();};
+  panel.querySelector('.furniture-filters').after(stickyButton);
   actions.innerHTML=`<button class="furniture-close" aria-label="Deselect furniture">×</button><img alt=""><strong></strong><span class="furniture-location"></span><div>${['Move','Rotate','Pick up','Delete'].map(name=>`<button data-action="${name}">${name}</button>`).join('')}</div>`;
   const placement=document.createElement('section');placement.className='furniture-placement';placement.hidden=true;
   placement.innerHTML='<span></span><button data-placement="rotate">Rotate (R)</button><button data-placement="cancel">Cancel (Esc)</button>';
@@ -78,7 +85,12 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
       if(!visible(item))continue;
       const frame=frameFor(item);
       if(!frame){loadDefinition(definitions.get(item.type)).then(redraw).catch(error=>{panel.querySelector('.furniture-description').textContent=error.message;});continue;}
-      const mesh=makeVisual(frame.canvas);if(pending&&(item.id===pending.id||item.supportId===pending.id))mesh.material.opacity=.65;visuals.push({item,frame,mesh});
+      const mesh=makeVisual(frame.canvas);
+      if(frame.density>1){
+        mesh.scale?.setScalar(1/frame.density);
+        if(mesh.material.map){mesh.material.map.minFilter=LinearFilter;mesh.material.map.magFilter=LinearFilter;}
+      }
+      if(pending&&(item.id===pending.id||item.supportId===pending.id))mesh.material.opacity=.65;visuals.push({item,frame,mesh});
     }
 
     refreshPositions();
@@ -89,13 +101,14 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
       const table=viewItems.find(t=>t.id===item.supportId),orderCells=table?footprint(table,definitions.get(table.type)):cells;
       const order=def.category==='Rugs'?20:300+Math.max(...orderCells.map(([x,z])=>x+z))*10+9+(table?0.1+(item.x+item.z)/100:0);
       const height=surfaceHeight(item,viewItems,definitions);
-      positionVisual(mesh,p.x+frame.left,p.y+frame.top-height,frame.canvas.width,frame.canvas.height,order);
+      positionVisual(mesh,p.x+frame.left,p.y+frame.top-height+(table?def.tableOffsetY??0:0),frame.canvas.width/frame.density,frame.canvas.height/frame.density,order);
     }
     const item=pending||items.find(i=>i.id===selected);
     const cells=item&&visible(item)?footprint(item,definitions.get(item.type)):[];
     markTiles(cells,pending?(validPlacement(pending)?'#65e58c':'#ff7777'):'#f8e39a');
   }
   function renderList(){
+    stickyButton.hidden=tab!=='Catalogue'||!onPlaceSticky;
     panel.querySelectorAll('[data-tab]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tab===tab)));
     panel.querySelector('.furniture-description').textContent=tab==='Catalogue'?'Choose a piece, then click a floor tile to place it.':tab==='Inventory'?'Furniture you have picked up. Click a piece to put it back.':'Select a piece to move, rotate, pick up, or delete it.';
     const grid=panel.querySelector('.furniture-grid');grid.replaceChildren();
@@ -183,7 +196,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
   function hitVisual(point){
     return [...visuals].sort((a,b)=>b.mesh.renderOrder-a.mesh.renderOrder).find(({item,frame})=>{
       if(pending&&(item.id===pending.id||item.supportId===pending.id))return false;
-      const p=worldPoint(item.x,item.z),x=Math.floor(point.x-p.x-frame.left),y=Math.floor(point.y-p.y-frame.top+surfaceHeight(item,viewItems,definitions));
+      const p=worldPoint(item.x,item.z),x=Math.floor((point.x-p.x-frame.left)*frame.density),y=Math.floor((point.y-p.y-frame.top+surfaceHeight(item,viewItems,definitions)-(item.supportId?definitions.get(item.type).tableOffsetY??0:0))*frame.density);
       return x>=0&&y>=0&&x<frame.canvas.width&&y<frame.canvas.height&&frame.pixels[(y*frame.canvas.width+x)*4+3]>40;
     });
   }

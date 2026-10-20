@@ -1,0 +1,41 @@
+[
+  {
+    "id": "custom_macintosh",
+    "name": "Original Macintosh",
+    "category": "Decor",
+    "width": 1,
+    "depth": 1,
+    "surfaceHeight": 0,
+    "icon": "custom_macintosh.png",
+    "parts": [
+      {
+        "file": "custom_macintosh.png",
+        "layer": "a",
+        "direction": 2,
+        "reg": {
+          "x": -6,
+          "y": 41
+        },
+        "width": 51,
+        "height": 53,
+        "z": 0,
+        "ink": 8,
+        "alphaPrepared": true
+      }
+    ],
+    "views": [
+      {
+        "direction": 2,
+        "source": 2,
+        "mirror": false
+      },
+      {
+        "direction": 4,
+        "source": 2,
+        "mirror": true
+      }
+    ],
+    "spriteDensity": 3,
+    "tableOffsetY": -10
+  }
+]

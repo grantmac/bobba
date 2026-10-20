@@ -3,6 +3,7 @@ import {v} from 'convex/values';
 import {DEFAULT_ROOM,fail,validName,validateLook,validateRoom,validateFurniture,tileSet,isPlaced,cells,blocked,atTime,freePosition,findPath,playerTiles} from './lib/rules.js';
 import {internal} from './_generated/api.js';
 import {furniture} from './lib/catalog.js';
+import {STICKY_COLORS,STICKY_LIMIT,STICKY_TEXT_LIMIT,validWallPosition,relocateStickies} from '../shared/stickies.js';
 const SESSION_AGE=30*24*60*60*1000,ADMIN_AGE=12*60*60*1000;
 async function hash(value){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))].map(b=>b.toString(16).padStart(2,'0')).join('');}
 function equal(a,b){if(a.length!==b.length)return false;let diff=0;for(let i=0;i<a.length;i++)diff|=a.charCodeAt(i)^b.charCodeAt(i);return diff===0;}
@@ -58,7 +59,7 @@ export const join=mutation({args:{token:v.string(),name:v.string(),look:v.any(),
 export const preview=query({args:{},handler:async ctx=>{
   const room=await getRoom(ctx),now=Date.now();
   const players=await ctx.db.query('players').withIndex('by_seen',q=>q.gt('lastSeen',now-45000)).take(50);
-  return {serverTime:now,room:{options:room?.options??DEFAULT_ROOM,furniture:room?.furniture.filter(isPlaced)??[]},players:players.map(publicPlayer)};
+  return {serverTime:now,room:{options:room?.options??DEFAULT_ROOM,furniture:room?.furniture.filter(isPlaced)??[],stickies:room?.stickies??[]},players:players.map(publicPlayer)};
 }});
 export const me=query({args:{token:v.string()},handler:async(ctx,{token})=>publicPlayer(await playerFor(ctx,token))});
 export const state=query({args:{token:v.string()},handler:async(ctx,{token})=>{
@@ -66,7 +67,7 @@ export const state=query({args:{token:v.string()},handler:async(ctx,{token})=>{
   const players=await ctx.db.query('players').withIndex('by_seen',q=>q.gt('lastSeen',now-45000)).take(50);
   if(!players.some(p=>p._id===me._id))players.push(me);
   const messages=await ctx.db.query('messages').withIndex('by_time').order('desc').take(30);
-  return {serverTime:now,me:publicPlayer(me),players:players.map(publicPlayer),room:{options:room.options,revision:room.revision,furniture:room.furniture.filter(i=>me.role==='admin'||isPlaced(i))},messages:messages.reverse().map(({_id,name,color,body,mode,x,z,sentAt,playerId})=>({id:_id,name,color,body,mode,x,z,sentAt,playerId}))};
+  return {serverTime:now,me:publicPlayer(me),players:players.map(publicPlayer),room:{options:room.options,revision:room.revision,furniture:room.furniture.filter(i=>me.role==='admin'||isPlaced(i)),stickies:room.stickies??[]},messages:messages.reverse().map(({_id,name,color,body,mode,x,z,sentAt,playerId})=>({id:_id,name,color,body,mode,x,z,sentAt,playerId}))};
 }});
 export const heartbeat=mutation({args:{token:v.string(),connectionId:v.string()},handler:async(ctx,{token,connectionId})=>{
   const p=await playerFor(ctx,token),now=Date.now();
@@ -157,7 +158,36 @@ export const setOptions=mutation({args:{token:v.string(),options:v.any(),revisio
   }
   validateFurniture(items,options);
   const next={...room,options,furniture:items};freePosition(next);
-  await ctx.db.patch(room._id,{options,furniture:items,revision:revision+1});await resetPlayers(ctx,next);
+  await ctx.db.patch(room._id,{options,furniture:items,stickies:relocateStickies(room.stickies??[],tiles),revision:revision+1});await resetPlayers(ctx,next);
+}});
+const wallPosition=v.object({x:v.number(),z:v.number(),side:v.union(v.literal('left'),v.literal('right')),u:v.number(),height:v.number()});
+function stickyText(text){if(text.length>STICKY_TEXT_LIMIT||/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text))fail('Notes can contain up to 2,000 characters.');}
+export const createSticky=mutation({args:{token:v.string(),id:v.string(),position:wallPosition},handler:async(ctx,{token,id,position})=>{
+  await playerFor(ctx,token,true);const room=await getRoom(ctx),notes=room.stickies??[];
+  if(!/^[a-f0-9-]{36}$/.test(id))fail('Invalid note.');
+  if(notes.some(n=>n.id===id))return;
+  if(notes.length>=STICKY_LIMIT)fail('The room has reached its 100-note limit.');
+  if(!validWallPosition(position,tileSet(room.options)))fail('Place the note on a wall.');
+  await ctx.db.patch(room._id,{stickies:[...notes,{id,...position,text:'',color:STICKY_COLORS[0],revision:0}]});
+}});
+export const editSticky=mutation({args:{token:v.string(),id:v.string(),revision:v.number(),text:v.string(),color:v.string(),position:v.optional(wallPosition)},handler:async(ctx,args)=>{
+  await playerFor(ctx,args.token,true);const room=await getRoom(ctx),notes=room.stickies??[],note=notes.find(n=>n.id===args.id);
+  if(!note)fail('This note has been removed.');
+  if(note.revision!==args.revision)fail('This note changed. Close without saving and reopen it to see the latest text.');
+  stickyText(args.text);if(!STICKY_COLORS.includes(args.color))fail('Invalid note colour.');
+  if(args.position&&!validWallPosition(args.position,tileSet(room.options)))fail('Place the note on a wall.');
+  await ctx.db.patch(room._id,{stickies:notes.map(n=>n.id===note.id?{...n,...args.position,text:args.text,color:args.color,revision:n.revision+1}:n)});
+}});
+export const appendSticky=mutation({args:{token:v.string(),id:v.string(),text:v.string()},handler:async(ctx,{token,id,text})=>{
+  await playerFor(ctx,token);const room=await getRoom(ctx),notes=room.stickies??[],note=notes.find(n=>n.id===id);
+  if(!note)fail('This note has been removed.');
+  if(!text.trim())return;stickyText(note.text+text);
+  await ctx.db.patch(room._id,{stickies:notes.map(n=>n.id===id?{...n,text:n.text+text,revision:n.revision+1}:n)});
+}});
+export const deleteSticky=mutation({args:{token:v.string(),id:v.string(),revision:v.number()},handler:async(ctx,{token,id,revision})=>{
+  await playerFor(ctx,token,true);const room=await getRoom(ctx),note=room.stickies?.find(n=>n.id===id);
+  if(!note)return;if(note.revision!==revision)fail('This note changed. Reopen it before deleting.');
+  await ctx.db.patch(room._id,{stickies:room.stickies.filter(n=>n.id!==id)});
 }});
 export const cleanup=internalMutation({args:{},handler:async ctx=>{
   const expired=await ctx.db.query('sessions').withIndex('by_expiry',q=>q.lt('expiresAt',Date.now())).take(100);

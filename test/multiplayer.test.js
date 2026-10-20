@@ -159,3 +159,42 @@ describe('room access and persistence',()=>{
   });
 
 });
+
+describe('sticky notes',()=>{
+  const id='11111111-1111-4111-8111-111111111111';
+  const position={x:0,z:2,side:'left',u:.5,height:70};
+  const create=()=>t.mutation(api.room.createSticky,{token:adminToken,id,position});
+  it('restricts creation, editing, movement and deletion to Grant',async()=>{
+    await guest();await admin();
+    await expect(t.mutation(api.room.createSticky,{token,id,position})).rejects.toThrow('Only Grant');
+    await create();
+    await expect(t.mutation(api.room.editSticky,{token,id,revision:0,text:'forged',color:'#ffff33'})).rejects.toThrow('Only Grant');
+    await expect(t.mutation(api.room.deleteSticky,{token,id,revision:0})).rejects.toThrow('Only Grant');
+    await t.mutation(api.room.editSticky,{token:adminToken,id,revision:0,text:'Welcome',color:'#9cceff',position:{...position,side:'right',x:2,z:0}});
+    const note=(await t.query(api.room.preview,{})).room.stickies[0];expect(note).toMatchObject({text:'Welcome',color:'#9cceff',side:'right',x:2,z:0,revision:1});
+    expect((await t.query(api.room.state,{token})).room.stickies[0]).toEqual(note);
+    await t.mutation(api.room.deleteSticky,{token:adminToken,id,revision:1});expect((await t.query(api.room.preview,{})).room.stickies).toEqual([]);
+  });
+  it('appends visitor text without overwriting concurrent additions, and rejects stale owner edits',async()=>{
+    await admin();await guest();await create();
+    await t.mutation(api.room.appendSticky,{token,id,text:'First'});
+    await t.mutation(api.room.appendSticky,{token,id,text:'\nSecond'});
+    expect((await t.query(api.room.preview,{})).room.stickies[0].text).toBe('First\nSecond');
+    await expect(t.mutation(api.room.editSticky,{token:adminToken,id,revision:0,text:'overwrite',color:'#ffff33'})).rejects.toThrow('changed');
+    await expect(t.mutation(api.room.deleteSticky,{token:adminToken,id,revision:0})).rejects.toThrow('changed');
+    await expect(t.mutation(api.room.appendSticky,{token,id,text:'x'.repeat(2001)})).rejects.toThrow('2,000');
+  });
+  it('rejects invalid walls, colours and oversized text',async()=>{
+    await admin();
+    for(const bad of [{...position,x:2},{...position,height:200},{...position,u:2}])await expect(t.mutation(api.room.createSticky,{token:adminToken,id,position:bad})).rejects.toThrow('wall');
+    await create();
+    await expect(t.mutation(api.room.editSticky,{token:adminToken,id,revision:0,text:'hello',color:'red'})).rejects.toThrow('colour');
+    await expect(t.mutation(api.room.editSticky,{token:adminToken,id,revision:0,text:'x'.repeat(2001),color:'#ffff33'})).rejects.toThrow('2,000');
+  });
+  it('keeps notes when furniture changes and relocates them when their wall disappears',async()=>{
+    await admin();await create();
+    await t.mutation(api.room.setFurniture,{token:adminToken,items:[],revision:0});
+    await t.mutation(api.room.setOptions,{token:adminToken,options:{...DEFAULT_ROOM,shape:'model_f'},revision:1});
+    const note=(await t.query(api.room.preview,{})).room.stickies[0];expect(note.id).toBe(id);expect(note.revision).toBe(1);
+  });
+});

@@ -1,3 +1,4 @@
+import {randomAppearance} from './random-appearance.js';
 const ROOT = '/assets/appearance/';
 const KEY = 'habbo-room-appearance-v1';
 const LABELS = {hair:'Hair',skin:'Faces',top:'Tops',bottom:'Trousers',shoes:'Shoes',hats:'Hats',headwear:'Headwear',glasses:'Glasses',facewear:'Facewear',jackets:'Jackets',waist:'Waist'};
@@ -187,7 +188,7 @@ export async function createAppearance({prepareImage, onApply, onOpen}) {
     async useLook(look){if(!validate(look))throw new Error('Invalid saved appearance.');current=normalize(look);const result=await frames(current);return result;},
     enter({name='',admin=false,onEnter}){
       return new Promise(resolve=>{
-        entry={onEnter,resolve};draft=copy(current);category='hair';page=0;previewDirection=2;
+        entry={onEnter,resolve};draft=admin?copy(current):randomAppearance(catalog);category='hair';page=0;previewDirection=2;
         dialog.querySelector('h1').textContent=admin?'Welcome back, Grant':'Welcome to the room';
         dialog.querySelector('.entry-name').hidden=false;
         const nameInput=dialog.querySelector('#entry-name');nameInput.value=admin?'Grant':name;nameInput.readOnly=admin;

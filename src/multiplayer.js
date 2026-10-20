@@ -39,6 +39,10 @@ export function createMultiplayer(){
     chat:(body,mode)=>mutate('chat',{body,mode}),
     furniture:items=>mutate('setFurniture',{items,revision:state.room.revision}),
     options:options=>mutate('setOptions',{options,revision:state.room.revision}),
+    createSticky:(id,position)=>mutate('createSticky',{id,position}),
+    editSticky:note=>mutate('editSticky',note),
+    appendSticky:(id,text)=>mutate('appendSticky',{id,text}),
+    deleteSticky:(id,revision)=>mutate('deleteSticky',{id,revision}),
     seed:(options,items)=>mutate('seed',{options,items}),
     close(){depart();window.removeEventListener('pagehide',depart);unsubscribe?.();clearInterval(heartbeat);client.close();},
   };

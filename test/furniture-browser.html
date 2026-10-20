@@ -22,10 +22,10 @@ document.querySelector('#run').onclick=()=>{try{
  furniture.connect({admin:true,onSave:async()=>{}});furniture.pointer(hit(1),{x:4,z:4},true);
  assert(!document.querySelector('.furniture-actions').hidden,'Admin editing popup must remain');
  furniture.open('Catalogue');assert(document.querySelectorAll('.furniture-card').length===48,'Catalogue must paginate');
- assert(document.querySelector('.furniture-pages').textContent.includes('1223'),'Full catalogue count missing');
+ assert(document.querySelector('.furniture-pages').textContent.includes('1224'),'Full catalogue count missing');
  const search=document.querySelector('[aria-label="Search furniture"]');search.value='Rubber duck';search.dispatchEvent(new Event('input'));document.querySelector('[aria-label="Place Rubber duck"]').click();
  furniture.pointer(hit(3),{x:10,z:10},true);assert(furniture.getItems().some(i=>i.type==='duck'&&i.supportId==='table'),'Duck must be placed on the table');
- results.textContent='PASS: tabletop placement persists;  visitor furniture popup hidden; chairs and recovered benches sit; rug clicks reach floor; admin controls retained; 1,223 pieces with 48 per page.';
+ results.textContent='PASS: tabletop placement persists;  visitor furniture popup hidden; chairs and recovered benches sit; rug clicks reach floor; admin controls retained; 1,224 pieces with 48 per page.';
 }catch(error){results.textContent='FAIL: '+error.message;throw error;}};
 results.textContent='Ready';
 </script>

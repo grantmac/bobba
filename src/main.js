@@ -9,6 +9,8 @@ import { createInfoStand } from './info-stand.js';
 import { createChat } from './chat.js';
 import { createMultiplayer, samplePlayer } from './multiplayer.js';
 import {createAwayPoster} from './away-poster.js';
+import {createStickies} from './stickies.js';
+import {installTouchNavigation} from './touch-navigation.js';
 
 const container = document.querySelector('#scene');
 const scene = new THREE.Scene();
@@ -28,10 +30,10 @@ container.append(renderer.domElement);
 let CENTER_Y = 70;
 const ROOT = '/assets/private-room/';
 let displayScale = 1,zoom=1;
-let editingRoom=false,viewOffsetX=0,positionBeforeEdit;
+let editingRoom=false,viewOffsetX=0,viewOffsetY=0,panX=0,panY=0,positionBeforeEdit;
 const iso = (x, z) => ({ x: (x-z)*32-roomCenterX, y: (x+z)*16 });
 const valid = (x, z) => walkable.has(`${x},${z}`);
-let furniture,network,toolbar,selfPlayer,infoStand,actionControls;
+let furniture,network,toolbar,selfPlayer,infoStand,actionControls,stickies;
 let grantOnline=false,awayPoster;
 let initialFurniture=[],posterWalls=[];
 function positionAwayPoster(){
@@ -148,7 +150,7 @@ function buildRoom(options){
   }
   drawTarget=scene;path=[];hover.visible=false;targetMarker.visible=false;
   if(!valid(Math.floor(position.x),Math.floor(position.z))){const [x,z]=roomShape.tiles.reduce((best,t)=>Math.hypot(t[0]+.5-position.x,t[1]+.5-position.z)<Math.hypot(best[0]+.5-position.x,best[1]+.5-position.z)?t:best);position.x=x+.5;position.z=z+.5;}
-  container.dataset.shape=options.shape;furniture?.roomChanged();resize();
+  container.dataset.shape=options.shape;furniture?.roomChanged();stickies?.redraw();resize();
 }
 
 let avatarFrames=new Map(),appearance;
@@ -163,7 +165,7 @@ function overCharacter(event) {
   if(!ready)return false;
   const r=container.getBoundingClientRect(),p=iso(position.x,position.z);
   const x=(event.clientX-r.left-r.width/2-viewOffsetX)/displayScale;
-  const y=(event.clientY-r.top-r.height/2)/displayScale+CENTER_Y;
+  const y=(event.clientY-r.top-r.height/2-viewOffsetY)/displayScale+CENTER_Y;
   return x>=p.x-18&&x<=p.x+18&&y>=p.y-68&&y<=p.y+4;
 }
 
@@ -192,13 +194,13 @@ function place(mesh,left,top,width,height){mesh.position.set(left+width/2,CENTER
 function screenCell(event){
   const r=container.getBoundingClientRect();
   const sx=(event.clientX-r.left-r.width/2-viewOffsetX)/displayScale;
-  const sy=(event.clientY-r.top-r.height/2)/displayScale+CENTER_Y;
+  const sy=(event.clientY-r.top-r.height/2-viewOffsetY)/displayScale+CENTER_Y;
   const x=Math.floor((sx+roomCenterX)/64+sy/32),z=Math.floor(sy/32-(sx+roomCenterX)/64);
   return valid(x,z)?{x,z}:null;
 }
 function screenPoint(event){
   const r=container.getBoundingClientRect();
-  return {x:(event.clientX-r.left-r.width/2-viewOffsetX)/displayScale,y:(event.clientY-r.top-r.height/2)/displayScale+CENTER_Y};
+  return {x:(event.clientX-r.left-r.width/2-viewOffsetX)/displayScale,y:(event.clientY-r.top-r.height/2-viewOffsetY)/displayScale+CENTER_Y};
 }
 function ensureFreeTile(){
   if(seated){
@@ -224,6 +226,7 @@ async function sitOn(seat){
   for(const [x,z] of cells)if(await walkTo({x,z},seat.id))break;
 }
 container.addEventListener('pointermove',event=>{
+  if(stickies?.pointer(screenPoint(event))){hover.visible=false;container.style.cursor='pointer';return;}
   if(peerAt(event)){hover.visible=false;container.style.cursor='pointer';return;}
   if(furniture?.pointer(screenPoint(event),screenCell(event))){hover.visible=false;container.style.cursor='pointer';return;}
   hoverCell=screenCell(event);container.style.cursor=hoverCell||overCharacter(event)?'pointer':'default';hover.visible=ready&&!!hoverCell;
@@ -232,8 +235,9 @@ container.addEventListener('pointermove',event=>{
 container.addEventListener('pointerleave',()=>{hover.visible=false;down=null;});
 container.addEventListener('pointerdown',event=>{down={x:event.clientX,y:event.clientY};});
 container.addEventListener('pointercancel',()=>{down=null;});
-container.addEventListener('pointerup',event=>{if(down&&Math.hypot(event.clientX-down.x,event.clientY-down.y)<8){const peer=peerAt(event);if(peer){selectPeer(peer);}else if(furniture?.pointer(screenPoint(event),screenCell(event),true)){container.focus({preventScroll:true});}else if(overCharacter(event)){appearance.open();}else{infoStand?.hide();walkTo(screenCell(event));container.focus({preventScroll:true});}}down=null;});
+container.addEventListener('pointerup',event=>{if(down&&Math.hypot(event.clientX-down.x,event.clientY-down.y)<8){const peer=peerAt(event);if(stickies?.pointer(screenPoint(event),true)){}else if(peer){selectPeer(peer);}else if(furniture?.pointer(screenPoint(event),screenCell(event),true)){container.focus({preventScroll:true});}else if(overCharacter(event)){appearance.open();}else{infoStand?.hide();walkTo(screenCell(event));container.focus({preventScroll:true});}}down=null;});
 container.addEventListener('keydown',event=>{
+  if(stickies?.key(event)){event.preventDefault();return;}
   if(furniture?.key(event)){event.preventDefault();return;}
   const delta={ArrowUp:[0,-1],ArrowDown:[0,1],ArrowLeft:[-1,0],ArrowRight:[1,0]}[event.key];
   if(!delta)return;event.preventDefault();
@@ -248,14 +252,31 @@ container.addEventListener('wheel',event=>{
 function resize(){
   const w=container.clientWidth,h=container.clientHeight;
   const reserved=editingRoom&&w>1000?550:0;
-  viewOffsetX=-reserved/2;
-  const fit=Math.min(1.5,(w-reserved)/((roomWidth+roomDepth)*32+90),h/((roomWidth+roomDepth)*16+160));
+  const mobile=matchMedia('(pointer: coarse)').matches||w<=640;
+  const fit=Math.min(1.5,(w-reserved)/((roomWidth+roomDepth)*32+(mobile?80:90)),h/((roomWidth+roomDepth)*16+(mobile?130:160)));
   displayScale=fit*zoom;
+  panX=Math.max(-((roomWidth+roomDepth)*32*displayScale+w)/2+60,Math.min(((roomWidth+roomDepth)*32*displayScale+w)/2-60,panX));
+  panY=Math.max(-((roomWidth+roomDepth)*16*displayScale+h)/2+60,Math.min(((roomWidth+roomDepth)*16*displayScale+h)/2-60,panY));
+  viewOffsetX=panX-reserved/2;viewOffsetY=panY;
   camera.left=(-w/2-viewOffsetX)/displayScale;camera.right=(w/2-viewOffsetX)/displayScale;
-  camera.top=h/displayScale/2;camera.bottom=-h/displayScale/2;camera.updateProjectionMatrix();
+  camera.top=(h/2+viewOffsetY)/displayScale;camera.bottom=(-h/2+viewOffsetY)/displayScale;camera.updateProjectionMatrix();
   renderer.setSize(w,h);
 }
-new ResizeObserver(resize).observe(container);resize();
+function updateViewport(){
+  const viewport=window.visualViewport;
+  if(viewport&&Math.abs(viewport.scale-1)<.01){
+    document.documentElement.style.setProperty('--viewport-height',`${viewport.height}px`);
+    document.documentElement.style.setProperty('--viewport-top',`${viewport.offsetTop}px`);
+  }
+}
+window.visualViewport?.addEventListener('resize',updateViewport);
+window.visualViewport?.addEventListener('scroll',updateViewport);
+updateViewport();new ResizeObserver(resize).observe(container);resize();
+installTouchNavigation(container,{
+  getView:()=>({zoom,panX,panY}),
+  setView:view=>{zoom=view.zoom;panX=view.panX;panY=view.panY;resize();},
+  cancelTap:()=>{down=null;hover.visible=false;}
+});
 const chat=createChat({getSpeaker:()=>{
   const p=iso(position.x,position.z),rect=container.getBoundingClientRect();
   return {name:network?.me?.name??'You',color:appearance?.chatColor()??'#6b8c64',x:rect.left+rect.width/2+viewOffsetX+p.x*displayScale};
@@ -328,7 +349,7 @@ function animate(now){
       peer.mesh.material.map=peer.textures.get(characterFrame(peer.data,point,time,seat));peer.mesh.material.needsUpdate=true;
       const p=positionCharacter(peer.mesh,point,seat);
       peer.label.style.left=`${container.clientWidth/2+viewOffsetX+(p.x-18)*displayScale}px`;
-      peer.label.style.top=`${container.clientHeight/2+(p.y-CENTER_Y-68)*displayScale}px`;
+      peer.label.style.top=`${container.clientHeight/2+viewOffsetY+(p.y-CENTER_Y-68)*displayScale}px`;
       peer.label.style.width=`${36*displayScale}px`;peer.label.style.height=`${72*displayScale}px`;
       peer.label.hidden=!peer.mesh.visible;
     }
@@ -359,10 +380,17 @@ try{
   infoStand=await createInfoStand(prepareImage);
   appearance=await createAppearance({prepareImage,onApply:async(frames,look,context)=>{if(!context.entry)await network.appearance(look);setAppearance(frames);},onOpen:()=>{stopWalking();furniture?.close();}});
   setAppearance(appearance.initial);
+  stickies=await createStickies({network,prepareImage,worldPoint:iso,getTiles:()=>walkable,
+    makeVisual:canvas=>sprite(canvas,0,0,95),
+    disposeVisual:mesh=>{scene.remove(mesh);mesh.geometry.dispose();mesh.material.map.dispose();mesh.material.dispose();},
+    positionVisual:(mesh,x,y,w,h,order)=>{place(mesh,x,y,w,h);mesh.renderOrder=order;},
+    focusRoom:()=>container.focus({preventScroll:true}),onPlace:()=>{stopWalking();furniture?.close();}
+  });
+  stickies.receive(initialRoom.room.stickies??[]);
   const furnitureMarks=new THREE.Group();scene.add(furnitureMarks);
   furniture=await createFurniture({initialItems:initialRoom.room.furniture,
     prepareImage,worldPoint:iso,isTile:valid,getAvatar:()=>position,stopWalking,onChanged:()=>{ensureFreeTile();positionAwayPoster();},onSit:sitOn,
-    focusRoom:()=>container.focus({preventScroll:true}),
+    focusRoom:()=>container.focus({preventScroll:true}),onPlaceSticky:()=>stickies.begin(),
     makeVisual:canvas=>sprite(canvas,0,0,300),
     disposeVisual:mesh=>{scene.remove(mesh);mesh.geometry.dispose();mesh.material.map.dispose();mesh.material.dispose();},
     positionVisual:(mesh,x,y,w,h,order)=>{place(mesh,x,y,w,h);mesh.renderOrder=order;},
@@ -386,6 +414,7 @@ try{
         const rk=JSON.stringify(state.room.options),fk=JSON.stringify(state.room.furniture);
         if(rk!==roomKey){roomKey=rk;roomEditor.receive(state.room.options);}
         if(fk!==furnitureKey){furnitureKey=fk;furniture.receive(state.room.furniture);positionAwayPoster();}
+        stickies.receive(state.room.stickies??[]);
         updatePeers(state.players);resolve();
       },message=>reject(new Error(message)));
     });
@@ -394,6 +423,7 @@ try{
     stopPreview();
   }
   const admin=network.me.role==='admin';
+  stickies.connect(admin);
   furniture.connect({admin,onSave:items=>network.furniture(items)});
   toolbar.setAdmin(admin);
   actionControls=document.createElement('div');actionControls.className='avatar-actions';actionControls.setAttribute('aria-label','Your actions');
@@ -408,6 +438,7 @@ try{
       const nextRoom=JSON.stringify(state.room.options),nextFurniture=JSON.stringify(state.room.furniture);
       if(nextRoom!==roomKey){roomKey=nextRoom;roomEditor.receive(state.room.options);}
       if(nextFurniture!==furnitureKey){furnitureKey=nextFurniture;furniture.receive(state.room.furniture);positionAwayPoster();}
+      stickies.receive(state.room.stickies??[]);
       selfPlayer=state.me;updatePeers(state.players);
       const nextLook=JSON.stringify(state.me.look);
       if(nextLook!==ownLook){ownLook=nextLook;const version=++lookVersion;appearance.useLook(state.me.look).then(frames=>{if(version===lookVersion)setAppearance(frames);}).catch(error=>toolbar.status(error.message));}

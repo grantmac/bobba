@@ -3,6 +3,25 @@
   background: #121212;
 }
 
+.sticky-catalogue{display:flex;align-items:center;gap:8px;margin:0 10px 8px;padding:6px;border:1px solid #777;background:#eee;border-radius:3px;text-align:left}
+.sticky-catalogue img{width:26px;height:22px;image-rendering:pixelated}
+.sticky-dialog{--note-color:#ffff33;width:240px;max-width:calc(100vw - 24px);max-height:calc(100dvh - 24px);overflow:auto;padding:0 9px 12px;border:1px solid #111;border-radius:0;background:var(--note-color);color:#111;box-shadow:3px 3px #0005;font:12px Verdana,sans-serif}
+.sticky-dialog::backdrop{background:transparent}
+.sticky-dialog header{display:flex;justify-content:space-between;align-items:center;height:30px;cursor:default}
+.sticky-dialog header span{font-size:10px}
+.sticky-dialog button{border:0;padding:4px;background:none;color:#111}
+.sticky-dialog header img{width:10px;height:10px;image-rendering:pixelated}
+.sticky-dialog textarea{display:block;resize:none;width:100%;height:190px;border:0;padding:3px;background:transparent;font:14px/1.45 Verdana,sans-serif;color:#111;outline-offset:0}
+.sticky-dialog footer{display:flex;align-items:center;gap:6px;margin-top:6px}
+.sticky-colors{display:flex;gap:5px;margin-right:auto}
+.sticky-colors button{height:17px;width:17px;border:1px solid #333;padding:0}
+.sticky-colors button[aria-pressed=true]{outline:1px solid #111;outline-offset:1px}
+.sticky-delete img{width:9px;height:10px;image-rendering:pixelated}
+.sticky-dialog:after{content:'';position:absolute;right:0;bottom:0;border-style:solid;border-width:0 0 11px 11px;border-color:transparent transparent #121212 #eee;filter:drop-shadow(-1px -1px #111)}
+.sticky-error{font-size:11px;margin:8px 0;color:#8b1414}
+.sticky-discard{text-decoration:underline;font-size:11px}
+.sticky-dialog [hidden],.sticky-catalogue[hidden]{display:none}
+
 * { box-sizing: border-box; }
 
 html, body {
@@ -233,3 +252,21 @@ background-size:11px 11px,11px 11px,11px 11px,11px 11px,calc(100% - 24px) 12px,c
 .character-editor .appearance-character{padding-top:65px}
 
 .furniture-pages{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;font-size:10px}.furniture-pages button{min-width:26px;height:22px}
+
+@media(max-width:640px),(pointer:coarse){
+  :root{--mobile-bar-height:calc(54px + env(safe-area-inset-bottom,0px))}
+  #scene{top:var(--viewport-top,0px);bottom:auto;height:calc(var(--viewport-height,100dvh) - var(--mobile-bar-height))}
+  .room-toolbar{top:calc(var(--viewport-top,0px) + var(--viewport-height,100dvh) - var(--mobile-bar-height));bottom:auto;height:var(--mobile-bar-height);padding-bottom:env(safe-area-inset-bottom,0px)}
+  input,textarea,select,.room-chat .chat-field input,.character-editor .entry-name input,.furniture-filters input,.furniture-filters select{font-size:16px!important}
+  .room-chat{height:28px;margin-top:10px;gap:5px}
+  .chat-field{height:28px;padding:0 3px}
+  .room-chat .chat-field input{height:26px;line-height:26px}
+  #speech-mode{height:28px;margin:0}
+  .bar-hint{display:none}
+  .bar-icons{gap:2px}.bar-icon{width:27px}.bar-icon:disabled{display:none}
+  .sticky-dialog{width:280px;max-height:calc(var(--viewport-height,100dvh) - 24px)}
+  .sticky-dialog textarea{height:180px}
+  .sticky-dialog header{height:38px}.sticky-dialog header button,.sticky-delete,.sticky-move{min-width:32px;min-height:32px}
+  .sticky-colors button{width:25px;height:25px}
+  .character-editor{max-height:calc(var(--viewport-height,100dvh) - 16px)}
+}

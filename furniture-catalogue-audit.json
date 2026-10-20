@@ -1,10 +1,10 @@
 {
-  "items": 1223,
-  "layers": 3691,
+  "items": 1224,
+  "layers": 3692,
   "categories": {
+    "Decor": 742,
     "Seating": 133,
     "Tables": 99,
-    "Decor": 741,
     "Rugs": 54,
     "Lighting": 43,
     "Beds": 26,
@@ -105,5 +105,8 @@
       "reason": "No inventory icon or unsupported floor dimensions"
     }
   ],
-  "scope": "Full-size floor sprites, default state/frame. Wall-mounted sprites and half-size copies excluded. Labels and non-floor categories inferred from asset names; original 31 labels retained."
+  "scope": "Full-size floor sprites, default state/frame. Wall-mounted sprites and half-size copies excluded. Labels and non-floor categories inferred from asset names; original 31 labels retained.",
+  "customItems": [
+    "custom_macintosh"
+  ]
 }
