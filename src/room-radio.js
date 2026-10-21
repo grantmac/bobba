@@ -1,9 +1,24 @@
 // Public Poolsuite ON AIR endpoint used by https://poolsuite.net/.
 export const POOLSUITE_STREAM='https://s5.radio.co/sc9cb59935/listen';
-export function createRoomRadio({audio=new Audio(),onState=()=>{}}={}){
-  audio.preload='none';audio.volume=.7875;
-  let active=false,muted=false,pending=false,generation=0,playing=false;
-  const emit=()=>onState({active,muted,playing,volume:audio.volume});
+// While someone has their mic on the music ducks to this share of its level, easing down
+// quickly and back up slowly, with a short hold so it does not pump between words.
+const DUCK_LEVEL=.08,DUCK_HOLD=900;
+export function createRoomRadio({audio=new Audio(),onState=()=>{},now=()=>performance.now(),schedule=fn=>requestAnimationFrame(fn)}={}){
+  audio.preload='none';
+  let active=false,muted=false,pending=false,generation=0,playing=false,level=.7875,ducked=false,duckFactor=1,duckTimer=null,easing=false;
+  const applyVolume=()=>{audio.volume=Math.max(0,Math.min(1,level*duckFactor));};
+  applyVolume();
+  const emit=()=>onState({active,muted,playing,volume:level});
+  function ease(){
+    const target=ducked?DUCK_LEVEL:1,step=ducked?.12:.03;
+    duckFactor=duckFactor>target?Math.max(target,duckFactor-step):Math.min(target,duckFactor+step);
+    applyVolume();
+    if(duckFactor!==target)schedule(ease);else easing=false;
+  }
+  function setDucked(value){
+    if(value===ducked)return;ducked=value;
+    if(!easing){easing=true;schedule(ease);}
+  }
   function stop(){generation++;pending=false;playing=false;audio.pause();audio.removeAttribute('src');audio.load();}
   async function play(){
     if(!active||muted||pending||playing)return;
@@ -16,15 +31,19 @@ export function createRoomRadio({audio=new Audio(),onState=()=>{}}={}){
   }
   for(const event of ['error','ended'])audio.addEventListener(event,()=>{stop();emit();});
   return {
-    snapshot:()=>({muted,volume:audio.volume}),
-    restore(state){if(!state)return;muted=state.muted===true;if(Number.isFinite(state.volume))audio.volume=Math.max(0,Math.min(1,state.volume));emit();},
+    snapshot:()=>({muted,volume:level}),
+    restore(state){if(!state)return;muted=state.muted===true;if(Number.isFinite(state.volume))level=Math.max(0,Math.min(1,state.volume));applyVolume();emit();},
     receive(items,joined){
       const next=joined&&items.some(item=>item.type==='custom_dj_decks'&&Number.isInteger(item.x)&&Number.isInteger(item.z)&&item.on!==false);
       if(next===active)return;active=next;if(active)void play();else stop();emit();
     },
     unlock:play,
     setMuted(value){muted=value;if(muted)stop();else void play();emit();},
-    setVolume(value){audio.volume=Math.max(0,Math.min(1,value));emit();},
+    setVolume(value){level=Math.max(0,Math.min(1,value));applyVolume();emit();},
+    // Voice activity: duck at once, release after a hold.
+    duck(speaking){clearTimeout(duckTimer);duckTimer=null;if(speaking)setDucked(true);else duckTimer=setTimeout(()=>setDucked(false),DUCK_HOLD);},
+    get ducked(){return ducked;},
+    get audible(){return active&&playing&&!muted&&level>0&&!audio.paused&&audio.readyState>=3;},
     close(){active=false;stop();emit();}
   };
 }

@@ -8,9 +8,10 @@ export function createMultiplayer(){
   window.addEventListener('hashchange',()=>{if(new URLSearchParams(location.hash.slice(1)).has('grant'))location.reload();});
   const fragment=new URLSearchParams(location.hash.slice(1));let entryCode=fragment.get('grant')||'';
   if(entryCode)history.replaceState(null,'',location.pathname+location.search);
-  let token='',me=null,state=null,unsubscribe=null,heartbeat=null,offset=0;
+  let token='',me=null,state=null,room=null,unsubscribe=null,unsubscribeRoom=null,unsubscribePong=null,heartbeat=null,offset=0;
   try{token=localStorage.getItem(KEY)||'';}catch{}
   function errorMessage(error){return typeof error?.data==='string'?error.data:error?.message?.replace(/\[CONVEX[^\]]*\]\s*/,'').split('\n')[0]||'The room could not be reached.';}
+  async function mutatePong(name,args={}){try{return await client.mutation(api.pong[name],{token,...args});}catch(error){throw new Error(errorMessage(error));}}
   async function mutate(name,args={}){try{return await client.mutation(api.room[name],{token,...args});}catch(error){throw new Error(errorMessage(error));}}
   function randomToken(){return [...crypto.getRandomValues(new Uint8Array(32))].map(b=>b.toString(16).padStart(2,'0')).join('');}
   const connectionId=randomToken();
@@ -28,18 +29,44 @@ export function createMultiplayer(){
     },
     loadPreview:()=>client.query(api.room.preview,{}),
     preview(onState,onError){return client.onUpdate(api.room.preview,{},value=>{offset=value.serverTime-Date.now();onState(value);},error=>onError(errorMessage(error)));},
-    async watch(onState,onError){
+    async watch(onState,onError,onRoom,onPong){
       try{await mutate('heartbeat',{connectionId,pageOrigin:location.origin});}catch(error){onError(error.message);return;}
-      unsubscribe?.();unsubscribe=client.onUpdate(api.room.state,{token},value=>{state=value;me=value.me;offset=value.serverTime-Date.now();onState(value);},error=>onError(errorMessage(error)));
+      unsubscribe?.();unsubscribeRoom?.();
+      unsubscribe=client.onUpdate(api.room.state,{token,presenceOnly:true},value=>{state=value;me=value.me;offset=value.serverTime-Date.now();onState(value);},error=>onError(errorMessage(error)));
+      unsubscribePong?.();unsubscribePong=client.onUpdate(api.pong.state,{},value=>onPong?.(value),error=>onError(errorMessage(error)));
+      unsubscribeRoom=client.onUpdate(api.room.roomState,{token},value=>{room=value;onRoom?.(value);},error=>onError(errorMessage(error)));
       clearInterval(heartbeat);heartbeat=setInterval(()=>mutate('heartbeat',{connectionId,pageOrigin:location.origin}).catch(error=>onError(error.message)),15000);
     },
     appearance:look=>mutate('appearance',{look}),
-    async voiceCredentials(){try{return await client.action(api.voice.connect,{token});}catch(error){throw new Error(errorMessage(error));}},
-    move:(x,z,seatId)=>mutate('move',{x,z,...(seatId?{seatId}:{})}),
+    async voiceCredentials(tab){try{return await client.action(api.voice.connect,{token,...(tab?{tab}:{})});}catch(error){throw new Error(errorMessage(error));}},
+    move:(x,z,seatId,direction=null)=>mutate('move',{x,z,...(seatId?{seatId}:{}),...(direction===null?{}:{direction})}),
     gesture:action=>mutate('gesture',{action}),
+    takeDrink:id=>mutate('takeDrink',{id}),
+    whiteboard:{
+      all:()=>client.query(api.whiteboard.all,{}),
+      draw:stroke=>client.mutation(api.whiteboard.draw,{token,...stroke}).catch(error=>{throw new Error(errorMessage(error));}),
+      clear:()=>client.mutation(api.whiteboard.clear,{token}).catch(error=>{throw new Error(errorMessage(error));}),
+      // Delta subscription: after each batch, re-subscribe from the newest serial seen, so
+      // the live feed only ever carries what changed.
+      watch(after,onUpdate){
+        let stop=null,cursor=after,ended=false;
+        const subscribe=()=>{stop?.();stop=client.onUpdate(api.whiteboard.updates,{after:cursor},value=>{
+          if(ended)return;const latest=Math.max(cursor,value.serial,...value.strokes.map(s=>s.serial));
+          if(value.strokes.length||value.clearedSerial>cursor)onUpdate(value);
+          if(latest>cursor){cursor=latest;subscribe();}
+        },error=>console.warn(errorMessage(error)));};
+        subscribe();return ()=>{ended=true;stop?.();};
+      },
+    },
+    visits:{
+      page:before=>client.query(api.visits.page,{token,...(before?{before}:{})}).catch(error=>{throw new Error(errorMessage(error));}),
+      watch:(onPage,onError)=>client.onUpdate(api.visits.page,{token},onPage,error=>onError(errorMessage(error))),
+    },
+    pong:{join:()=>mutatePong('join'),leave:()=>mutatePong('leave'),paddle:(side,y)=>mutatePong('paddle',{side,y}),hit:(side,y,serial)=>mutatePong('hit',{side,y,serial}),miss:(side,serial)=>mutatePong('miss',{side,serial})},
     chat:(body,mode)=>mutate('chat',{body,mode}),
-    furniture:items=>mutate('setFurniture',{items,revision:state.room.revision}),
-    options:options=>mutate('setOptions',{options,revision:state.room.revision}),
+    typing:typing=>mutate('setTyping',{typing}),
+    furniture:items=>mutate('setFurniture',{items,revision:room.revision,knowsAssets:true}),
+    options:options=>mutate('setOptions',{options,revision:room.revision}),
     danceFloor:on=>mutate('setDanceFloor',{on}),
     deckPower:(id,on)=>mutate('setDeckPower',{id,on}),
     createSticky:(id,position,poster)=>mutate('createSticky',{id,position,...(poster?{poster}:{})}),
@@ -47,7 +74,17 @@ export function createMultiplayer(){
     appendSticky:(id,text)=>mutate('appendSticky',{id,text}),
     deleteSticky:(id,revision)=>mutate('deleteSticky',{id,revision}),
     seed:(options,items)=>mutate('seed',{options,items}),
-    close(){depart();window.removeEventListener('pagehide',depart);unsubscribe?.();clearInterval(heartbeat);client.close();},
+    // Player-built catalogue pieces, live: a new piece reaches every open room at once.
+    assets:{
+      list:()=>client.query(api.assets.list,{}).catch(error=>{throw new Error(errorMessage(error));}),
+      watch:(onList,onError)=>client.onUpdate(api.assets.list,{},onList,error=>onError(errorMessage(error))),
+    },
+    agents:{
+      key:label=>client.mutation(api.agents.createKey,{token,label}).catch(error=>{throw new Error(errorMessage(error));}),
+      attached:(onList,onError)=>client.onUpdate(api.agents.attached,{token},onList,error=>onError(errorMessage(error))),
+      revoke:()=>client.mutation(api.agents.revoke,{token}).catch(error=>{throw new Error(errorMessage(error));}),
+    },
+    close(){depart();window.removeEventListener('pagehide',depart);unsubscribe?.();unsubscribeRoom?.();unsubscribePong?.();clearInterval(heartbeat);client.close();},
   };
 }
 export function samplePlayer(player,now){

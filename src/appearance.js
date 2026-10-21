@@ -1,3 +1,4 @@
+import {makeDraggable} from './draggable.js';
 import {randomAppearance} from './random-appearance.js';
 import {appearanceChoices,appearanceGender,changeAppearanceGender} from './appearance-options.js';
 const ROOT = '/assets/appearance/';
@@ -45,12 +46,14 @@ export async function createAppearance({prepareImage, onApply, onOpen}) {
     if(!painted.has(key))painted.set(key,load(asset.file).then(image=>prepareImage(image,{matte:!asset.alphaPrepared,tint})));
     return painted.get(key);
   }
-  async function render(look,direction=2,frame=-1,sitting=false,action=null,actionFrame=0) {
+  // carry=true holds a drink: the right arm takes the carry pose in every action and the glass (item 1) is drawn in it.
+  async function render(look,direction=2,frame=-1,sitting=false,action=null,actionFrame=0,carry=false) {
     const canvas=document.createElement('canvas');canvas.width=96;canvas.height=112;
     const ctx=canvas.getContext('2d');ctx.imageSmoothingEnabled=false;
     const order=catalog.orders[action==='wave'?'lh-up':sitting?'sit':'std']?.[direction]??catalog.orders.std[direction];
     const flips={lh:'rh',rh:'lh',ls:'rs',rs:'ls'},layers=new Map(),hidden=new Set();
     const normalized=normalize(look);
+    if(carry)layers.set('ri',[{type:'ri',model:'1',index:0,colorable:false,tint:'#ffffff'}]);
     for(const group of Object.keys(LABELS)){
       const selection=normalized[group],set=catalog.sets[group][selection.model];
       for(const hiddenPart of set.hidden)hidden.add(hiddenPart);
@@ -72,6 +75,7 @@ export async function createAppearance({prepareImage, onApply, onOpen}) {
         const data=catalog.dance[part],i=actionFrame%data.act.length;
         partAction=data.act[i];partFrame=data.frm[i];partDirection=(direction+data.OffD[i]+8)%8;offsetX=data.OffX[i];offsetY=data.OffY[i];
       }
+      if(carry&&['rh','rs','ri'].includes(part)){partAction='crr';partFrame=0;}
       const sourceDirection=[0,1,2,3,2,1,0,7][partDirection];
       let mirrored=sourceDirection!==partDirection;
       let sourcePart=mirrored&&flips[part]?flips[part]:part;
@@ -84,25 +88,36 @@ export async function createAppearance({prepareImage, onApply, onOpen}) {
       }
       // Face shapes use skin colour (ink 41); eyes use their keyed alpha (ink 36).
       const image=await paintedPart(asset,part==='ey'?'#ffffff':piece.tint);
-      const bob=frame>=0&&!action&&partAction==='std'&&frame%2?1:0;
+      const bob=frame>=0&&!action&&(partAction==='std'||partAction==='crr')&&frame%2?1:0;
       ctx.save();if(mirrored){ctx.translate(96,0);ctx.scale(-1,1);}
       ctx.drawImage(image,16-asset.regPoint.x+offsetX,94-asset.regPoint.y+offsetY+bob);ctx.restore();
       }
     }
     return canvas;
   }
-  async function frames(look) {
+  async function frames(look,carry=false) {
     const result=new Map();
     await Promise.all(Array.from({length:40},async(_,i)=>{
       const direction=Math.floor(i/5),frame=i%5-1;
-      result.set(`${direction}:${frame}`,await render(look,direction,frame));
+      result.set(`${direction}:${frame}`,await render(look,direction,frame,false,null,0,carry));
     }));
-    await Promise.all([0,2,4,6].map(async direction=>result.set(`${direction}:sit`,await render(look,direction,-1,true))));
+    await Promise.all([0,2,4,6].map(async direction=>result.set(`${direction}:sit`,await render(look,direction,-1,true,null,0,carry))));
     await Promise.all(Array.from({length:80},async(_,i)=>{
       const direction=Math.floor(i/10),step=i%10,action=step<2?'wave':'dance',frame=step<2?step:step-2;
-      result.set(`${direction}:${action}:${frame}`,await render(look,direction,-1,false,action,frame));
+      result.set(`${direction}:${action}:${frame}`,await render(look,direction,-1,false,action,frame,carry));
     }));
-    await Promise.all([0,2,4,6].flatMap(direction=>[0,1].map(async frame=>result.set(`${direction}:sit-wave:${frame}`,await render(look,direction,-1,true,'wave',frame)))));
+    await Promise.all([0,2,4,6].flatMap(direction=>[0,1].map(async frame=>result.set(`${direction}:sit-wave:${frame}`,await render(look,direction,-1,true,'wave',frame,carry)))));
+    // Breakdance: a floor spin. Sixteen frames: two turns through the four cardinal directions
+    // (the only ones with a sitting body) in the sit pose with arms waving, then a freeze facing
+    // front with a bounce. The figure is dropped to floor level.
+    const BOUNCE=[0,2,4,2,0,2,4,2];
+    await Promise.all([0,2,4,6].flatMap(direction=>Array.from({length:16},async(_,frame)=>{
+      const spin=frame<8?(direction+2*frame)%8:direction;
+      const pose=await render(look,spin,-1,true,'wave',frame<8?frame%2:1,carry);
+      const canvas=document.createElement('canvas');canvas.width=96;canvas.height=112;
+      canvas.getContext('2d').drawImage(pose,0,14+(frame<8?(frame%2?2:0):BOUNCE[frame-8]));
+      result.set(`${direction}:breakdance:${frame}`,canvas);
+    })));
     return result;
   }
 
@@ -117,7 +132,7 @@ export async function createAppearance({prepareImage, onApply, onOpen}) {
     </div>
     <p class="appearance-status" role="status" aria-live="polite"></p>
     <footer><button type="button" class="appearance-cancel">Cancel</button><button type="button" class="appearance-apply">Apply</button></footer>`;
-  document.body.append(dialog);
+  dialog.tabIndex=-1;document.body.append(dialog);makeDraggable(dialog,dialog.querySelector('header'));
   const preview=dialog.querySelector('#appearance-preview'), status=dialog.querySelector('.appearance-status');
   const apply=dialog.querySelector('.appearance-apply');
   const nav=dialog.querySelector('nav'), itemGrid=dialog.querySelector('.item-grid'), colorGrid=dialog.querySelector('.color-grid');
@@ -173,7 +188,7 @@ export async function createAppearance({prepareImage, onApply, onOpen}) {
     if(dialog.open)return;
     dialog.querySelector('.entry-name').hidden=true;dialog.querySelector('h1').textContent='Your appearance';
     apply.textContent='Apply';dialog.querySelector('.appearance-close').hidden=false;dialog.querySelector('.appearance-cancel').hidden=false;
-    draft=copy(current);gender=appearanceGender(catalog,current,preferredGender);genderDrafts={};page=0;previewDirection=2;dialog.showModal();onOpen();update();
+    draft=copy(current);gender=appearanceGender(catalog,current,preferredGender);genderDrafts={};page=0;previewDirection=2;dialog.showModal();dialog.focus();onOpen();update();
   }
   function close(){if(busy||entry)return;version++;dialog.close();document.querySelector('#scene').focus({preventScroll:true});}
   dialog.querySelector('.appearance-close').onclick=close;

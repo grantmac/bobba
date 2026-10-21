@@ -86,8 +86,10 @@ export async function createStickies({network,prepareImage,makeVisual,disposeVis
     placing.querySelector('span').textContent=pending.poster?'Click a clear section of wall to place the poster.':'Click a wall to place the sticky note.';placing.hidden=false;redraw();focusRoom();
   }
   function screenPosition(note){
-    const p=worldPoint(note.x,note.z);
-    return {x:p.x+(note.side==='left'?-1:1)*note.u*32-(note.poster?25:7),y:p.y+note.u*16-note.height-(note.poster?37.5:9)};
+    const p=worldPoint(note.x,note.z),frame=note.poster&&frames.get(note.poster+note.side);
+    // Posters are centred on the chosen wall point; sticky notes hang from it.
+    const dx=frame?frame.width/6:7,dy=frame?frame.height/6:9;
+    return {x:p.x+(note.side==='left'?-1:1)*note.u*32-dx,y:p.y+note.u*16-note.height-dy};
   }
   function redraw(){
     visuals.forEach(v=>disposeVisual(v.mesh));visuals=[];

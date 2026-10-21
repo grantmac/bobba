@@ -5,12 +5,16 @@ export async function loadPoolAssets(){
 }
 export function createPool(depth,{water,ladder}){
   const width=5,canvas=document.createElement('canvas');canvas.width=(width+depth)*32;canvas.height=(width+depth)*16+20;
-  const ctx=canvas.getContext('2d'),point=(x,z,drop=0)=>[(x-z)*32+depth*32,(x+z)*16+drop];
+  let ctx=canvas.getContext('2d');const point=(x,z,drop=0)=>[(x-z)*32+depth*32,(x+z)*16+drop];
   function path(points){ctx.beginPath();points.forEach(([x,y],i)=>i?ctx.lineTo(x,y):ctx.moveTo(x,y));ctx.closePath();}
   function polygon(points,color){path(points);ctx.fillStyle=color;ctx.fill();}
   const hole=[point(1.2,1),point(3.8,1),point(4,1.2),point(4,depth-1.2),point(3.8,depth-1),point(1.2,depth-1),point(1,depth-1.2),point(1,1.2)];let last=-1;
-  return {canvas,left:-depth*32,draw(phase=0){
-    if(last===phase)return false;last=phase;ctx.clearRect(0,0,canvas.width,canvas.height);
+  // The surround, bed and coping never change, so they are painted once into two
+  // offscreen layers; each phase only redraws the water between them.
+  let base=null,top=null;
+  function prepare(){
+    const main=ctx,layer=()=>{const c=document.createElement('canvas');c.width=canvas.width;c.height=canvas.height;return c;};
+    base=layer();ctx=base.getContext('2d');
     // A shallow tiled surround, built at the same height as the main floor.
     polygon([point(5,0),point(5,depth),point(5,depth,19),point(5,0,19)],'#6d828a');
     polygon([point(0,depth),point(5,depth),point(5,depth,19),point(0,depth,19)],'#4c626c');
@@ -18,7 +22,14 @@ export function createPool(depth,{water,ladder}){
     for(let py=0;py<(width+depth)*16;py++)for(let px=0;px<canvas.width;px++){
       const sx=px+.5-depth*32,sy=py+.5,x=sx/64+sy/32,z=sy/32-sx/64;
       if(x<0||x>=width||z<0||z>=depth)continue;
-      const edge=Math.min(x%1,1-x%1,z%1,1-z%1),color=edge<.016?[144,166,175]:(Math.floor(x)+Math.floor(z))%2?[214,228,233]:[228,239,242];
+      const u=x%1,v=z%1,edge=Math.min(u,1-u,v,1-v);
+      let color=edge<.016?[144,166,175]:(Math.floor(x)+Math.floor(z))%2?[214,228,233]:[228,239,242];
+      if(edge>=.016){
+        // Bevelled tiles, lit along their upper edges, and a shadow where they meet the coping.
+        if(Math.min(u,v)<.07)color=color.map(c=>Math.min(255,c+12));else if(Math.max(u,v)>.93)color=color.map(c=>c-16);
+        const gap=Math.max(1-x,x-4,1-z,z-(depth-1));
+        if(gap>0&&gap<.4)color=color.map(c=>Math.round(c*(.78+.22*gap/.4)));
+      }
       const i=(py*canvas.width+px)*4;pixels.data.set([...color,255],i);
     }
     ctx.putImageData(pixels,0,0);
@@ -34,9 +45,28 @@ export function createPool(depth,{water,ladder}){
     polygon([point(1,1,10),point(4,1,10),point(4,1.35,10),point(1,1.35,10)],'#c1e5e9');
     polygon([point(1,1,10),point(1.35,1,10),point(1.35,depth-1,10),point(1,depth-1,10)],'#a7d5e4');
     ctx.restore();
+    top=layer();ctx=top.getContext('2d');
+    // Thin white coping follows the opening, with the original Lido ladder.
+    ctx.lineJoin='round';ctx.strokeStyle='#647c85';ctx.lineWidth=9;path(hole);ctx.stroke();
+    ctx.strokeStyle='#f5f7ee';ctx.lineWidth=6;path(hole);ctx.stroke();
+    ctx.lineWidth=1;ctx.strokeStyle='#ffffff';ctx.beginPath();ctx.moveTo(...point(1.2,1,-3));ctx.lineTo(...point(3.8,1,-3));ctx.stroke();
+    ctx.beginPath();ctx.moveTo(...point(1,1.2,-3));ctx.lineTo(...point(1,depth-1.2,-3));ctx.stroke();
+    ctx.strokeStyle='#c7cdc0';ctx.beginPath();ctx.moveTo(...point(4,1.2,3));ctx.lineTo(...point(4,depth-1.2,3));ctx.stroke();
+    ctx.beginPath();ctx.moveTo(...point(1.2,depth-1,3));ctx.lineTo(...point(3.8,depth-1,3));ctx.stroke();
+    const [lx,ly]=point(1,Math.min(depth-1.5,2));ctx.drawImage(ladder,Math.round(lx)-10,Math.round(ly)-21);
+    ctx=main;
+  }
+  return {canvas,left:-depth*32,draw(phase=0){
+    if(last===phase)return false;last=phase;if(!base)prepare();
+    ctx.clearRect(0,0,canvas.width,canvas.height);ctx.drawImage(base,0,0);
     const waterline=hole.map(([x,y])=>[x,y+7]);
     ctx.save();path(hole);ctx.clip();path(waterline);ctx.clip();
     ctx.globalAlpha=.33;ctx.drawImage(water,0,0,canvas.width,canvas.height);ctx.globalAlpha=1;
+    // Stepped bands darken the water towards the middle, where it reads deepest.
+    for(const k of [.3,.6,.9])polygon([point(1+k,1+k,7),point(4-k,1+k,7),point(4-k,depth-1-k,7),point(1+k,depth-1-k,7)],'rgba(32,104,156,.12)');
+    polygon([point(1,1,7),point(4,1,7),point(4,1.5,7),point(1,1.5,7)],'rgba(24,70,110,.22)');
+    polygon([point(1,1,7),point(1.5,1,7),point(1.5,depth-1,7),point(1,depth-1,7)],'rgba(24,70,110,.3)');
+    ctx.strokeStyle='rgba(232,250,252,.85)';ctx.lineWidth=1;path(waterline);ctx.stroke();
     ctx.strokeStyle='#a8e1e7';ctx.lineWidth=1;
     for(let i=0;i<9;i++){
       const x=1.4+(i%3)*.9,z=1.35+Math.floor(i/3)*(depth-2)/3,offset=((phase+i)%6)*.15;
@@ -48,10 +78,7 @@ export function createPool(depth,{water,ladder}){
       ctx.strokeStyle=i%2?'#ecffff':'#c6f1f3';ctx.beginPath();ctx.ellipse(Math.round(x),Math.round(y),1.5,1,0,0,Math.PI*2);ctx.stroke();
     }
     ctx.restore();
-    // Thin white coping follows the opening, with the original Lido ladder.
-    ctx.lineJoin='round';ctx.strokeStyle='#647c85';ctx.lineWidth=9;path(hole);ctx.stroke();
-    ctx.strokeStyle='#f5f7ee';ctx.lineWidth=6;path(hole);ctx.stroke();
-    const [lx,ly]=point(1,Math.min(depth-1.5,2));ctx.drawImage(ladder,Math.round(lx)-10,Math.round(ly)-21);
+    ctx.drawImage(top,0,0);
     return true;
   }};
 }
@@ -63,12 +90,24 @@ export function createWoodDeck(width,depth){
     const sx=px+.5-depth*32,sy=py+.5,x=sx/64+sy/32,z=sy/32-sx/64;
     let color;
     if(x>=0&&x<width&&z>=0&&z<depth){
-      const board=Math.floor(x*2),edge=x*2%1<.035||((z+(board%2))%2<.025);
-      color=edge?[81,52,34]:[[143,100,64],[153,110,72],[134,92,58],[160,116,77]][board%4];
-      if(!edge&&Math.sin((z*120+board*31))>.93)color=color.map(v=>v-9);
+      const board=Math.floor(x*2),u=x*2%1,v=(z+(board%2))%2,edge=u<.035||v<.025;
+      color=edge?[81,52,34]:[...[[143,100,64],[153,110,72],[134,92,58],[160,116,77]][board%4]];
+      if(!edge){
+        // Grain streaks, a lit edge and shadowed edge on each plank, a shadow past
+        // every end joint, nail heads, and shade where the plant wall stands behind.
+        const grain=Math.sin(z*41+board*7.3)*Math.sin(z*6.1+u*4+board);
+        if(grain>.55)color=color.map(c=>c+7);else if(grain<-.6)color=color.map(c=>c-9);
+        if(u<.12)color=color.map(c=>c+13);else if(u>.88)color=color.map(c=>c-16);
+        if(v<.09)color=color.map(c=>c-12);
+        if(Math.abs(v-.16)<.03&&(Math.abs(u-.27)<.05||Math.abs(u-.73)<.05))color=[62,40,26];
+        if(z<.35)color=color.map(c=>Math.round(c*(.68+.32*z/.35)));
+        color=color.map(c=>Math.max(0,Math.min(255,c)));
+      }
     }else{
-      const across=sx/64+(sy-18)/32;
-      if(x>=width&&across<width&&z>=0&&z<depth)color=[90,61,42];
+      // The deck's front face: pixels up to 19 px below its right-hand edge, judged by
+      // the edge point above them so the face reaches its full length at both ends.
+      const down=sy-(width-sx/64)*32,zEdge=(sy-down)/32-sx/64;
+      if(down>=0&&down<19&&zEdge>=0&&zEdge<depth)color=down<2?[110,78,54]:down>16?[70,46,30]:[90,61,42];
     }
     if(color)data.data.set([...color,255],(py*canvas.width+px)*4);
   }

@@ -9,15 +9,21 @@ import {shapes} from '../convex/lib/catalog.js';
 import {findPath,wallTileSet} from '../convex/lib/rules.js';
 import {wallExists} from '../shared/stickies.js';
 describe('lower dance floor',()=>{
-  it('adds five full-width rows without moving existing tiles, with connected paths in every shape',()=>{
-    expect(DANCE_ROWS).toBe(5);
+  it('extends the terrace to ten full-width rows, preserving the original five and the wall in every shape',()=>{
+    expect(DANCE_ROWS).toBe(10);
     for(const [shape,main] of Object.entries(shapes)){
       const layout=roomLayout(main),room={options:{...DEFAULT_ROOM,shape},furniture:[]};
       expect(layout.tiles.slice(0,main.length)).toEqual(main);
-      expect(layout.danceTiles).toHaveLength(layout.width*5);
+      expect(layout.danceTiles).toHaveLength(layout.width*10);
+      const original=Array.from({length:layout.width*5},(_,i)=>[i%layout.width,layout.danceStart+Math.floor(i/layout.width)]);
+      expect(layout.danceTiles.slice(0,original.length)).toEqual(original);
       const [x,z]=main[0];
       const path=findPath(room,{x:x+.5,z:z+.5},{x:layout.width-1,z:layout.depth-1});
       expect(path,shape).not.toBeNull();
+      const walls=wallTileSet(room.options);
+      expect(wallExists({x:0,z:layout.depth-1,side:'left'},walls),shape).toBe(true);
+      expect(wallExists({x:0,z:layout.depth,side:'left'},walls),shape).toBe(false);
+      expect(()=>validateFurniture([{id:'cone',type:'custom_traffic_cone',rotation:2,x:1,z:layout.depth-1}],room.options)).not.toThrow();
     }
   });
   it('picks tiles on both levels and smoothly moves avatars over the step',()=>{
@@ -103,7 +109,7 @@ import {createRoomRadio,POOLSUITE_STREAM} from '../src/room-radio.js';
 describe('shared deck radio',()=>{
   const decks=[{type:'custom_dj_decks',x:1,z:1}];
   function setup(play=async()=>{}){
-    const audio={src:'',volume:1,plays:0,pauses:0,play(){this.plays++;return play();},pause(){this.pauses++;},load(){},removeAttribute(){this.src='';},addEventListener(){}};
+    const audio={src:'',volume:1,paused:false,readyState:4,plays:0,pauses:0,play(){this.plays++;return play();},pause(){this.pauses++;},load(){},removeAttribute(){this.src='';},addEventListener(){}};
     let state;const radio=createRoomRadio({audio,onState:value=>state=value});return {audio,radio,state:()=>state};
   }
   it('waits for room entry, shares one stream across decks and stops when all are off or removed',async()=>{
@@ -120,6 +126,31 @@ describe('shared deck radio',()=>{
     radio.setMuted(true);radio.receive([],true);radio.receive(decks,true);await radio.unlock();expect(audio.plays).toBe(2);expect(audio.src).toBe('');
     radio.setMuted(false);await Promise.resolve();expect(state().playing).toBe(true);
     radio.setVolume(.12);expect(audio.volume).toBe(.12);
+  });
+  it('reports audible playback only while the stream can actually play sound',async()=>{
+    const {audio,radio}=setup();expect(radio.audible).toBe(false);
+    radio.receive(decks,true);await Promise.resolve();expect(radio.audible).toBe(true);
+    audio.readyState=2;expect(radio.audible).toBe(false);
+    audio.readyState=4;audio.paused=true;expect(radio.audible).toBe(false);
+    audio.paused=false;radio.setVolume(0);expect(radio.audible).toBe(false);
+    radio.setVolume(.5);expect(radio.audible).toBe(true);
+    radio.setMuted(true);expect(radio.audible).toBe(false);
+    radio.setMuted(false);await Promise.resolve();expect(radio.audible).toBe(true);
+    radio.close();expect(radio.audible).toBe(false);
+  });
+  it('ducks the music while someone else talks and eases back after a hold',()=>{
+    vi.useFakeTimers();
+    try{
+      const frames=[];const audio={src:'',volume:1,play(){return Promise.resolve();},pause(){},load(){},removeAttribute(){},addEventListener(){}};
+      const radio=createRoomRadio({audio,schedule:fn=>frames.push(fn)});
+      const drain=()=>{while(frames.length)frames.shift()();};
+      radio.setVolume(.8);expect(audio.volume).toBeCloseTo(.8);
+      radio.duck(true);drain();expect(radio.ducked).toBe(true);expect(audio.volume).toBeCloseTo(.8*.08,5);
+      radio.duck(false);drain();expect(radio.ducked).toBe(true);
+      vi.advanceTimersByTime(950);drain();expect(radio.ducked).toBe(false);expect(audio.volume).toBeCloseTo(.8,5);
+      radio.duck(true);radio.duck(false);radio.duck(true);vi.advanceTimersByTime(2000);drain();expect(radio.ducked).toBe(true);
+      radio.setVolume(.5);expect(audio.volume).toBeCloseTo(.5*.08,5);
+    }finally{vi.useRealTimers();}
   });
   it('ignores a late play result after the room switches off',async()=>{
     let resolve;const {radio,state,audio}=setup(()=>new Promise(done=>resolve=done));

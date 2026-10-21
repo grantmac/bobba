@@ -5,23 +5,32 @@
 import {createFurniture} from '/src/furniture.js';
 import {prepareImage} from '/src/sprite-image.js';
 const animations=[];
-for(const type of ['custom_dj_decks','custom_porsche']){
- const heading=document.createElement('h2');heading.textContent=type==='custom_dj_decks'?'DJ Decks':'Black Porsche 911';document.querySelector('#views').append(heading);
+for(const type of ['custom_dj_decks','custom_porsche','custom_traffic_cone','anniv_balloongift']){
+ const heading=document.createElement('h2');heading.textContent=({custom_dj_decks:'DJ Decks',custom_porsche:'Black Porsche 911',custom_traffic_cone:'Traffic Cone',anniv_balloongift:'Number 1 balloon'})[type];document.querySelector('#views').append(heading);
  const row=document.createElement('div');row.className='views';document.querySelector('#views').append(row);
- for(const rotation of [0,2,4,6]){
+ for(const rotation of ['custom_traffic_cone','anniv_balloongift'].includes(type)?[2,4]:[0,2,4,6]){
   const visuals=[],card=document.createElement('div'),label=document.createElement('p'),canvas=document.createElement('canvas');canvas.width=320;canvas.height=240;label.textContent=`Rotation ${rotation}`;card.append(label,canvas);row.append(card);
   const furniture=await createFurniture({prepareImage,initialItems:[{id:type,type,rotation,x:0,z:0}],worldPoint:(x,z)=>({x:(x-z)*32,y:(x+z)*16}),isTile:()=>true,getAvatar:()=>({x:9,z:9}),stopWalking(){},onChanged(){},onSit(){},focusRoom(){},markTiles(){},makeVisual(canvas){const mesh={canvas,material:{map:{}}};visuals.push(mesh);return mesh;},disposeVisual(mesh){visuals.splice(visuals.indexOf(mesh),1);},positionVisual(mesh,x,y,w,h,order){Object.assign(mesh,{x,y,w,h,renderOrder:order});}});
   const ctx=canvas.getContext('2d');
-  const draw=now=>{furniture.animate(now);ctx.clearRect(0,0,320,240);for(const v of visuals)ctx.drawImage(v.canvas,v.x*1.5+160,v.y*1.5+55,v.w*1.5,v.h*1.5);};
+  const draw=(now,reducedMotion=false)=>{furniture.animate(now,reducedMotion);ctx.clearRect(0,0,320,240);for(const v of visuals)ctx.drawImage(v.canvas,v.x*1.5+160,v.y*1.5+(type==='anniv_balloongift'?205:55),v.w*1.5,v.h*1.5);};
   draw(0);const first=canvas.toDataURL();draw(200);if(type==='custom_dj_decks'&&canvas.toDataURL()===first)throw Error('DJ frames did not animate');
   if(type==='custom_dj_decks'){
     furniture.receive([{id:type,type,rotation,x:0,z:0,on:false}]);draw(0);const stopped=canvas.toDataURL();if(stopped===first)throw Error('Off decks must use parked tonearms');draw(200);if(canvas.toDataURL()!==stopped)throw Error('Off decks still animate');
     furniture.receive([{id:type,type,rotation,x:0,z:0,on:true}]);draw(0);const restarted=canvas.toDataURL();draw(200);if(canvas.toDataURL()===restarted)throw Error('Decks did not restart');
   }
+  if(type==='anniv_balloongift'){
+    const sprite=visuals[0].canvas,ctx=sprite.getContext('2d');
+    draw(0);const before=canvas.toDataURL(),anchor=[...ctx.getImageData(0,sprite.height-4,sprite.width,4).data];
+    draw(2800);if(canvas.toDataURL()===before)throw Error('Balloon does not move');
+    if(JSON.stringify(anchor)!==JSON.stringify([...ctx.getImageData(0,sprite.height-4,sprite.width,4).data]))throw Error('Balloon string anchor moves');
+    const pixels=ctx.getImageData(0,0,sprite.width,sprite.height).data;
+    for(let y=0;y<sprite.height;y++)for(let x=0;x<sprite.width;x++)if((x===0||y===0||x===sprite.width-1||y===sprite.height-1)&&pixels[(y*sprite.width+x)*4+3])throw Error('Balloon clips its padded canvas');
+    draw(0,true);const still=canvas.toDataURL();draw(2800,true);if(canvas.toDataURL()!==still)throw Error('Balloon ignores reduced motion');
+  }
   if(visuals.length!==1||furniture.getItems().length!==1)throw Error('Missing custom item');
   animations.push(draw);
  }
 }
-document.querySelector('#result').textContent='PASS: four rotations, animated DJ sprites, and saved on/off playback.';
+document.querySelector('#result').textContent='PASS: custom sprites, cone orientations, animated DJ sprites, anchored balloon motion, reduced motion, and saved on/off playback.';
 function animate(now){animations.forEach(draw=>draw(now));requestAnimationFrame(animate);}requestAnimationFrame(animate);
 </script>

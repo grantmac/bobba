@@ -16,7 +16,7 @@ export function createRoomEditor({catalog,onPreview,onOpen,onClose,onSave,initia
     <label class="window-option"><input type="checkbox"> Window</label></div>
     <p class="appearance-status" role="status">Changes preview in your room.</p>
     <footer><button type="button" class="appearance-cancel">Cancel</button><button type="button" class="appearance-apply">Apply</button></footer>`;
-  document.body.append(dialog);
+  dialog.tabIndex=-1;document.body.append(dialog);
   const shapeButtons=[];
   for(const shape of catalog.shapes){
     const button=document.createElement('button');button.type='button';button.setAttribute('aria-label',shape.name);
@@ -56,5 +56,5 @@ export function createRoomEditor({catalog,onPreview,onOpen,onClose,onSave,initia
     current={...draft};
     dialog.close();onClose(true);apply.disabled=false;
   };
-  return {initial:current,receive(options){current={...options};if(!dialog.open){draft={...current};onPreview(current);}},open(){draft={...current};update();onOpen();dialog.showModal();}};
+  return {initial:current,receive(options){current={...options};if(!dialog.open){draft={...current};onPreview(current);}},open(){draft={...current};update();onOpen();dialog.showModal();dialog.focus();}};
 }

@@ -1,5 +1,161 @@
 [
   {
+    "id": "custom_bar",
+    "name": "Cocktail Bar",
+    "category": "Seating",
+    "width": 4,
+    "depth": 3,
+    "surfaceHeight": 0,
+    "icon": "custom_bar.png",
+    "spriteDensity": 3,
+    "parts": [
+      {
+        "file": "custom_bar.png",
+        "layer": "a",
+        "direction": 2,
+        "reg": {
+          "x": 112,
+          "y": 95
+        },
+        "width": 208,
+        "height": 175,
+        "z": 0,
+        "alphaPrepared": true,
+        "frames": [
+          {
+            "x": 0,
+            "y": 0,
+            "width": 1536,
+            "height": 1024
+          }
+        ]
+      }
+    ],
+    "views": [
+      {
+        "direction": 2,
+        "source": 2,
+        "mirror": false
+      },
+      {
+        "direction": 4,
+        "source": 2,
+        "mirror": true
+      }
+    ],
+    "seat": {
+      "2": {
+        "cells": [
+          [
+            2,
+            1
+          ],
+          [
+            2,
+            2
+          ],
+          [
+            2,
+            3
+          ]
+        ],
+        "direction": 6,
+        "offsets": [
+          [
+            4,
+            -10
+          ],
+          [
+            0,
+            -10
+          ],
+          [
+            -4,
+            -10
+          ]
+        ],
+        "height": 38
+      },
+      "4": {
+        "cells": [
+          [
+            1,
+            2
+          ],
+          [
+            2,
+            2
+          ],
+          [
+            3,
+            2
+          ]
+        ],
+        "direction": 0,
+        "offsets": [
+          [
+            -4,
+            -10
+          ],
+          [
+            0,
+            -10
+          ],
+          [
+            4,
+            -10
+          ]
+        ],
+        "height": 38
+      }
+    }
+  },
+  {
+    "id": "custom_traffic_cone",
+    "name": "Traffic Cone",
+    "category": "Decor",
+    "width": 1,
+    "depth": 1,
+    "surfaceHeight": 0,
+    "icon": "custom_traffic_cone.png",
+    "spriteDensity": 3,
+    "parts": [
+      {
+        "file": "custom_traffic_cone.png",
+        "layer": "a",
+        "direction": 2,
+        "reg": {
+          "x": -16,
+          "y": 39
+        },
+        "width": 32,
+        "height": 47,
+        "z": 0,
+        "alphaPrepared": true,
+        "frames": [
+          {
+            "x": 0,
+            "y": 0,
+            "width": 1312,
+            "height": 1199
+          }
+        ]
+      }
+    ],
+    "views": [
+      {
+        "direction": 2,
+        "source": 2,
+        "mirror": false
+      },
+      {
+        "direction": 4,
+        "source": 2,
+        "mirror": true
+      }
+    ]
+  },
+  {
     "id": "custom_dj_table",
     "name": "Record Cabinet",
     "category": "Tables",
@@ -222,10 +378,10 @@
     "width": 3,
     "depth": 2,
     "surfaceHeight": 0,
-    "icon": "custom_porsche.png",
+    "icon": "custom_porsche_v2.png",
     "parts": [
       {
-        "file": "custom_porsche.png",
+        "file": "custom_porsche_v2.png",
         "layer": "a",
         "direction": 2,
         "reg": {
@@ -243,10 +399,11 @@
             "width": 768,
             "height": 528
           }
-        ]
+        ],
+        "translucentWindows": true
       },
       {
-        "file": "custom_porsche.png",
+        "file": "custom_porsche_v2.png",
         "layer": "a",
         "direction": 4,
         "reg": {
@@ -264,10 +421,11 @@
             "width": 768,
             "height": 528
           }
-        ]
+        ],
+        "translucentWindows": true
       },
       {
-        "file": "custom_porsche.png",
+        "file": "custom_porsche_v2.png",
         "layer": "a",
         "direction": 6,
         "reg": {
@@ -285,10 +443,11 @@
             "width": 768,
             "height": 496
           }
-        ]
+        ],
+        "translucentWindows": true
       },
       {
-        "file": "custom_porsche.png",
+        "file": "custom_porsche_v2.png",
         "layer": "a",
         "direction": 0,
         "reg": {
@@ -306,7 +465,8 @@
             "width": 768,
             "height": 496
           }
-        ]
+        ],
+        "translucentWindows": true
       }
     ],
     "views": [
@@ -331,7 +491,53 @@
         "mirror": false
       }
     ],
-    "spriteDensity": 3
+    "spriteDensity": 3,
+    "seat": {
+      "2": {
+        "cell": [
+          1,
+          1
+        ],
+        "direction": 4,
+        "offset": [
+          -4,
+          30
+        ]
+      },
+      "4": {
+        "cell": [
+          1,
+          1
+        ],
+        "direction": 2,
+        "offset": [
+          4,
+          30
+        ]
+      },
+      "6": {
+        "cell": [
+          1,
+          1
+        ],
+        "direction": 0,
+        "offset": [
+          -12,
+          26
+        ]
+      },
+      "0": {
+        "cell": [
+          1,
+          1
+        ],
+        "direction": 6,
+        "offset": [
+          12,
+          26
+        ]
+      }
+    }
   },
   {
     "id": "custom_macintosh",
@@ -371,5 +577,97 @@
     ],
     "spriteDensity": 3,
     "tableOffsetY": -10
+  },
+  {
+    "id": "custom_logbook",
+    "name": "Guest Book",
+    "category": "Decor",
+    "width": 1,
+    "depth": 1,
+    "surfaceHeight": 0,
+    "icon": "custom_logbook.png",
+    "spriteDensity": 3,
+    "tableOffsetY": -2,
+    "parts": [
+      {
+        "file": "custom_logbook.png",
+        "layer": "a",
+        "direction": 2,
+        "reg": {
+          "x": -8,
+          "y": 15
+        },
+        "width": 48,
+        "height": 30,
+        "z": 0,
+        "ink": 8,
+        "alphaPrepared": true
+      }
+    ],
+    "views": [
+      {
+        "direction": 2,
+        "source": 2,
+        "mirror": false
+      },
+      {
+        "direction": 4,
+        "source": 2,
+        "mirror": true
+      }
+    ]
+  },
+  {
+    "id": "custom_speaker",
+    "name": "Wall speaker",
+    "category": "Wall",
+    "width": 1,
+    "depth": 1,
+    "surfaceHeight": 0,
+    "wallWidth": 48,
+    "icon": "custom_speaker_icon.png",
+    "spriteDensity": 3,
+    "parts": [
+      {
+        "file": "custom_speaker_left.png",
+        "layer": "a",
+        "direction": 2,
+        "reg": {
+          "x": -8,
+          "y": 69
+        },
+        "width": 48,
+        "height": 69,
+        "z": 0,
+        "ink": 8,
+        "alphaPrepared": true
+      },
+      {
+        "file": "custom_speaker_right.png",
+        "layer": "a",
+        "direction": 4,
+        "reg": {
+          "x": -8,
+          "y": 69
+        },
+        "width": 48,
+        "height": 69,
+        "z": 0,
+        "ink": 8,
+        "alphaPrepared": true
+      }
+    ],
+    "views": [
+      {
+        "direction": 2,
+        "source": 2,
+        "mirror": false
+      },
+      {
+        "direction": 4,
+        "source": 4,
+        "mirror": false
+      }
+    ]
   }
 ]

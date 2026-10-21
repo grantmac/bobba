@@ -1,0 +1,7 @@
+<!doctype html><meta charset="utf-8"><title>Blimp sprite check</title><style>body{margin:20px;background:#111;color:#eee;font:14px sans-serif}canvas{image-rendering:pixelated;background:#0c0c10;display:block;margin-bottom:12px}</style>
+<h1>Isometric blimp at 1x and 3x, </h1><canvas id="one"></canvas><canvas id="three"></canvas><canvas id="second"></canvas>
+<script type="module">
+import {createBlimp} from '/src/blimp.js';
+const blimp=createBlimp({texts:['SUPERHANDS']});blimp.draw(0);
+for(const [id,scale,at] of [['one',1,0],['three',3,0],['second',3,100000]]){blimp.draw(at);const c=document.getElementById(id);c.width=blimp.width*scale;c.height=blimp.height*scale;const ctx=c.getContext('2d');ctx.imageSmoothingEnabled=false;ctx.drawImage(blimp.canvas,0,0,c.width,c.height);}
+</script>

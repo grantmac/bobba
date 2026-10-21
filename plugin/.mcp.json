@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "habbo-room": {
+      "type": "http",
+      "url": "https://chat.grantm.ac/api/mcp",
+      "extensions": {
+        "com.openai": {
+          "auth": { "type": "api_key", "headerScheme": "bearer" }
+        }
+      }
+    }
+  }
+}

@@ -3,11 +3,24 @@
 // 4000ms idle scroll, 400 characters, and a bottom registration point at 125.
 export function createChat({getSpeaker,getLayout,onSelectSpeaker}){
   const layer=document.createElement('div');layer.className='chat-bubbles';layer.setAttribute('role','log');layer.setAttribute('aria-label','Room chat');layer.setAttribute('aria-live','polite');layer.setAttribute('aria-relevant','additions');document.body.append(layer);
-  let bubbles=[],nextScroll=Infinity,lastLayout='';
+  let bubbles=[],nextScroll=Infinity,lastLayout={};
+  const typingBubbles=new Map();
+  function removeTyping(id){typingBubbles.get(id)?.remove();typingBubbles.delete(id);}
+  function typing(id,name,active,x,y){
+    if(!active){removeTyping(id);return;}
+    let element=typingBubbles.get(id);
+    if(!element){
+      element=document.createElement('div');element.className='typing-bubble';element.setAttribute('role','img');element.setAttribute('aria-label',`${name} is typing`);
+      element.innerHTML='<i></i><i></i><i></i>';layer.append(element);typingBubbles.set(id,element);
+    }
+    const left=`${Math.round(x)}px`,top=`${Math.round(y)}px`;
+    if(element.style.left!==left)element.style.left=left;
+    if(element.style.top!==top)element.style.top=top;
+  }
+  // Bubbles are anchored to room coordinates, so they stay over the speaker as the view pans and zooms.
   function position(item){
     const layout=getLayout(),width=item.element.offsetWidth;
-    const left=Math.max(6,Math.min(window.innerWidth-width-6,item.x-width/2));
-    item.element.style.left=`${left}px`;item.element.style.top=`${layout.baseline-item.offset-19}px`;
+    item.element.style.left=`${Math.round(layout.originX+item.x*layout.scale-width/2)}px`;item.element.style.top=`${Math.round(layout.baseline-item.offset-19)}px`;
   }
   function scroll(){
     for(const item of bubbles){item.offset+=21;position(item);}
@@ -24,8 +37,9 @@ export function createChat({getSpeaker,getLayout,onSelectSpeaker}){
     nextScroll=performance.now()+4000;
   }
   window.addEventListener('resize',()=>bubbles.forEach(position));
-  return {say,update(now){
-    const layout=JSON.stringify(getLayout());if(layout!==lastLayout){lastLayout=layout;bubbles.forEach(position);}
+  return {say,typing,removeTyping,update(now){
+    const layout=getLayout();
+    if(layout.originX!==lastLayout.originX||layout.scale!==lastLayout.scale||layout.baseline!==lastLayout.baseline){lastLayout=layout;bubbles.forEach(position);}
     if(bubbles.length&&now>=nextScroll){scroll();nextScroll=now+4000;}
   }};
 }

@@ -1,43 +1,54 @@
 <!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Voice chat verification</title><link rel="stylesheet" href="/src/style.css"><style>body{background:#222}#checks{position:fixed;top:20px;left:20px;color:#fff;font:13px Verdana;max-width:500px}#checks button{padding:8px;margin:5px}.voice-speaking{left:50%;top:50%}</style><div id="checks"><p>Isolated voice preview · simulated participants, no microphone capture.</p><p id="result">Loading…</p><button id="talk">Simulate visitor speaking</button><button id="reconnect">Simulate reconnect</button></div>
 <script type="module">
-import {createVoice} from '/src/voice.js';import {createToolbar} from '/src/toolbar.js';import {RoomEvent,Track} from 'livekit-client';
+import {createVoice} from '/src/voice.js';import {createToolbar} from '/src/toolbar.js';import {RoomEvent,Track,DisconnectReason} from 'livekit-client';
 let calls=0,active,deferred=null;
 class Room{
- constructor(){active=this;this.events=new Map();this.canPlaybackAudio=true;this.activeSpeakers=[];this.localParticipant={identity:'me',isMicrophoneEnabled:false,setMicrophoneEnabled:async value=>{calls++;this.localParticipant.isMicrophoneEnabled=value;}};this.visitor={identity:'other',isMicrophoneEnabled:true,setVolume:value=>{this.volume=value;}};this.remoteParticipants=new Map([['other',this.visitor]]);}
+ constructor(){active=this;this.events=new Map();this.canPlaybackAudio=true;this.activeSpeakers=[];this.localParticipant={identity:'me#tab1',isMicrophoneEnabled:false,setMicrophoneEnabled:async value=>{calls++;this.localParticipant.isMicrophoneEnabled=value;}};this.visitor={identity:'other#tab2',isMicrophoneEnabled:true,setVolume:value=>{this.volume=value;}};this.remoteParticipants=new Map([['other#tab2',this.visitor]]);this.volume=1;}
  on(name,fn){this.events.set(name,[...(this.events.get(name)||[]),fn]);return this;}
  emit(name,...args){for(const fn of this.events.get(name)||[])fn(...args);}
  async connect(){if(this.localParticipant.isMicrophoneEnabled)throw Error('Microphone started during join');}
  async startAudio(){}
- async disconnect(){this.localParticipant.isMicrophoneEnabled=false;this.emit(RoomEvent.Disconnected);}
+ async disconnect(){this.localParticipant.isMicrophoneEnabled=false;this.emit(RoomEvent.Disconnected,DisconnectReason.CLIENT_INITIATED);}
 }
-const toolbar=createToolbar({admin:true,onVoice:()=>voice.open(),onRoomEdit(){},onFurniture(){},onChat(){}});
+let appearanceOpens=0;
+const toolbar=createToolbar({admin:true,onAppearance(){appearanceOpens++;},onVoice:()=>voice.open(),onRoomEdit(){},onFurniture(){},onChat(){}});
 toolbar.setAdmin(false);
-if([...document.querySelectorAll('.bar-icons>button')].filter(button=>!button.hidden).some(button=>!button.classList.contains('voice-toggle')))throw Error('Guests must only see the voice icon');
+const guestIcons=[...document.querySelectorAll('.bar-icons>button')].filter(button=>!button.hidden);
+if(guestIcons.length!==2||guestIcons.some(button=>!button.classList.contains('voice-toggle')&&!button.classList.contains('appearance-toggle')))throw Error('Guests must see voice and appearance icons');
+toolbar.setAppearanceEnabled(true);document.querySelector('.appearance-toggle').click();if(appearanceOpens!==1)throw Error('Guest appearance icon did not open the editor');
 toolbar.setAdmin(true);
-const voice=createVoice({credentials:()=>deferred??Promise.resolve({url:'wss://fixture.invalid',token:'fixture'}),loadSDK:async()=>({Room,RoomEvent,Track}),onState:state=>toolbar.setVoiceState(state)});
+// Retries are captured instead of waited for.
+const realSetTimeout=window.setTimeout;const pendingRetries=[];
+window.setTimeout=(callback,delay,...args)=>{if(delay===25000)return 0;if(delay>=1500){pendingRetries.push({callback,delay});return 1;}return realSetTimeout(callback,delay,...args);};
+const fireRetry=()=>{const next=pendingRetries.shift();if(!next)throw Error('No retry was scheduled');next.callback();};
+let tabs=[];
+const voice=createVoice({credentials:tab=>{tabs.push(tab);return deferred??Promise.resolve({url:'wss://fixture.invalid',token:'fixture'});},loadSDK:async()=>({Room,RoomEvent,Track,DisconnectReason}),onState:state=>toolbar.setVoiceState(state),createAudioContext:()=>({createDynamicsCompressor:()=>({threshold:{},knee:{},ratio:{},attack:{},release:{}})})});
 voice.syncPlayers([{id:'me',name:'Grant'},{id:'other',name:'Visitor'}]);toolbar.setVoiceEnabled(true);voice.open();
 const click=selector=>document.querySelector(selector).click();
 const tick=()=>new Promise(resolve=>setTimeout(resolve,0));
-click('[data-voice=join]');await tick();
-if(calls!==1||!active.localParticipant.isMicrophoneEnabled)throw Error('Join must enable microphone');
+const text=()=>document.querySelector('.voice-status').textContent;
+if(document.querySelector('[data-voice=join]')||document.querySelector('[data-voice=leave]'))throw Error('Voice must have no join or leave buttons');
+await voice.listen();await tick();
+if(calls!==0||active.localParticipant.isMicrophoneEnabled||!text().includes('microphone off'))throw Error('Listening must start with the microphone off');
+if(!/^[a-z0-9]{1,12}$/.test(tabs[0]))throw Error('Credentials must carry a per-tab tag');
+if(!document.querySelector('[aria-label="Mute Visitor for me"]'))throw Error('Participants are listed by player, not by tab identity');
+click('[data-voice=mic]');await tick();if(!active.localParticipant.isMicrophoneEnabled||!text().includes('microphone is on'))throw Error('Mic did not enable');
 click('[data-voice=mic]');await tick();if(active.localParticipant.isMicrophoneEnabled)throw Error('Mic did not mute');
-click('[data-voice=mic]');await tick();if(!active.localParticipant.isMicrophoneEnabled)throw Error('Mic did not enable');
 click('[aria-label="Mute Visitor for me"]');if(active.volume!==0)throw Error('Local mute failed');
-click('[aria-label="Unmute Visitor for me"]');if(active.volume!==1)throw Error('Local unmute failed');
-click('[data-voice=leave]');await tick();if(active.localParticipant.isMicrophoneEnabled)throw Error('Microphone remains active after leave');
-click('[data-voice=join]');await tick();if(!active.localParticipant.isMicrophoneEnabled)throw Error('Rejoin did not enable microphone');
-click('[data-voice=leave]');await tick();
-let resolveCredentials;deferred=new Promise(resolve=>{resolveCredentials=resolve;});const previous=active;
-click('[data-voice=join]');click('[data-voice=leave]');resolveCredentials({url:'wss://fixture.invalid',token:'fixture'});await tick();
-if(active!==previous||document.querySelector('[data-voice=join]').hidden)throw Error('Cancelled join completed late');
-const realSetTimeout=window.setTimeout;let expireJoin;
-window.setTimeout=(callback,delay,...args)=>{if(delay===25000){expireJoin=callback;return 0;}return realSetTimeout(callback,delay,...args);};
-deferred=new Promise(resolve=>{resolveCredentials=resolve;});click('[data-voice=join]');expireJoin();
-window.setTimeout=realSetTimeout;
-if(!document.querySelector('.voice-status').textContent.includes('Chrome')||document.querySelector('[data-voice=join]').disabled)throw Error('Timed-out join did not recover');
-resolveCredentials({url:'wss://fixture.invalid',token:'fixture'});await tick();
-if(active!==previous)throw Error('Timed-out credentials connected late');
-deferred=null;click('[data-voice=join]');await tick();
+click('[aria-label="Unmute Visitor for me"]');if(active.volume!==2.5)throw Error('Local unmute did not restore the voice boost');
+// An unexpected drop reconnects by itself, bringing a live microphone back.
+click('[data-voice=mic]');await tick();
+let previous=active;previous.emit(RoomEvent.Disconnected,DisconnectReason.UNKNOWN_REASON);await tick();
+if(!text().includes('Reconnecting')||document.querySelector('[data-voice=mic]').disabled===false)throw Error('Drop did not show reconnecting');
+fireRetry();await tick();await tick();
+if(active===previous||!active.localParticipant.isMicrophoneEnabled)throw Error('Automatic rejoin did not restore the microphone');
+// A failed connection keeps retrying rather than asking for a click.
+let rejectCredentials;deferred=new Promise((_,reject)=>{rejectCredentials=reject;});previous=active;
+previous.emit(RoomEvent.Disconnected,DisconnectReason.UNKNOWN_REASON);await tick();fireRetry();await tick();
+rejectCredentials(new Error('Voice chat is not ready yet.'));await tick();await tick();
+if(!text().includes('not ready')||!text().includes('Retrying')||!pendingRetries.length)throw Error('Failed connection did not schedule a retry');
+deferred=null;fireRetry();await tick();await tick();
+if(active===previous||!text().includes('microphone is on'))throw Error('Retry after failure did not reconnect');
 active.emit(RoomEvent.ActiveSpeakersChanged,[active.visitor]);voice.positionSpeaker('other',150,200);
 if(document.querySelectorAll('.voice-speaking').length!==1||document.querySelector('.voice-speaking').style.left!=='150px')throw Error('Speaker indicator did not follow visitor');
 active.emit(RoomEvent.ActiveSpeakersChanged,[]);if(document.querySelector('.voice-speaking'))throw Error('Indicator remained during silence');
@@ -45,11 +56,14 @@ active.emit(RoomEvent.ActiveSpeakersChanged,[active.localParticipant]);
 if(document.querySelectorAll('.voice-speaking').length!==1)throw Error('Own speaking indicator missing');
 click('[data-voice=mic]');await tick();active.emit(RoomEvent.TrackMuted);
 if(document.querySelector('.voice-speaking'))throw Error('Muted speaker kept an indicator');
-click('[aria-label="Mute Visitor for me"]');const mutedSnapshot=voice.snapshot();voice.leave();await voice.restore(mutedSnapshot);
+click('[aria-label="Mute Visitor for me"]');const mutedSnapshot=voice.snapshot();voice.leave();await tick();
+if(!text().includes('Voice is off'))throw Error('Leaving for a reload did not stop voice');
+await voice.restore(mutedSnapshot);await tick();
 if(active.localParticipant.isMicrophoneEnabled||!document.querySelector('[aria-label="Unmute Visitor for me"]'))throw Error('Deployment refresh lost voice mute settings');
-click('[data-voice=mic]');await tick();const speakingSnapshot=voice.snapshot();voice.leave();await voice.restore(speakingSnapshot);
+click('[data-voice=mic]');await tick();const speakingSnapshot=voice.snapshot();voice.leave();await voice.restore(speakingSnapshot);await tick();
 if(!active.localParticipant.isMicrophoneEnabled)throw Error('Deployment refresh did not reconnect active microphone');
-document.querySelector('#result').textContent='PASS: guest toolbar, automatic mic on join, controls, cleanup, cancellation, connection timeout, speaker indicators and deployment reconnect preserving microphone and local mutes.';
+window.setTimeout=realSetTimeout;
+document.querySelector('#result').textContent='PASS: guest toolbar, always-on listening with the mic off, mic toggle, local mutes with the voice boost, automatic rejoin after drops and failures, speaker indicators and deployment reconnect preserving microphone and local mutes.';
 document.querySelector('#talk').onclick=()=>{active.activeSpeakers=active.activeSpeakers.length?[]:[active.visitor];active.emit(RoomEvent.ActiveSpeakersChanged,active.activeSpeakers);voice.positionSpeaker('other',innerWidth/2,innerHeight/2);};
 document.querySelector('#reconnect').onclick=()=>{active.emit(RoomEvent.Reconnecting);setTimeout(()=>active.emit(RoomEvent.Reconnected),1200);};
 </script>

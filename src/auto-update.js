@@ -2,6 +2,14 @@ const SESSION_KEY='habbo-room-update-v1';
 export function saveUpdateSession(state,storage=sessionStorage,now=Date.now()){
   try{storage.setItem(SESSION_KEY,JSON.stringify({...state,savedAt:now}));}catch{}
 }
+// Read a fresh snapshot without consuming it, so the camera can be restored before the
+// first frame while the player-bound parts wait for the session to resume.
+export function peekUpdateSession(storage=sessionStorage,now=Date.now()){
+  try{
+    const state=JSON.parse(storage.getItem(SESSION_KEY));
+    return state&&Number.isFinite(state.savedAt)&&now-state.savedAt>=0&&now-state.savedAt<120000?state:null;
+  }catch{return null;}
+}
 export function takeUpdateSession(playerId,storage=sessionStorage,now=Date.now()){
   try{
     const value=storage.getItem(SESSION_KEY);storage.removeItem(SESSION_KEY);

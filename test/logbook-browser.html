@@ -1,0 +1,7 @@
+<!doctype html><meta charset="utf-8"><title>Guest book window</title><link rel="stylesheet" href="/src/style.css"><style>body{background:#333}</style>
+<script type="module">
+import {createLogbook} from '/src/logbook.js';
+const now=Date.now(),visits=[{id:'1',name:'Iggy',enteredAt:now-5*60000,leftAt:null},{id:'2',name:'Raptonaut',enteredAt:now-50*60000,leftAt:now-3*60000},{id:'3',name:'Grant',enteredAt:now-26*3600000,leftAt:now-25*3600000}];
+const logbook=createLogbook({fetchPage:async()=>({serverTime:now,visits:[]}),watch:(onPage)=>{onPage({serverTime:now,visits});return ()=>{};}});
+logbook.open();
+</script>

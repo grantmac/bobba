@@ -95,8 +95,12 @@ html, body {
 #scene:focus-visible {outline:2px solid #69865d;outline-offset:-2px}
 canvas{display:block;image-rendering:pixelated}
 #scene>canvas{width:100%;height:100%}
+/* Covers the room across a deployment reload; fades away once the restored room is ready. */
+#update-veil{position:fixed;inset:0;background:#121212;z-index:30;pointer-events:none;opacity:1;transition:opacity .4s ease}
+#update-veil.lifting{opacity:0}
 #load-error{position:fixed;inset:35% 20% auto;padding:24px;color:#604e42;background:#fff8e7;border-radius:12px;z-index:20}
-button{font:inherit;cursor:pointer}
+/* Explicit colour and no platform chrome: iOS otherwise paints button text blue and adds its own bevels. */
+button{font:inherit;cursor:pointer;color:inherit;appearance:none;-webkit-appearance:none}
 button:focus-visible{outline:3px solid #edd878;outline-offset:3px}
 button:disabled{cursor:wait;opacity:.6}
 .appearance-dialog {
@@ -230,20 +234,24 @@ button:disabled{cursor:wait;opacity:.6}
 .info-name-bg{left:0;top:78px;opacity:.7}
 .info-name{position:absolute;left:18px;top:82px;width:124px;color:#eee;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font:10px/12px Verdana,sans-serif}
 
-.player-target{position:absolute;border:0;margin:0;padding:0;background:transparent;cursor:pointer;z-index:2;appearance:none}
+/* Keyboard target only: pointer clicks go to the room's live hit test, which follows a moving player. */
+.player-target{position:absolute;border:0;margin:0;padding:0;background:transparent;cursor:pointer;z-index:2;appearance:none;pointer-events:none}
 .player-target:focus-visible{outline:1px dotted #fff}
 .user-info-stand canvas{width:auto;height:auto}
-.avatar-actions{position:fixed;right:9px;bottom:59px;display:flex;gap:3px;z-index:8}
-.avatar-actions button{height:18px;min-width:61px;padding:0 8px;border:1px solid #222;border-radius:7px;background:#eee;box-shadow:inset 0 1px white;color:#111;font:10px Verdana,sans-serif}
-.avatar-actions button[aria-pressed=true]{background:#b4b4b4;box-shadow:inset 0 1px #666}
+/* The hand icon's actions menu opens above the toolbar, sharing the speech menu's look. */
+.actions-picker{position:relative;display:flex;align-items:center;height:100%}
+.actions-toggle img{max-width:42px}
+.actions-menu{bottom:50px;left:auto;right:0;width:96px}
+.actions-menu button[aria-checked=true]::after{content:' ✓';float:right}
+dialog:focus,.voice-panel:focus,.character-editor:focus,.whiteboard-editor:focus,.logbook:focus{outline:none}
 /* Original habbo_basic.window bitmap pieces, at their native pixel size. */
-.character-editor,.voice-panel{padding:12px;border:0;border-radius:0;background-color:transparent;box-shadow:none;filter:drop-shadow(4px 4px 0 #0005);font:10px Verdana,sans-serif;image-rendering:pixelated;
+.character-editor,.voice-panel,.whiteboard-editor,.logbook{padding:12px;border:0;border-radius:0;background-color:transparent;box-shadow:none;filter:drop-shadow(4px 4px 0 #0005);font:10px Verdana,sans-serif;image-rendering:pixelated;
 background-image:url('/assets/modal/window.top.left.png'),url('/assets/modal/window.top.right.png'),url('/assets/modal/window.bottom.left.png'),url('/assets/modal/window.bottom.right.png'),url('/assets/modal/window.top.middle.png'),url('/assets/modal/window.bottom.middle.png'),url('/assets/modal/window.middle.left.png'),url('/assets/modal/window.middle.right.png'),linear-gradient(#6794a7,#6794a7);
 background-position:left top,right top,left bottom,right bottom,center top,center bottom,left center,right center,center;
 background-size:11px 11px,11px 11px,11px 11px,11px 11px,calc(100% - 22px) 12px,calc(100% - 22px) 12px,12px calc(100% - 22px),11px calc(100% - 22px),calc(100% - 22px) calc(100% - 22px);background-repeat:no-repeat}
-.character-editor header,.voice-panel header{height:17px;margin:-8px -9px 12px;border:0;box-shadow:none;background:url('/assets/modal/grid.top.left.png') left top no-repeat,url('/assets/modal/grid.top.right.png') right top no-repeat,url('/assets/modal/grid.top.middle.png') center top repeat-x;text-shadow:none}
-.character-editor h1,.voice-panel h1{background:#6794a7;padding:0 8px;font:bold 10px/15px Verdana,sans-serif;color:#eee}
-.character-editor .appearance-close,.voice-panel .appearance-close{top:2px;right:9px;width:13px;height:13px;border:0;border-radius:0;padding:0;background:url('/assets/modal/button.close.up.png') center no-repeat;color:transparent;box-shadow:none}
+.character-editor header,.voice-panel header,.whiteboard-editor header,.logbook header{height:17px;margin:-8px -9px 12px;border:0;box-shadow:none;background:url('/assets/modal/grid.top.left.png') left top no-repeat,url('/assets/modal/grid.top.right.png') right top no-repeat,url('/assets/modal/grid.top.middle.png') center top repeat-x;text-shadow:none}
+.character-editor h1,.voice-panel h1,.whiteboard-editor h1,.logbook h1{background:#6794a7;padding:0 8px;font:bold 10px/15px Verdana,sans-serif;color:#eee}
+.character-editor .appearance-close,.voice-panel .appearance-close,.whiteboard-editor .appearance-close,.logbook .appearance-close{top:2px;right:9px;width:13px;height:13px;border:0;border-radius:0;padding:0;background:url('/assets/modal/button.close.up.png') center no-repeat;color:transparent;box-shadow:none}
 .character-editor .entry-name{background:#eee;padding:12px;border:1px solid #111;border-radius:6px;margin-bottom:8px;font-size:10px}
 .character-editor .appearance-body{background:#eee;border:1px solid #111;border-radius:6px;padding:13px 12px;grid-template-columns:132px 1fr;gap:12px}
 .character-editor .appearance-character{padding-top:34px}
@@ -272,7 +280,8 @@ background-size:11px 11px,11px 11px,11px 11px,11px 11px,calc(100% - 22px) 12px,c
   :root{--mobile-bar-height:calc(54px + env(safe-area-inset-bottom,0px))}
   #scene{top:var(--viewport-top,0px);bottom:auto;height:calc(var(--viewport-height,100dvh) - var(--mobile-bar-height))}
   .room-toolbar{top:calc(var(--viewport-top,0px) + var(--viewport-height,100dvh) - var(--mobile-bar-height));bottom:auto;height:var(--mobile-bar-height);padding-bottom:env(safe-area-inset-bottom,0px)}
-  input,textarea,select,.room-chat .chat-field input,.character-editor .entry-name input,.furniture-filters input,.furniture-filters select{font-size:16px!important}
+  /* The viewport's maximum-scale=1 stops iOS zooming the page when a field is focused, so fields can stay small. */
+  input,textarea,select,.room-chat .chat-field input,.character-editor .entry-name input,.furniture-filters input,.furniture-filters select{font-size:13px!important}
   .room-chat{height:28px;margin-top:10px;gap:5px}
   .chat-field{height:28px;padding:0 3px}
   .room-chat .chat-field input{height:26px;line-height:26px}
@@ -284,13 +293,40 @@ background-size:11px 11px,11px 11px,11px 11px,11px 11px,calc(100% - 22px) 12px,c
   .sticky-dialog header{height:38px}.sticky-dialog header button,.sticky-delete,.sticky-move{min-width:32px;min-height:32px}
   .sticky-colors button{width:25px;height:25px}
   .character-editor{max-height:calc(var(--viewport-height,100dvh) - 16px)}
+  .appearance-dialog button{color:#111}
+  .character-editor .turn-controls{white-space:nowrap;font-size:10px}
+  .character-editor .appearance-choices nav button{font-size:9px}
 }
 
 .voice-toggle{position:relative}
 .voice-toggle img{width:32px;height:40px;max-width:none;image-rendering:pixelated}
+.appearance-toggle canvas{display:block;width:32px;height:40px;image-rendering:pixelated}
 .voice-toggle.voice-connected::after{content:'';position:absolute;right:1px;bottom:6px;width:6px;height:6px;background:#dcce7e;border:1px solid #151515;border-radius:50%}
 .voice-toggle.voice-microphone::after{background:#85e09d}
+
+.whiteboard-body{background:#eee;border:1px solid #111;border-radius:6px;padding:10px}
+.whiteboard-canvas{display:block;width:384px;max-width:100%;aspect-ratio:8/5;height:auto;background:#fbfbf6;border:1px solid #777;touch-action:none;cursor:crosshair;image-rendering:auto}
+.whiteboard-tools{display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap}
+.whiteboard-colors,.whiteboard-sizes{display:flex;gap:4px}
+.whiteboard-colors button{width:20px;height:20px;border:1px solid #333;border-radius:3px;background:var(--pen);box-shadow:inset 0 1px #fff5}
+.whiteboard-colors button[aria-pressed=true],.whiteboard-sizes button[aria-pressed=true]{outline:2px solid #111;outline-offset:1px}
+.whiteboard-sizes button{width:22px;height:20px;border:1px solid #333;border-radius:3px;background:#fff;display:flex;align-items:center;justify-content:center}
+.whiteboard-sizes button i{display:block;background:#111;border-radius:50%}
+.whiteboard-clear{margin-left:auto;padding:3px 8px;border:1px solid #111;border-radius:4px;background:#eee;font:10px Verdana,sans-serif}
+.whiteboard-hint{margin:6px 0 0;font-size:9px;color:#555}
 .voice-panel{position:fixed;z-index:8;right:12px;bottom:90px;width:300px;max-width:calc(100vw - 24px);max-height:calc(100dvh - 114px);overflow:auto;color:#222}
+/* The whiteboard editor shares the voice window's chrome but sits centred and sized to its canvas. */
+.voice-panel.logbook{right:auto;bottom:auto;left:50%;top:50%;transform:translate(-50%,-50%);width:340px;height:auto;max-height:calc(100dvh - 40px)}
+.logbook-body{background:#eee;border:1px solid #111;border-radius:6px;padding:10px;max-height:calc(100dvh - 120px);overflow:auto}
+.logbook-intro{margin:0 0 8px;font-size:10px;color:#555}
+.logbook-list{list-style:none;margin:0;padding:0;border-top:1px solid #ccc}
+.logbook-list li{display:flex;flex-direction:column;gap:2px;padding:6px 4px;border-bottom:1px solid #ccc;font-size:10px}
+.logbook-list li strong{font-size:11px}
+.logbook-list li span{color:#444}
+.logbook-list li.is-present strong::after{content:' ●';color:#3b9b57}
+.logbook-empty{color:#666}
+.logbook-more{margin-top:8px;padding:4px 10px;border:1px solid #111;border-radius:4px;background:#eee;font:10px Verdana,sans-serif}
+.voice-panel.whiteboard-editor{right:auto;bottom:auto;left:50%;top:50%;transform:translate(-50%,-50%);width:412px;height:auto;max-height:calc(100dvh - 40px)}
 .voice-panel[hidden]{display:none}
 .voice-panel header{position:relative;display:flex;align-items:center;justify-content:center}
 .voice-panel h1{margin:0}
@@ -308,3 +344,23 @@ background-size:11px 11px,11px 11px,11px 11px,11px 11px,calc(100% - 22px) 12px,c
 .voice-speaking i:nth-child(2){height:10px}.voice-speaking i:nth-child(3){height:14px}
 .voice-speaking[hidden]{display:none}
 @media(max-width:640px),(pointer:coarse){.voice-panel{bottom:calc(90px + env(safe-area-inset-bottom,0px));max-height:calc(var(--viewport-height,100dvh) - 114px)}.voice-controls button,.voice-panel li button{min-height:40px}.voice-toggle img{width:32px;height:40px}}
+
+.typing-bubble{position:absolute;display:flex;align-items:center;justify-content:center;gap:3px;width:33px;height:19px;transform:translate(-50%,-100%);border:1px solid #222;border-radius:7px;background:#fff;box-shadow:1px 1px 0 #0005;pointer-events:none}
+.typing-bubble::after{content:'';position:absolute;bottom:-4px;left:14px;width:5px;height:5px;background:#fff;border-right:1px solid #222;border-bottom:1px solid #222;transform:rotate(45deg)}
+.typing-bubble i{width:3px;height:3px;background:#555;animation:typing-dot 1.2s steps(1) infinite}
+.typing-bubble i:nth-child(2){animation-delay:.2s}.typing-bubble i:nth-child(3){animation-delay:.4s}
+@keyframes typing-dot{0%,66%{opacity:1}33%{opacity:.25}}
+@media(prefers-reduced-motion:reduce){.typing-bubble i{animation:none}}
+
+/* Building with an agent: the catalogue button and the pairing window. */
+.agent-attach{display:block;width:calc(100% - 20px);margin:0 10px 8px;padding:6px 8px;border:1px solid #111;border-radius:5px;background:#d4e7cb;box-shadow:inset 0 1px #fff,0 1px #333;font:bold 10px Verdana,sans-serif;color:#222;cursor:pointer}
+.agent-attach[hidden]{display:none}
+.agent-dialog{width:min(420px,calc(100vw - 32px))}
+.agent-dialog .agent-body{padding:10px 12px;font:11px/1.5 Verdana,sans-serif;color:#222}
+.agent-dialog pre{margin:4px 0 8px;padding:6px 8px;background:#1d1f24;color:#e6e6e6;border-radius:5px;font:10px/1.45 'Courier New',monospace;white-space:pre-wrap;word-break:break-all;user-select:all}
+.agent-dialog button.agent-small{border:1px solid #111;border-radius:5px;background:#eee;box-shadow:inset 0 1px #fff,0 1px #333;padding:3px 8px;font:10px Verdana,sans-serif;color:#222;cursor:pointer}
+.agent-attached{margin:4px 0 0;color:#444;font-size:10px}
+.agent-key{display:flex;align-items:center;gap:10px;margin:6px 0}
+.agent-key span{color:#555;font-size:10px}
+.agent-dialog .agent-key-value{font-size:11px;letter-spacing:.5px}
+.agent-dialog .agent-url{font:bold 10px 'Courier New',monospace;word-break:break-all}

@@ -1,0 +1,28 @@
+<!doctype html><meta charset="utf-8"><title>Car seat verification</title><style>body{margin:20px;background:#777;color:white;font:14px sans-serif}#views{display:flex;gap:10px;flex-wrap:wrap}canvas{width:480px;height:360px;background:#b9b6a2;image-rendering:pixelated}</style>
+<h1></h1><div id="views"></div><p id="result"></p>
+<script type="module">
+import {createFurniture} from '/src/furniture.js';import {createAppearance} from '/src/appearance.js';import {prepareImage} from '/src/sprite-image.js';
+import {ConvexHttpClient} from 'convex/browser';import {api} from '/convex/_generated/api.js';
+const state=await new ConvexHttpClient(import.meta.env.VITE_CONVEX_URL).query(api.room.preview,{});
+const editor=await createAppearance({prepareImage,onApply(){},onOpen(){}}),look=state.players.find(p=>p.role==='admin')?.look??state.players[0]?.look??{hair:{model:'1',color:'#624631'},skin:{model:'1',color:'#e8b18a'},top:{model:'1',color:'#6b8c64'},bottom:{model:'1',color:'#55677e'},shoes:{model:'1',color:'#42454c'}};
+const type=new URLSearchParams(location.search).get('type')||'custom_porsche';document.querySelector('h1').textContent=type+' — seated avatar, all four rotations';
+const iso=(x,z)=>({x:(x-z)*32,y:(x+z)*16});
+for(const rotation of [2,4,6,0]){
+ const visuals=[];
+ const furniture=await createFurniture({prepareImage,initialItems:[{id:'car',type,rotation,x:0,z:0}],worldPoint:iso,isTile:()=>true,getAvatar:()=>({x:5,z:5}),stopWalking(){},onChanged(){},onSit(){},focusRoom(){},markTiles(){},makeVisual(canvas){const mesh={canvas,material:{map:{}},scale:{setScalar(s){mesh.s=s;}}};visuals.push(mesh);return mesh;},disposeVisual(){},positionVisual(mesh,x,y,w,h,order){Object.assign(mesh,{x,y,w,h,renderOrder:order});}});
+ const seat=furniture.seat('car');if(!seat)throw Error('Car must be sittable');
+ if(type==='custom_porsche'){
+  const source=visuals[0].canvas,data=source.getContext('2d').getImageData(0,0,source.width,source.height).data;
+  let glass=0;for(let i=0;i<data.length;i+=4)if(data[i+3]>40&&data[i+3]<160&&data[i+2]-data[i]>=12)glass++;
+  if(glass<50)throw Error('Driver must remain visible through the new window sprites');
+ }
+ const [cx,cz]=seat.cells[0],p=iso(cx+.5,cz+.5),avatar=await editor.previewFrame(look,seat.direction,-1,true);
+ const layers=[...visuals.map(v=>({...v,canvas:v.canvas,renderOrder:v.renderOrder})),{canvas:avatar,x:p.x+seat.offsetX-48,y:p.y+seat.offsetY-101,w:96,h:112,renderOrder:300+(cx+cz)*10+9.5}].sort((a,b)=>a.renderOrder-b.renderOrder);
+ if(layers.at(-1).canvas===avatar)throw Error('Car must draw in front of the avatar');
+ const card=document.createElement('div'),label=document.createElement('p');label.textContent=`Rotation ${rotation} → avatar faces ${seat.direction}, cell ${cx},${cz}, offset ${seat.offsetX},${seat.offsetY}`;
+ const canvas=document.createElement('canvas');canvas.width=240;canvas.height=180;const ctx=canvas.getContext('2d');ctx.imageSmoothingEnabled=false;
+ ctx.fillStyle='rgba(255,255,255,.25)';for(const [x,z] of [[0,0],[1,0],[2,0],[0,1],[1,1],[2,1],[0,2],[1,2]]){const t=iso(x,z);ctx.beginPath();ctx.moveTo(t.x+120,t.y+40);ctx.lineTo(t.x+152,t.y+56);ctx.lineTo(t.x+120,t.y+72);ctx.lineTo(t.x+88,t.y+56);ctx.closePath();ctx.stroke();}
+ layers.forEach(v=>ctx.drawImage(v.canvas,v.x+120,v.y+40,v.w,v.h));card.append(label,canvas);document.querySelector('#views').append(card);
+}
+document.querySelector('#result').textContent='PASS: avatar sits inside the car behind the glass for all four rotations.';
+</script>

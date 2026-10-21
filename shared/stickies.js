@@ -1,5 +1,6 @@
 export const STICKY_COLORS=['#ffff33','#9cff9c','#ff9cff','#9cceff'];
 export const STICKY_LIMIT=100,STICKY_TEXT_LIMIT=2000;
+// Flat prints sheared onto the wall at `size` room pixels square.
 export const POSTERS={neu:{name:'NEU! poster',file:'/assets/posters/neu.png',size:48}};
 export function wallExists(note,tiles){
   return tiles.has(`${note.x},${note.z}`)&&!tiles.has(note.side==='left'?`${note.x-1},${note.z}`:`${note.x},${note.z-1}`);

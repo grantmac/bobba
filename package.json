@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "convex": "^1.47.0",
+    "jimp": "^1.6.0",
     "livekit-client": "^2.23.0",
     "livekit-server-sdk": "^2.19.1",
     "three": "0.186.1"
