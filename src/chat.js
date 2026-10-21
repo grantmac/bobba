@@ -17,10 +17,12 @@ export function createChat({getSpeaker,getLayout,onSelectSpeaker}){
     if(element.style.left!==left)element.style.left=left;
     if(element.style.top!==top)element.style.top=top;
   }
-  // Bubbles are anchored to room coordinates, so they stay over the speaker as the view pans and zooms.
+  // Each bubble sits just above its speaker's head (96 room pixels over their feet) and climbs
+  // from there as newer ones arrive, staying over the speaker as the view pans and zooms.
   function position(item){
-    const layout=getLayout(),width=item.element.offsetWidth;
-    item.element.style.left=`${Math.round(layout.originX+item.x*layout.scale-width/2)}px`;item.element.style.top=`${Math.round(layout.baseline-item.offset-19)}px`;
+    const layout=getLayout(),width=item.element.offsetWidth,height=item.element.offsetHeight;
+    const head=layout.originY+(item.y-layout.centerY-96)*layout.scale;
+    item.element.style.left=`${Math.round(layout.originX+item.x*layout.scale-width/2)}px`;item.element.style.top=`${Math.round(head-height-item.offset)}px`;
   }
   function scroll(){
     for(const item of bubbles){item.offset+=21;position(item);}
@@ -33,7 +35,7 @@ export function createChat({getSpeaker,getLayout,onSelectSpeaker}){
     if(bubbles.length>=7)bubbles.shift().element.remove();
     const element=document.createElement('button');element.type='button';element.className='chat-bubble';element.dataset.mode=mode;element.title=`${speaker.name}: ${text}`;element.style.setProperty('--speaker-color',speaker.color);
     const name=document.createElement('strong');name.textContent=speaker.name+':';const words=document.createElement('span');words.textContent=' '+text;element.append(name,words);element.onclick=()=>onSelectSpeaker(speaker);
-    const item={element,x:speaker.x,offset:0};layer.append(element);bubbles.push(item);position(item);
+    const item={element,x:speaker.x,y:speaker.y??0,offset:0};layer.append(element);bubbles.push(item);position(item);
     nextScroll=performance.now()+4000;
   }
   window.addEventListener('resize',()=>bubbles.forEach(position));
