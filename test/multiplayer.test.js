@@ -220,17 +220,20 @@ describe('wall posters',()=>{
 });
 
 describe('room join phone alerts',()=>{
-  beforeEach(()=>{vi.useFakeTimers();vi.stubEnv('NTFY_TOPIC','test-room-alerts');vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true}));});
+  const entryLink='https://chat.grantm.ac/#grant=test-entry-only';
+  beforeEach(()=>{vi.useFakeTimers();vi.stubEnv('NTFY_TOPIC','test-room-alerts');vi.stubEnv('GRANT_ENTRY_URL',entryLink);vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true}));});
   afterEach(()=>{vi.clearAllTimers();vi.useRealTimers();vi.unstubAllGlobals();});
   const delivered=async()=>{await vi.advanceTimersByTimeAsync(0);await t.finishInProgressScheduledFunctions();};
   it('notifies once for a new guest, but not Grant, repeat joins or routine heartbeats',async()=>{
     await guest();await delivered();
     expect(fetch).toHaveBeenCalledTimes(1);
-    expect(fetch).toHaveBeenCalledWith('https://ntfy.sh/test-room-alerts',expect.objectContaining({body:'Visitor joined your room.',headers:expect.objectContaining({Click:'https://chat.grantm.ac'})}));
+    expect(fetch).toHaveBeenCalledWith('https://ntfy.sh/test-room-alerts',expect.objectContaining({body:'Visitor joined your room.',headers:expect.objectContaining({Click:entryLink})}));
     await guest();await admin();
     await t.mutation(api.room.heartbeat,{token,connectionId:'d'.repeat(64)});await delivered();
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(await t.query(api.room.state,{token}))).not.toContain('lastJoinAlertAt');
+    expect(JSON.stringify(await t.query(api.room.state,{token}))).not.toContain(entryLink);
+    expect(JSON.stringify(await t.query(api.room.preview,{}))).not.toContain(entryLink);
   });
   it('alerts for returning guests while suppressing rapid disconnect/reconnect duplicates',async()=>{
     const player=await guest();await delivered();

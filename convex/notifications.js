@@ -5,10 +5,11 @@ import {v} from 'convex/values';
 export const roomJoin=internalAction({args:{name:v.string()},handler:async(_ctx,{name})=>{
   const topic=process.env.NTFY_TOPIC;
   if(!topic)return;
+  const entryLink=process.env.GRANT_ENTRY_URL||'https://chat.grantm.ac';
   try{
     const response=await fetch(`https://ntfy.sh/${encodeURIComponent(topic)}`,{
       method:'POST',
-      headers:{Title:'Someone joined your room',Click:'https://chat.grantm.ac',Tags:'wave','Content-Type':'text/plain; charset=utf-8'},
+      headers:{Title:'Someone joined your room',Click:entryLink,Tags:'wave','Content-Type':'text/plain; charset=utf-8'},
       body:`${name} joined your room.`,
       signal:AbortSignal.timeout(10000),
     });
