@@ -2,12 +2,6 @@ export function createVoice({credentials,onState=()=>{},loadSDK=()=>import('live
   const panel=document.createElement('section');panel.className='voice-panel';panel.hidden=true;panel.setAttribute('aria-label','Voice chat');
   panel.innerHTML='<header><h1>Voice chat</h1><button type="button" class="appearance-close" aria-label="Close voice chat">×</button></header><div class="voice-body"><p class="voice-status" role="status">Join to talk. Your microphone will turn on.</p><div class="voice-controls"><button type="button" data-voice="join">Join voice</button><button type="button" data-voice="mic" hidden>Turn mic on</button><button type="button" data-voice="audio" hidden>Enable sound</button><button type="button" data-voice="leave" hidden>Leave voice</button></div><ul aria-label="People in voice"></ul></div>';
   const audioRoot=document.createElement('div');audioRoot.hidden=true;document.body.append(panel,audioRoot);
-  const music=document.createElement('div');music.className='room-music';music.hidden=true;
-  music.innerHTML='<a href="https://poolsuite.net/" target="_blank" rel="noopener">Poolsuite ON AIR</a><button type="button" data-music="sound">Mute music</button><label>Music volume <input type="range" min="0" max="100" value="78.75" step="0.25" aria-label="Music volume"></label>';
-  panel.querySelector('.voice-body').append(music);
-  let musicController,musicState={};
-  music.querySelector('button').onclick=()=>{if(musicState.muted)musicController?.setMuted(false);else if(!musicState.playing)void musicController?.unlock();else musicController?.setMuted(true);};
-  music.querySelector('input').oninput=event=>musicController?.setVolume(Number(event.target.value)/100);
   const button=kind=>panel.querySelector(`[data-voice="${kind}"]`),status=panel.querySelector('.voice-status');
   const rows=new Map(),muted=new Set(),markers=new Map(),audio=new Map();
   let room=null,generation=0,phase='idle',micBusy=false,message='',players=new Map(),sdk=null,joinTimeout=null;
@@ -55,7 +49,7 @@ export function createVoice({credentials,onState=()=>{},loadSDK=()=>import('live
     // LiveKit disconnect stops local capture, including pending microphone tracks.
     if(old)void old.disconnect().catch(()=>{});
   }
-  async function join(){
+  async function join({microphone=true,mutedIds=[]}={}){
     if(phase!=='idle')return;
     const attempt=++generation;phase='connecting';message='';update();let candidate;
     joinTimeout=setTimeout(()=>{
@@ -66,6 +60,7 @@ export function createVoice({credentials,onState=()=>{},loadSDK=()=>import('live
       const [loaded,access]=await Promise.all([loadSDK(),credentials()]);
       if(attempt!==generation)return;sdk=loaded;
       candidate=new sdk.Room({audioCaptureDefaults:{echoCancellation:true,noiseSuppression:true,autoGainControl:true},disconnectOnPageLeave:true});room=candidate;
+      muted.clear();for(const id of mutedIds)muted.add(id);
       const current=()=>room===candidate&&attempt===generation;
       candidate.on(sdk.RoomEvent.TrackSubscribed,(track,_publication,participant)=>{
         if(!current()||track.kind!==sdk.Track.Kind.Audio)return;
@@ -81,7 +76,7 @@ export function createVoice({credentials,onState=()=>{},loadSDK=()=>import('live
       await candidate.connect(access.url,access.token,{autoSubscribe:true});
       if(!current()){await candidate.disconnect();return;}
       clearTimeout(joinTimeout);joinTimeout=null;phase='connected';update();
-      await toggleMicrophone();
+      if(microphone)await toggleMicrophone();
       if(!current())return;
       try{await candidate.startAudio();}catch{/* The Enable sound button handles browser playback restrictions. */}
       if(current())update();
@@ -107,8 +102,9 @@ export function createVoice({credentials,onState=()=>{},loadSDK=()=>import('live
   window.addEventListener('pagehide',leave);
   update();
   return {open(){panel.hidden=!panel.hidden;},leave,
-    connectMusic(controller){musicController=controller;},
-    setMusicState(state){musicState=state;music.hidden=!state.active;music.querySelector('button').textContent=state.muted?'Unmute music':state.playing?'Mute music':'Enable music';music.querySelector('input').value=String(state.volume*100);},
+    get busy(){return phase==='connecting'||phase==='reconnecting'||micBusy;},
+    snapshot(){return {connected:phase==='connected'||phase==='reconnecting',microphone:!!room?.localParticipant.isMicrophoneEnabled,mutedIds:[...muted]};},
+    async restore(state){if(state?.connected)await join({microphone:state.microphone===true,mutedIds:Array.isArray(state.mutedIds)?state.mutedIds.filter(id=>typeof id==='string'):[]});},
     syncPlayers(next){players=new Map(next.map(p=>[p.id,p]));update();},
     positionSpeaker(id,x,y,visible=true){const marker=markers.get(id);if(marker){marker.style.left=`${x}px`;marker.style.top=`${y}px`;marker.hidden=!visible;}},
   };

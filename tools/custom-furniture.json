@@ -51,10 +51,10 @@
     "width": 2,
     "depth": 1,
     "surfaceHeight": 0,
-    "icon": "custom_dj_decks_icon.png",
+    "icon": "custom_dj_decks_stable_icon.png",
     "parts": [
       {
-        "file": "custom_dj-decks-on-000-3frames.png",
+        "file": "custom_dj-decks-stable-000.png",
         "layer": "a",
         "direction": 2,
         "reg": {
@@ -87,7 +87,7 @@
         ]
       },
       {
-        "file": "custom_dj-decks-on-090-3frames.png",
+        "file": "custom_dj-decks-stable-090.png",
         "layer": "a",
         "direction": 4,
         "reg": {
@@ -106,21 +106,21 @@
             "height": 724
           },
           {
-            "x": 0,
-            "y": 724,
+            "x": 724,
+            "y": 0,
             "width": 724,
             "height": 724
           },
           {
-            "x": 0,
-            "y": 1448,
+            "x": 1448,
+            "y": 0,
             "width": 724,
             "height": 724
           }
         ]
       },
       {
-        "file": "custom_dj-decks-on-180-3frames.png",
+        "file": "custom_dj-decks-stable-180.png",
         "layer": "a",
         "direction": 6,
         "reg": {
@@ -139,21 +139,21 @@
             "height": 724
           },
           {
-            "x": 0,
-            "y": 724,
+            "x": 724,
+            "y": 0,
             "width": 724,
             "height": 724
           },
           {
-            "x": 0,
-            "y": 1448,
+            "x": 1448,
+            "y": 0,
             "width": 724,
             "height": 724
           }
         ]
       },
       {
-        "file": "custom_dj-decks-on-270-3frames.png",
+        "file": "custom_dj-decks-stable-270.png",
         "layer": "a",
         "direction": 0,
         "reg": {
@@ -172,14 +172,14 @@
             "height": 724
           },
           {
-            "x": 0,
-            "y": 724,
+            "x": 724,
+            "y": 0,
             "width": 724,
             "height": 724
           },
           {
-            "x": 0,
-            "y": 1448,
+            "x": 1448,
+            "y": 0,
             "width": 724,
             "height": 724
           }
@@ -209,7 +209,7 @@
       }
     ],
     "spriteDensity": 3,
-    "frameDuration": 150
+    "frameDuration": 200
   },
   {
     "id": "custom_porsche",

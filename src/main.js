@@ -17,6 +17,7 @@ import {createDanceFloor} from './dance-floor.js';
 import {createDanceFloorControls} from './dance-floor-controls.js';
 import {createDiscoBall} from './disco-ball.js';
 import {createRoomRadio} from './room-radio.js';
+import {installAutoUpdate,saveUpdateSession,takeUpdateSession} from './auto-update.js';
 
 const container = document.querySelector('#scene');
 const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
@@ -438,8 +439,7 @@ try{
   network=createMultiplayer();
   danceControls=createDanceFloorControls({onChange:on=>network.danceFloor(on),onError:message=>toolbar.status(message)});
   voice=createVoice({credentials:()=>network.voiceCredentials(),onState:state=>toolbar.setVoiceState(state)});
-  radio=createRoomRadio({onState:state=>voice.setMusicState(state)});
-  voice.connectMusic(radio);
+  radio=createRoomRadio();
   for(const event of ['pointerdown','keydown'])document.addEventListener(event,()=>{if(ready)void radio.unlock();});
   window.addEventListener('pagehide',()=>radio.close());
   const [catalogResponse,paletteResponse,initialRoom]=await Promise.all([fetch('/assets/room-options/catalog.json'),fetch('/assets/room-options/source-palette.json'),network.loadPreview()]);
@@ -509,6 +509,12 @@ try{
     stopPreview();
   }
   const admin=network.me.role==='admin';
+  const previousUpdate=takeUpdateSession(network.me.id);
+  if(previousUpdate){
+    radio.restore(previousUpdate.music);
+    const view=previousUpdate.view;
+    if(view&&[view.zoom,view.panX,view.panY].every(Number.isFinite)){zoom=view.zoom;panX=view.panX;panY=view.panY;resize();}
+  }
   stickies.connect(admin);
   furniture.connect({admin,onSave:items=>network.furniture(items),onPower:(id,on)=>network.deckPower(id,on),onError:message=>toolbar.status(message)});
   toolbar.setAdmin(admin);
@@ -542,5 +548,15 @@ try{
       if(first){first=false;resolve();}
     },message=>{voice.leave();radio.close();toolbar.setVoiceEnabled(false);toolbar.status(message);if(first)reject(new Error(message));});
   });
+  if(previousUpdate?.voice)void voice.restore(previousUpdate.voice);
+  if(import.meta.env.PROD){
+    let lastInput=0;
+    document.addEventListener('input',()=>{lastInput=performance.now();});
+    const updater=installAutoUpdate({version:__ROOM_BUILD_ID__,
+      canReload:()=>!editingRoom&&!furniture.placing&&!voice.busy&&performance.now()-lastInput>2000&&!document.querySelector('dialog[open],.furniture-placement:not([hidden]),.furniture-panel:not([hidden])')&&!document.querySelector('#chat-message')?.value.trim(),
+      beforeReload:()=>saveUpdateSession({playerId:network.me.id,voice:voice.snapshot(),music:radio.snapshot(),view:{zoom,panX,panY}})
+    });
+    window.addEventListener('pagehide',event=>{if(!event.persisted)updater.stop();});
+  }
   container.focus({preventScroll:true});
 }catch(error){const notice=document.querySelector('#load-error');notice.textContent=error.message||'The room could not be opened. Please reload to try again.';notice.hidden=false;console.error(error);}

@@ -126,3 +126,36 @@ describe('shared deck radio',()=>{
     radio.receive(decks,true);radio.receive([],true);resolve();await Promise.resolve();expect(state().playing).toBe(false);expect(audio.src).toBe('');
   });
 });
+
+import {vi} from 'vitest';
+import {installAutoUpdate,saveUpdateSession,takeUpdateSession} from '../src/auto-update.js';
+describe('deployment updates',()=>{
+  const events=()=>({addEventListener(){},removeEventListener(){}});
+  function setup(overrides={}){
+    let latest='build-a',safe=true,shown=true;const reload=vi.fn(),save=vi.fn();
+    const updater=installAutoUpdate({version:'build-a',fetchVersion:async()=>latest,canReload:()=>safe,visible:()=>shown,beforeReload:save,reload,events:events(),visibilityEvents:events(),...overrides});
+    return {updater,reload,save,setLatest:value=>latest=value,setSafe:value=>safe=value,setVisible:value=>shown=value};
+  }
+  it('refreshes once after a changed version, after editing finishes',async()=>{
+    vi.useFakeTimers();
+    const s=setup();await Promise.resolve();s.setSafe(false);s.setLatest('build-b');await s.updater.check();expect(s.reload).not.toHaveBeenCalled();
+    s.setSafe(true);await vi.advanceTimersByTimeAsync(2000);expect(s.save).toHaveBeenCalledOnce();expect(s.reload).toHaveBeenCalledOnce();
+    await s.updater.check();expect(s.reload).toHaveBeenCalledOnce();vi.useRealTimers();
+  });
+  it('ignores unchanged, malformed and unreachable versions',async()=>{
+    const s=setup();await Promise.resolve();await s.updater.check();expect(s.reload).not.toHaveBeenCalled();
+    for(const value of [null,{},'']){s.setLatest(value);await s.updater.check();expect(s.reload).not.toHaveBeenCalled();}s.updater.stop();
+    const offline=setup({fetchVersion:async()=>{throw Error('Offline');}});await Promise.resolve();await offline.updater.check();expect(offline.reload).not.toHaveBeenCalled();offline.updater.stop();
+  });
+  it('waits for a background tab and ignores an in-flight response after stopping',async()=>{
+    const s=setup();await Promise.resolve();s.setVisible(false);s.setLatest('build-b');await s.updater.check();expect(s.reload).not.toHaveBeenCalled();
+    s.setVisible(true);await s.updater.check();expect(s.reload).toHaveBeenCalledOnce();
+    let resolve;const late=setup({fetchVersion:()=>new Promise(done=>resolve=done)});late.updater.stop();resolve('build-b');await Promise.resolve();expect(late.reload).not.toHaveBeenCalled();
+  });
+  it('restores state only once, for the same player and a recent update',()=>{
+    const data=new Map(),storage={setItem:(k,v)=>data.set(k,v),getItem:k=>data.get(k),removeItem:k=>data.delete(k)},snapshot={playerId:'grant',voice:{connected:true,microphone:false},music:{muted:true,volume:.2}};
+    saveUpdateSession(snapshot,storage,1000);expect(takeUpdateSession('grant',storage,2000)).toMatchObject(snapshot);expect(takeUpdateSession('grant',storage,2000)).toBeNull();
+    saveUpdateSession(snapshot,storage,1000);expect(takeUpdateSession('visitor',storage,2000)).toBeNull();
+    saveUpdateSession(snapshot,storage,1000);expect(takeUpdateSession('grant',storage,121000)).toBeNull();
+  });
+});

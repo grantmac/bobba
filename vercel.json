@@ -4,6 +4,14 @@
   "outputDirectory": "dist",
   "headers": [
     {
+      "source": "/version.json",
+      "headers": [{"key": "Cache-Control", "value": "no-store"}]
+    },
+    {
+      "source": "/",
+      "headers": [{"key": "Cache-Control", "value": "no-store"}]
+    },
+    {
       "source": "/(.*)",
       "headers": [{"key": "Referrer-Policy", "value": "no-referrer"}]
     }

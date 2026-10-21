@@ -45,7 +45,11 @@ active.emit(RoomEvent.ActiveSpeakersChanged,[active.localParticipant]);
 if(document.querySelectorAll('.voice-speaking').length!==1)throw Error('Own speaking indicator missing');
 click('[data-voice=mic]');await tick();active.emit(RoomEvent.TrackMuted);
 if(document.querySelector('.voice-speaking'))throw Error('Muted speaker kept an indicator');
-document.querySelector('#result').textContent='PASS: guest toolbar, automatic mic on join, mic and mute controls, cleanup, cancellation, connection timeout and speaking-only avatar indicators.';
+click('[aria-label="Mute Visitor for me"]');const mutedSnapshot=voice.snapshot();voice.leave();await voice.restore(mutedSnapshot);
+if(active.localParticipant.isMicrophoneEnabled||!document.querySelector('[aria-label="Unmute Visitor for me"]'))throw Error('Deployment refresh lost voice mute settings');
+click('[data-voice=mic]');await tick();const speakingSnapshot=voice.snapshot();voice.leave();await voice.restore(speakingSnapshot);
+if(!active.localParticipant.isMicrophoneEnabled)throw Error('Deployment refresh did not reconnect active microphone');
+document.querySelector('#result').textContent='PASS: guest toolbar, automatic mic on join, controls, cleanup, cancellation, connection timeout, speaker indicators and deployment reconnect preserving microphone and local mutes.';
 document.querySelector('#talk').onclick=()=>{active.activeSpeakers=active.activeSpeakers.length?[]:[active.visitor];active.emit(RoomEvent.ActiveSpeakersChanged,active.activeSpeakers);voice.positionSpeaker('other',innerWidth/2,innerHeight/2);};
 document.querySelector('#reconnect').onclick=()=>{active.emit(RoomEvent.Reconnecting);setTimeout(()=>active.emit(RoomEvent.Reconnected),1200);};
 </script>
