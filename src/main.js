@@ -859,7 +859,7 @@ try{
   network.whiteboard.all().then(all=>{whiteboard.load(all);network.whiteboard.watch(all.serial,update=>whiteboard.receive(update));}).catch(error=>toolbar.status(error.message));
   stickies.connect(admin);
   furniture.connect({admin,me:network.me.id,onSave:items=>network.furniture(items),onPower:(id,on)=>network.deckPower(id,on),onError:message=>toolbar.status(message)});
-  if(import.meta.env.DEV)window.__room={get visuals(){return furniture.debugVisuals();},get avatar(){return {order:avatar.renderOrder,x:position.x,z:position.z};},get peers(){return [...peers.values()].map(p=>({name:p.data.name,order:p.mesh.renderOrder,seat:p.data.seatId?.slice(0,6)??null}));}};
+  if(import.meta.env.DEV)window.__room={get centerY(){return CENTER_Y;},iso,get visuals(){return furniture.debugVisuals();},get avatar(){return {order:avatar.renderOrder,x:position.x,z:position.z};},get peers(){return [...peers.values()].map(p=>({name:p.data.name,order:p.mesh.renderOrder,seat:p.data.seatId?.slice(0,6)??null}));}};
   network.assets.watch(list=>furniture.setAssets(list),message=>toolbar.status(message));
   startSnapshots({captures:network.captures,capture:takePicture,onStatus:message=>toolbar.status(message)});
   toolbar.setAdmin(admin);

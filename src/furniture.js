@@ -12,6 +12,8 @@ const src=file=>/^https?:\/\//.test(file)?file:ROOT+file;
 // Sprites served from storage must load with CORS so their canvases can be read back.
 const load=(image,file)=>{if(/^https?:\/\//.test(file))image.crossOrigin='anonymous';image.src=src(file);};
 // Pieces a click uses rather than selects: the player walks up to them first.
+// The wall face is 117 px tall above the floor line; hung pieces are kept within it.
+const WALL_FACE=117;
 const USABLE=new Set(['custom_dj_decks','fridge','dmg_fridge','custom_logbook','asset_kd7acza4w9bg93w99rxrd5346x8gpfwq']);
 export async function createFurniture({prepareImage,makeVisual,disposeVisual,positionVisual,markTiles,worldPoint,isTile,getAvatar,stopWalking,onChanged,onSit,onUse=()=>{},onInspect=()=>{},canBuildAt=()=>true,focusRoom,onAttachAgent,floorHeight=()=>0,hasWall=()=>false,walls=()=>[],initialItems=[],initialAssets=[]}){
   const response=await fetch(ROOT+'catalog.json');
@@ -161,7 +163,9 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     const def=definitions.get(item.type),p=worldPoint(item.x,item.z);
     if(isWallItem(def)){
       const a=wallAnchor(item),width=frame.canvas.width/frame.density,height=frame.canvas.height/frame.density;
-      return {x:p.x+a.x-width/2,y:p.y+floorHeight(item.x,item.z)+a.y-height/2,order:95};
+      // However high it was hung, a piece stays on the wall face: its top never passes the ceiling line.
+      const centre=Math.min(item.height,WALL_FACE-height/2);
+      return {x:p.x+a.x-width/2,y:p.y+floorHeight(item.x,item.z)+a.y+item.height-centre-height/2,order:95};
     }
     const cells=footprint(item,def),table=viewItems.find(t=>t.id===item.supportId),orderCells=table?footprint(table,definitions.get(table.type)):cells;
     // A piece on a table draws just above the table (front ones last) but under an avatar on the
@@ -314,7 +318,9 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
       const p=worldPoint(x,z);p.y+=floorHeight(x,z);
       const u=(point.x-p.x)/32*(side==='left'?-1:1),height=p.y+u*16-point.y;
       if(u<0||u>1||height<12||height>112)continue;
-      const item={...pending,x,z,rotation:side==='left'?2:4,u:Math.max(.25,Math.min(.75,u)),height:Math.max(26,Math.min(88,height))};
+      // Hang it no higher than lets its whole face fit under the ceiling line.
+      const spriteHeight=(frames.get(`${def.id}:${side==='left'?2:4}`)?.canvas.height??0)/(def.spriteDensity??1),top=Math.min(88,Math.max(26,WALL_FACE-spriteHeight/2));
+      const item={...pending,x,z,rotation:side==='left'?2:4,u:Math.max(.25,Math.min(.75,u)),height:Math.max(26,Math.min(top,height))};
       if(canHang(item,def,hasWall))hits.push(item);
     }
     return hits.sort((a,b)=>(b.x+b.z)-(a.x+a.z))[0]??null;
@@ -394,7 +400,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     return null;
   }
   render();
-  return {open,pointer,key,roomChanged,redraw,seat,animate,debugVisuals:()=>visuals.map(v=>({id:v.item.id.slice(0,6),type:v.item.type.slice(0,22),x:v.item.x,z:v.item.z,on:v.item.supportId?.slice(0,6)??null,order:v.mesh.renderOrder})),approach:(id,from,canWalk)=>{const item=items.find(i=>i.id===id);return item&&visible(item)?approachFor(item,items,definitions,from,canWalk):null;},blocks:(x,z)=>blocksTile(x,z,items,definitions),close:()=>{cancel();selected=null;panel.hidden=true;render();},get placing(){return !!pending;},
+  return {open,pointer,key,roomChanged,redraw,seat,animate,debugVisuals:()=>visuals.map(v=>({id:v.item.id.slice(0,6),type:v.item.type.slice(0,22),x:v.item.x,z:v.item.z,u:v.item.u,h:v.item.height,on:v.item.supportId?.slice(0,6)??null,order:v.mesh.renderOrder,meshX:v.mesh.position.x,meshY:v.mesh.position.y,w:v.frame.canvas.width/v.frame.density,height:v.frame.canvas.height/v.frame.density,top:v.frame.top,left:v.frame.left})),approach:(id,from,canWalk)=>{const item=items.find(i=>i.id===id);return item&&visible(item)?approachFor(item,items,definitions,from,canWalk):null;},blocks:(x,z)=>blocksTile(x,z,items,definitions),close:()=>{cancel();selected=null;panel.hidden=true;render();},get placing(){return !!pending;},
     getItems:()=>structuredClone(items),
     typeOf:id=>items.find(i=>i.id===id)?.type??null,
     // Show a piece's open state until the given time, then fall back to its resting frame.

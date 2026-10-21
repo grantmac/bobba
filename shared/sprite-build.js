@@ -60,7 +60,9 @@ export function buildSprite(image,{kind,width,depth,display_width,facing,base_in
   const span=(width+depth)*32;
   let W=display_width??(kind==='rug'?span:kind==='wall'?48:kind==='tabletop'?40:Math.round(span*.85));
   W=Math.max(8,Math.min(200,Math.round(W)));
-  const H=Math.max(4,Math.min(200,Math.round(W*image.height/image.width)));
+  let H=Math.max(4,Math.min(200,Math.round(W*image.height/image.width)));
+  // A wall piece must fit on the 117 px wall face with room to hang it: cap its height, keeping its shape.
+  if(kind==='wall'&&H>96){W=Math.max(8,Math.round(W*96/H));H=96;}
   image.resize({w:W*DENSITY,h:H*DENSITY,mode:ResizeStrategy.BICUBIC});
   const inset=base_inset??(kind==='rug'?0:2);
   // Registration: the sprite's top-left is (-reg.x-32, -reg.y+16) from the tile's top corner,
