@@ -298,7 +298,8 @@ function buildRoom(options){
       face=surface(`right_wallpart_${paper.type}_a_0_2_0.png`,paper.palette,color,[[0,0],[32,16],[32,133],[0,117]]);
       if(picture)face=wallSegment(face,picture,space.wallFit,x-space.x,space.width);
     }
-    sprite(face,p.x,p.y-116,50+x);
+    // Segments overlap left to right, but all stay below the ceiling lines (82) and hung pieces (95), however far the spaces reach.
+    sprite(face,p.x,p.y-116,50+x/10);
     polygon([[p.x,p.y-115],[p.x+7,p.y-118],[p.x+39,p.y-102],[p.x+32,p.y-99]],color,82,true);
     if(x===layout.extentWidth-1)polygon([[p.x+32,p.y-99],[p.x+39,p.y-102],[p.x+39,p.y+14],[p.x+32,p.y+18]],color,81,true);
   }
