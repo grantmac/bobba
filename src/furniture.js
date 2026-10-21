@@ -1,10 +1,11 @@
 import {footprint,isPlaced,canPlace,blocksTile,restoreItems,canStack,surfaceHeight,moveWithContents,pickupWithContents} from './furniture-model.js';
-import {LinearFilter} from 'three';
+import {LinearFilter,NearestFilter} from 'three';
 import {POSTERS} from '../shared/stickies.js';
 import {drawMacintoshScreen,macintoshScreenPhase} from './macintosh-screen.js';
+import {spriteSheetFrames} from './furniture-spritesheet.js';
 
 const ROOT='/assets/furniture/';
-export async function createFurniture({prepareImage,makeVisual,disposeVisual,positionVisual,markTiles,worldPoint,isTile,getAvatar,stopWalking,onChanged,onSit,focusRoom,onPlaceSticky,onPlacePoster,initialItems=[]}){
+export async function createFurniture({prepareImage,makeVisual,disposeVisual,positionVisual,markTiles,worldPoint,isTile,getAvatar,stopWalking,onChanged,onSit,focusRoom,onPlaceSticky,onPlacePoster,floorHeight=()=>0,initialItems=[]}){
   const response=await fetch(ROOT+'catalog.json');
   if(!response.ok)throw new Error('Furniture could not be loaded.');
   const catalog=await response.json(),definitions=new Map(catalog.map(d=>[d.id,d]));
@@ -13,7 +14,12 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     if(loading.has(def.id))return loading.get(def.id);
     const promise=(async()=>{
     const parts=await Promise.all(def.parts.map(part=>new Promise((resolve,reject)=>{
-      const image=new Image();image.onload=()=>resolve({...part,canvas:prepareImage(image,{matte:!part.alphaPrepared})});image.onerror=()=>reject(new Error(`Could not load ${part.file}`));image.src=ROOT+part.file;
+      const image=new Image();image.onload=()=>{
+        try{
+          const cells=part.frames?spriteSheetFrames(image,part.frames):null;
+          resolve({...part,cells,canvas:cells?.[0]??prepareImage(image,{matte:!part.alphaPrepared})});
+        }catch(error){reject(error);}
+      };image.onerror=()=>reject(new Error(`Could not load ${part.file}`));image.src=ROOT+part.file;
     })));
     for(const view of def.views){
       const layers=parts.filter(p=>p.direction===view.source).sort((a,b)=>a.z-b.z||a.layer.localeCompare(b.layer));
@@ -27,16 +33,24 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
         if(view.mirror){ctx.translate(right-left,0);ctx.scale(-1,1);}
         parts.forEach(p=>{
           const x=-p.reg.x-left,y=-p.reg.y-top;
-          ctx.drawImage(p.canvas,x,y,p.width,p.height);
+          ctx.drawImage(p.cells?.[phase%p.cells.length]??p.canvas,x,y,p.width,p.height);
           if(def.id==='custom_macintosh')drawMacintoshScreen(ctx,x,y,p.width,p.height,phase,view.mirror);
         });
         return {canvas,pixels:ctx.getImageData(0,0,canvas.width,canvas.height).data};
       }
-      const full=paint(layers);
+      const full=paint(layers,def.frameDuration?0:5);
       // Original chair/sofa layers straddle the seated avatar's depth.
       const slices=def.category==='Seating'?layers.filter(p=>p.width>1&&p.height>1).map(p=>({...paint([p]),orderShift:p.z/100})):null;
       const frame={...full,density,left:(view.mirror?64-right:left)-32,top:top+16};
-      if(def.id==='custom_macintosh')frame.animate=phase=>paint(layers,phase,frame.canvas);
+      if(def.frameDuration)frame.off={...frame,...paint(layers,0)};
+      if(def.id==='custom_macintosh'||def.frameDuration){
+        let lastPhase=-1;
+        frame.animate=now=>{
+          const phase=def.frameDuration?Math.floor(now/def.frameDuration)%layers[0].cells.length:macintoshScreenPhase(now);
+          if(phase===lastPhase)return false;
+          lastPhase=phase;frame.pixels=paint(layers,phase,frame.canvas).pixels;return true;
+        };
+      }
       if(slices?.length)frame.slices=slices.map(slice=>({...frame,...slice}));
       frames.set(`${def.id}:${view.direction}`,frame);
     }
@@ -50,7 +64,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
   function fitStoredItems(){
     const fitted=[];
     for(const item of [...items].sort((a,b)=>Number(!!a.supportId)-Number(!!b.supportId))){
-      if(isPlaced(item)&&!canPlace(item,fitted,definitions,isTile)){item.x=null;item.z=null;delete item.supportId;}
+      if(isPlaced(item)&&!canPlace(item,fitted,definitions,isTile,undefined,floorHeight)){item.x=null;item.z=null;delete item.supportId;}
       fitted.push(item);
     }
   }
@@ -70,7 +84,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     posters.append(button);
   }
   stickyButton.after(posters);
-  actions.innerHTML=`<button class="furniture-close" aria-label="Deselect furniture">×</button><img alt=""><strong></strong><span class="furniture-location"></span><div>${['Move','Rotate','Pick up','Delete'].map(name=>`<button data-action="${name}">${name}</button>`).join('')}</div>`;
+  actions.innerHTML=`<button class="furniture-close" aria-label="Deselect furniture">×</button><img alt=""><strong></strong><span class="furniture-location"></span><div>${['Move','Rotate','Pick up','Delete','Power'].map(name=>`<button data-action="${name}">${name}</button>`).join('')}</div>`;
   const placement=document.createElement('section');placement.className='furniture-placement';placement.hidden=true;
   placement.innerHTML='<span></span><button data-placement="rotate">Rotate (R)</button><button data-placement="cancel">Cancel (Esc)</button>';
   const confirmation=document.createElement('dialog');confirmation.className='appearance-dialog furniture-confirm';
@@ -98,17 +112,13 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
       finally{saving=false;render();if(message)panel.querySelector('.furniture-description').textContent=message;}
     }
   }
-  function frameFor(item){return frames.get(`${item.type}:${item.rotation}`);}
-  let screenPhase=-1;
+  function frameFor(item){const frame=frames.get(`${item.type}:${item.rotation}`);return item.on===false&&frame?.off?frame.off:frame;}
   function animate(now){
-    const phase=macintoshScreenPhase(now);
-    if(phase===screenPhase)return;
-    screenPhase=phase;
-    const updated=new Set();
+    const updated=new Map();
     for(const {frame,mesh} of visuals){
       if(!frame.animate)continue;
-      if(!updated.has(frame)){frame.animate(phase);updated.add(frame);}
-      if(mesh.material.map)mesh.material.map.needsUpdate=true;
+      if(!updated.has(frame))updated.set(frame,frame.animate(now));
+      if(updated.get(frame)&&mesh.material.map)mesh.material.map.needsUpdate=true;
     }
   }
   function visible(item){return isPlaced(item)&&footprint(item,definitions.get(item.type)).every(([x,z])=>isTile(x,z));}
@@ -123,7 +133,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
       const mesh=makeVisual(slice.canvas);
       if(slice.density>1){
         mesh.scale?.setScalar(1/slice.density);
-        if(mesh.material.map){mesh.material.map.minFilter=LinearFilter;mesh.material.map.magFilter=LinearFilter;}
+        if(mesh.material.map){mesh.material.map.minFilter=LinearFilter;mesh.material.map.magFilter=NearestFilter;}
       }
       if(pending&&(item.id===pending.id||item.supportId===pending.id))mesh.material.opacity=.65;visuals.push({item,frame:slice,mesh});
       }
@@ -136,7 +146,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
       const def=definitions.get(item.type),p=worldPoint(item.x,item.z),cells=footprint(item,def);
       const table=viewItems.find(t=>t.id===item.supportId),orderCells=table?footprint(table,definitions.get(table.type)):cells;
       const order=def.category==='Rugs'?20:def.category==='Seating'?300+(item.x+item.z)*10+9+(frame.orderShift??0):300+Math.max(...orderCells.map(([x,z])=>x+z))*10+9+(table?0.1+(item.x+item.z)/100:0);
-      const height=surfaceHeight(item,viewItems,definitions);
+      const height=surfaceHeight(item,viewItems,definitions)-floorHeight(item.x,item.z);
       positionVisual(mesh,p.x+frame.left,p.y+frame.top-height+(table?def.tableOffsetY??0:0),frame.canvas.width/frame.density,frame.canvas.height/frame.density,order);
     }
     const item=pending||items.find(i=>i.id===selected);
@@ -170,6 +180,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     actions.hidden=!editable||!item||!isPlaced(item)||!!pending;
     if(!actions.hidden){actions.querySelector('img').src=ROOT+def.icon;actions.querySelector('strong').textContent=def.name;actions.querySelector('.furniture-location').textContent=item.supportId?'On table':`Tile ${item.x+1}, ${item.z+1}`;actions.querySelector('[data-action="Rotate"]').disabled=def.views.length<2;}
     actions.querySelectorAll('[data-action]').forEach(button=>{button.hidden=!editable;if(saving)button.disabled=true;else if(button.dataset.action!=='Rotate')button.disabled=false;});
+    const power=actions.querySelector('[data-action="Power"]');power.hidden=!editable||!def?.frameDuration;power.textContent=item?.on===false?'Turn on':'Turn off';power.setAttribute('aria-pressed',String(item?.on!==false));
     placement.hidden=!pending;
     if(pending){placement.querySelector('span').textContent=definitions.get(pending.type).name;placement.querySelector('[data-placement="rotate"]').disabled=definitions.get(pending.type).views.length<2;}
   }
@@ -181,7 +192,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
       const avatar=getAvatar(),candidates=[];
       for(let x=0;x<30;x++)for(let z=0;z<30;z++)if(isTile(x,z))candidates.push({x,z});
       candidates.sort((a,b)=>Math.hypot(a.x-avatar.x,a.z-avatar.z)-Math.hypot(b.x-avatar.x,b.z-avatar.z));
-      const first=candidates.find(cell=>canPlace({...pending,...cell},items,definitions,isTile,avatar));
+      const first=candidates.find(cell=>canPlace({...pending,...cell},items,definitions,isTile,avatar,floorHeight));
       if(first)Object.assign(pending,first);
     }
     render();focusRoom();
@@ -216,6 +227,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     switch(button.dataset.action){
       case 'Move':begin(item);break;
       case 'Rotate':rotate();break;
+      case 'Power':if(definitions.get(item.type).frameDuration)change(()=>{item.on=item.on===false;});break;
       case 'Pick up':change(()=>{items=pickupWithContents(items,item.id);selected=null;});break;
       case 'Delete':{
         deleteId=item.id;const def=definitions.get(item.type);
@@ -228,12 +240,12 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
   function open(view){if(!editable)return;cancel();selected=null;tab=view;page=0;panel.hidden=false;render();panel.querySelector('input').focus();}
   function validPlacement(item){
     const next=moveWithContents(items,item,definitions);
-    return next.filter(i=>i.id===item.id||i.supportId===item.id).every(i=>canPlace(i,next,definitions,isTile,getAvatar()));
+    return next.filter(i=>i.id===item.id||i.supportId===item.id).every(i=>canPlace(i,next,definitions,isTile,getAvatar(),floorHeight));
   }
   function hitVisual(point){
     return [...visuals].sort((a,b)=>b.mesh.renderOrder-a.mesh.renderOrder).find(({item,frame})=>{
       if(pending&&(item.id===pending.id||item.supportId===pending.id))return false;
-      const p=worldPoint(item.x,item.z),x=Math.floor((point.x-p.x-frame.left)*frame.density),y=Math.floor((point.y-p.y-frame.top+surfaceHeight(item,viewItems,definitions)-(item.supportId?definitions.get(item.type).tableOffsetY??0:0))*frame.density);
+      const p=worldPoint(item.x,item.z),x=Math.floor((point.x-p.x-frame.left)*frame.density),y=Math.floor((point.y-p.y-frame.top+surfaceHeight(item,viewItems,definitions)-floorHeight(item.x,item.z)-(item.supportId?definitions.get(item.type).tableOffsetY??0:0))*frame.density);
       return x>=0&&y>=0&&x<frame.canvas.width&&y<frame.canvas.height&&frame.pixels[(y*frame.canvas.width+x)*4+3]>40;
     });
   }
@@ -243,7 +255,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     const table=hit?.supportId?items.find(i=>i.id===hit.supportId):hit;
     if(!table||table.id===pending.id||definitions.get(table.type).category!=='Tables')return {...cell};
     const p=worldPoint(table.x,table.z),height=definitions.get(table.type).surfaceHeight;
-    const dx=point.x-p.x,dy=point.y+height-p.y;
+    const dx=point.x-p.x,dy=point.y+height-p.y-floorHeight(table.x,table.z);
     const cells=footprint(table,definitions.get(table.type));
     const x=Math.max(table.x,Math.min(Math.max(...cells.map(c=>c[0])),table.x+Math.floor(dx/64+dy/32)));
     const z=Math.max(table.z,Math.min(Math.max(...cells.map(c=>c[1])),table.z+Math.floor(dy/32-dx/64)));

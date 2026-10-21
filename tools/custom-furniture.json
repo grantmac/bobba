@@ -1,5 +1,290 @@
 [
   {
+    "id": "custom_dj_decks",
+    "name": "DJ Decks",
+    "category": "Decor",
+    "width": 2,
+    "depth": 1,
+    "surfaceHeight": 0,
+    "icon": "custom_dj_decks_icon.png",
+    "parts": [
+      {
+        "file": "custom_dj-decks-on-000-3frames.png",
+        "layer": "a",
+        "direction": 2,
+        "reg": {
+          "x": 32,
+          "y": 32
+        },
+        "width": 96,
+        "height": 64,
+        "z": 0,
+        "alphaPrepared": true,
+        "frames": [
+          {
+            "x": 0,
+            "y": 0,
+            "width": 724,
+            "height": 724
+          },
+          {
+            "x": 724,
+            "y": 0,
+            "width": 724,
+            "height": 724
+          },
+          {
+            "x": 1448,
+            "y": 0,
+            "width": 724,
+            "height": 724
+          }
+        ]
+      },
+      {
+        "file": "custom_dj-decks-on-090-3frames.png",
+        "layer": "a",
+        "direction": 4,
+        "reg": {
+          "x": 0,
+          "y": 32
+        },
+        "width": 96,
+        "height": 64,
+        "z": 0,
+        "alphaPrepared": true,
+        "frames": [
+          {
+            "x": 0,
+            "y": 0,
+            "width": 724,
+            "height": 724
+          },
+          {
+            "x": 0,
+            "y": 724,
+            "width": 724,
+            "height": 724
+          },
+          {
+            "x": 0,
+            "y": 1448,
+            "width": 724,
+            "height": 724
+          }
+        ]
+      },
+      {
+        "file": "custom_dj-decks-on-180-3frames.png",
+        "layer": "a",
+        "direction": 6,
+        "reg": {
+          "x": 32,
+          "y": 32
+        },
+        "width": 96,
+        "height": 64,
+        "z": 0,
+        "alphaPrepared": true,
+        "frames": [
+          {
+            "x": 0,
+            "y": 0,
+            "width": 724,
+            "height": 724
+          },
+          {
+            "x": 0,
+            "y": 724,
+            "width": 724,
+            "height": 724
+          },
+          {
+            "x": 0,
+            "y": 1448,
+            "width": 724,
+            "height": 724
+          }
+        ]
+      },
+      {
+        "file": "custom_dj-decks-on-270-3frames.png",
+        "layer": "a",
+        "direction": 0,
+        "reg": {
+          "x": 0,
+          "y": 32
+        },
+        "width": 96,
+        "height": 64,
+        "z": 0,
+        "alphaPrepared": true,
+        "frames": [
+          {
+            "x": 0,
+            "y": 0,
+            "width": 724,
+            "height": 724
+          },
+          {
+            "x": 0,
+            "y": 724,
+            "width": 724,
+            "height": 724
+          },
+          {
+            "x": 0,
+            "y": 1448,
+            "width": 724,
+            "height": 724
+          }
+        ]
+      }
+    ],
+    "views": [
+      {
+        "direction": 2,
+        "source": 2,
+        "mirror": false
+      },
+      {
+        "direction": 4,
+        "source": 4,
+        "mirror": false
+      },
+      {
+        "direction": 6,
+        "source": 6,
+        "mirror": false
+      },
+      {
+        "direction": 0,
+        "source": 0,
+        "mirror": false
+      }
+    ],
+    "spriteDensity": 3,
+    "frameDuration": 150
+  },
+  {
+    "id": "custom_porsche",
+    "name": "Black Porsche 911",
+    "category": "Vehicles",
+    "width": 3,
+    "depth": 2,
+    "surfaceHeight": 0,
+    "icon": "custom_porsche.png",
+    "parts": [
+      {
+        "file": "custom_porsche.png",
+        "layer": "a",
+        "direction": 2,
+        "reg": {
+          "x": 64,
+          "y": 36
+        },
+        "width": 160,
+        "height": 100,
+        "z": 0,
+        "alphaPrepared": true,
+        "frames": [
+          {
+            "x": 0,
+            "y": 0,
+            "width": 768,
+            "height": 528
+          }
+        ]
+      },
+      {
+        "file": "custom_porsche.png",
+        "layer": "a",
+        "direction": 4,
+        "reg": {
+          "x": 32,
+          "y": 36
+        },
+        "width": 160,
+        "height": 100,
+        "z": 0,
+        "alphaPrepared": true,
+        "frames": [
+          {
+            "x": 768,
+            "y": 0,
+            "width": 768,
+            "height": 528
+          }
+        ]
+      },
+      {
+        "file": "custom_porsche.png",
+        "layer": "a",
+        "direction": 6,
+        "reg": {
+          "x": 64,
+          "y": 36
+        },
+        "width": 160,
+        "height": 100,
+        "z": 0,
+        "alphaPrepared": true,
+        "frames": [
+          {
+            "x": 0,
+            "y": 528,
+            "width": 768,
+            "height": 496
+          }
+        ]
+      },
+      {
+        "file": "custom_porsche.png",
+        "layer": "a",
+        "direction": 0,
+        "reg": {
+          "x": 32,
+          "y": 36
+        },
+        "width": 160,
+        "height": 100,
+        "z": 0,
+        "alphaPrepared": true,
+        "frames": [
+          {
+            "x": 768,
+            "y": 528,
+            "width": 768,
+            "height": 496
+          }
+        ]
+      }
+    ],
+    "views": [
+      {
+        "direction": 2,
+        "source": 2,
+        "mirror": false
+      },
+      {
+        "direction": 4,
+        "source": 4,
+        "mirror": false
+      },
+      {
+        "direction": 6,
+        "source": 6,
+        "mirror": false
+      },
+      {
+        "direction": 0,
+        "source": 0,
+        "mirror": false
+      }
+    ],
+    "spriteDensity": 3
+  },
+  {
     "id": "custom_macintosh",
     "name": "Original Macintosh",
     "category": "Decor",

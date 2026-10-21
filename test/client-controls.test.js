@@ -4,6 +4,42 @@ import {pinchView,installTouchNavigation} from '../src/touch-navigation.js';
 import {validateLook,validateFurniture,DEFAULT_ROOM} from '../convex/lib/rules.js';
 import catalog from '../public/assets/appearance/catalog.json';
 import furniture from '../public/assets/furniture/catalog.json';
+import {roomLayout,tileAtPoint,tileDrop,walkingDrop,DANCE_ROWS,STEP_DOWN} from '../shared/room-layout.js';
+import {shapes} from '../convex/lib/catalog.js';
+import {findPath,wallTileSet} from '../convex/lib/rules.js';
+import {wallExists} from '../shared/stickies.js';
+describe('lower dance floor',()=>{
+  it('adds five full-width rows without moving existing tiles, with connected paths in every shape',()=>{
+    expect(DANCE_ROWS).toBe(5);
+    for(const [shape,main] of Object.entries(shapes)){
+      const layout=roomLayout(main),room={options:{...DEFAULT_ROOM,shape},furniture:[]};
+      expect(layout.tiles.slice(0,main.length)).toEqual(main);
+      expect(layout.danceTiles).toHaveLength(layout.width*5);
+      const [x,z]=main[0];
+      const path=findPath(room,{x:x+.5,z:z+.5},{x:layout.width-1,z:layout.depth-1});
+      expect(path,shape).not.toBeNull();
+    }
+  });
+  it('picks tiles on both levels and smoothly moves avatars over the step',()=>{
+    const layout=roomLayout(shapes.square);
+    for(const [x,z] of layout.tiles){
+      const px=(x-z)*32,py=(x+z+1)*16+tileDrop(layout,x,z);
+      expect(tileAtPoint(layout,px,py,0)).toEqual({x,z});
+    }
+    expect(walkingDrop(layout,layout.danceStart-.5)).toBe(0);
+    expect(walkingDrop(layout,layout.danceStart)).toBe(STEP_DOWN/2);
+    expect(walkingDrop(layout,layout.danceStart+.5)).toBe(STEP_DOWN);
+  });
+  it('reserves occupied lower tiles and prevents furniture crossing the step',()=>{
+    const layout=roomLayout(shapes.square),room={options:DEFAULT_ROOM,furniture:[]};
+    expect(findPath(room,{x:1.5,z:1.5},{x:2,z:layout.danceStart},null,new Set([`2,${layout.danceStart}`]))).toBeNull();
+    const item={id:'dj',type:'custom_dj_decks',rotation:2,x:2,z:layout.danceStart};
+    expect(()=>validateFurniture([item],DEFAULT_ROOM)).not.toThrow();
+    expect(()=>validateFurniture([{...item,z:layout.danceStart-1}],DEFAULT_ROOM)).toThrow('straddle');
+    expect(wallExists({x:0,z:layout.danceStart,side:'left'},wallTileSet(DEFAULT_ROOM))).toBe(true);
+    expect(wallExists({x:2,z:layout.danceStart,side:'right'},wallTileSet(DEFAULT_ROOM))).toBe(false);
+  });
+});
 describe('visitor and touch controls',()=>{
   it('generates varied complete appearances accepted by the server',()=>{
     const seen=new Set();for(let i=0;i<100;i++){const look=randomAppearance(catalog);expect(()=>validateLook(look)).not.toThrow();seen.add(JSON.stringify(look));}expect(seen.size).toBeGreaterThan(90);

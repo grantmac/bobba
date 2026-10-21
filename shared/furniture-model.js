@@ -9,11 +9,12 @@ export function surfaceHeight(item,items,definitions){
   const table=items.find(other=>other.id===item.supportId);
   return table?definitions.get(table.type)?.surfaceHeight??24:0;
 }
-export function canPlace(item,items,definitions,isTile,avatar){
+export function canPlace(item,items,definitions,isTile,avatar,floorHeight=()=>0){
   const def=definitions.get(item.type);
   if(!def||!isPlaced(item))return false;
   const cells=footprint(item,def);
   if(cells.some(([x,z])=>!isTile(x,z)))return false;
+  if(new Set(cells.map(([x,z])=>floorHeight(x,z))).size>1)return false;
   if(item.supportId){
     const table=items.find(other=>other.id===item.supportId);
     if(!canStack(def)||!table||table.id===item.id||table.supportId||!isPlaced(table)||definitions.get(table.type)?.category!=='Tables')return false;
@@ -37,8 +38,9 @@ export function restoreItems(value,definitions){
     if(!definitions.get(item.type).views.some(v=>v.direction===item.rotation))return false;
     if(!(item.x===null&&item.z===null)&&!(isPlaced(item)&&item.x>=0&&item.z>=0&&item.x<100&&item.z<100))return false;
     if(item.supportId!==undefined&&(typeof item.supportId!=='string'||!isPlaced(item)))return false;
+    if(item.on!==undefined&&(typeof item.on!=='boolean'||item.type!=='custom_dj_decks'))return false;
     seen.add(item.id);return true;
-  }).map(({id,type,rotation,x,z,supportId})=>({id,type,rotation,x,z,...(supportId?{supportId}:{})}));
+  }).map(({id,type,rotation,x,z,supportId,on})=>({id,type,rotation,x,z,...(supportId?{supportId}:{}),...(on!==undefined?{on}:{})}));
 }
 // Carry a table's contents through the same translation and quarter-turns.
 export function moveWithContents(items,replacement,definitions){

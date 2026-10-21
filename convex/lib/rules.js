@@ -2,6 +2,7 @@ import {ConvexError} from 'convex/values';
 import {choices as appearanceChoices,colors as appearanceColors} from './appearance.js';
 import {shapes,wallColors,floorColors,furniture} from './catalog.js';
 import {canPlace} from '../../shared/furniture-model.js';
+import {roomLayout,tileDrop} from '../../shared/room-layout.js';
 export const DEFAULT_ROOM={shape:'square',wall:'plain',wallColor:'#dcded4',floor:'wood',floorColor:'#f7de9c',window:true};
 const COLORS=['#624631','#302525','#ad7443','#d5ad60','#eee0b2','#f2eeee','#42454c','#b34c43','#d77998','#d77998','#78578d','#536ea5','#72a6b0','#6b8c64','#9eae6a','#bd8e55','#55677e'];
 const SKIN=['#f5d9bd','#e8b18a','#cf936e','#b87952','#925f42','#704734','#50362a','#f0c8a4'];
@@ -27,19 +28,23 @@ export function cells(item){
   const def=furniture[item.type],swap=item.rotation%4===2,w=swap?def.depth:def.width,d=swap?def.width:def.depth;
   return Array.from({length:w*d},(_,i)=>[item.x+i%w,item.z+Math.floor(i/w)]);
 }
-export function tileSet(options){return new Set(shapes[options.shape].map(t=>t.join(',')));}
+export const layoutFor=options=>roomLayout(shapes[options.shape]);
+export function wallTileSet(options){return tileSet(options);}
+export function tileSet(options){return new Set(layoutFor(options).tiles.map(t=>t.join(',')));}
 export function blocked(room,x,z,ignore=null){
   return room.furniture.some(i=>i.id!==ignore&&isPlaced(i)&&furniture[i.type].category!=='Rugs'&&cells(i).some(([a,b])=>a===x&&b===z));
 }
 export function validateFurniture(items,options){
   if(items.length>200)fail('The room can hold up to 200 pieces.');
-  const ids=new Set(),occupied=new Set(),rugs=new Set(),tiles=tileSet(options);
+  const ids=new Set(),occupied=new Set(),rugs=new Set(),tiles=tileSet(options),layout=layoutFor(options);
   for(const item of items){
-    if(!item||Object.keys(item).some(key=>!['id','type','rotation','x','z','supportId'].includes(key))||!['id','type','rotation','x','z'].every(key=>Object.hasOwn(item,key))||typeof item.id!=='string'||!/^[-a-zA-Z0-9]{1,80}$/.test(item.id)||ids.has(item.id))fail('Invalid furniture.');
+    if(!item||Object.keys(item).some(key=>!['id','type','rotation','x','z','supportId','on'].includes(key))||!['id','type','rotation','x','z'].every(key=>Object.hasOwn(item,key))||typeof item.id!=='string'||!/^[-a-zA-Z0-9]{1,80}$/.test(item.id)||ids.has(item.id))fail('Invalid furniture.');
+    if(item.on!==undefined&&(typeof item.on!=='boolean'||item.type!=='custom_dj_decks'))fail('Invalid furniture power setting.');
     ids.add(item.id);const def=furniture[item.type];
     if(!def||!def.views.some(v=>v.direction===item.rotation))fail('Invalid furniture type or rotation.');
     if(item.x===null&&item.z===null){if(item.supportId!==undefined)fail('Inventory items cannot be on a table.');continue;}
     if(!isPlaced(item))fail('Invalid furniture position.');
+    if(new Set(cells(item).map(([x,z])=>tileDrop(layout,x,z))).size>1)fail('Furniture cannot straddle the step.');
     if(item.supportId!==undefined){if(typeof item.supportId!=='string'||!item.supportId)fail('Invalid furniture support.');continue;}
     const target=def.category==='Rugs'?rugs:occupied;
     for(const cell of cells(item)){const key=cell.join(',');if(!tiles.has(key)||target.has(key))fail('Furniture must fit in a free floor space.');target.add(key);}
@@ -75,7 +80,7 @@ export function playerTiles(players,now,exclude=null){
   return result;
 }
 export function freePosition(room,preferred={x:3.5,z:4.5},occupied=new Set()){
-  const free=shapes[room.options.shape].filter(([x,z])=>!blocked(room,x,z)&&!occupied.has(`${x},${z}`));
+  const free=layoutFor(room.options).tiles.filter(([x,z])=>!blocked(room,x,z)&&!occupied.has(`${x},${z}`));
   if(!free.length)fail('There is no free space for another character.');
   free.sort((a,b)=>Math.hypot(a[0]+.5-preferred.x,a[1]+.5-preferred.z)-Math.hypot(b[0]+.5-preferred.x,b[1]+.5-preferred.z));
   return {x:free[0][0]+.5,z:free[0][1]+.5};

@@ -16,22 +16,22 @@ export function createMultiplayer(){
   const connectionId=randomToken();
   const depart=()=>{if(token&&me)navigator.sendBeacon(import.meta.env.VITE_CONVEX_SITE_URL+'/disconnect',JSON.stringify({token,connectionId}));};
   window.addEventListener('pagehide',depart);
-  window.addEventListener('pageshow',event=>{if(event.persisted&&me)mutate('heartbeat',{connectionId}).catch(()=>{});});
+  window.addEventListener('pageshow',event=>{if(event.persisted&&me)mutate('heartbeat',{connectionId,pageOrigin:location.origin}).catch(()=>{});});
   return {
     get adminEntry(){return !!entryCode;},get me(){return me;},get state(){return state;},now:()=>Date.now()+offset,
     async resume(){if(entryCode||!token)return null;try{me=await client.query(api.room.me,{token});return me;}catch(error){if(error?.data){token='';try{localStorage.removeItem(KEY);}catch{}return null;}throw new Error('The room server could not be reached. Please try again.');}},
     async entryAppearance(){if(!entryCode)return null;try{return await client.query(api.room.entryAppearance,{entryCode});}catch(error){throw new Error(errorMessage(error));}},
     async join(name,look,{appearanceChanged=false}={}){
       if(!token||entryCode)token=randomToken();
-      try{me=await client.mutation(api.room.join,{token,name,look,...(entryCode?{entryCode,replaceLook:appearanceChanged}:{})});}catch(error){throw new Error(errorMessage(error));}
+      try{me=await client.mutation(api.room.join,{token,name,look,pageOrigin:location.origin,...(entryCode?{entryCode,replaceLook:appearanceChanged}:{})});}catch(error){throw new Error(errorMessage(error));}
       entryCode='';try{localStorage.setItem(KEY,token);}catch{}return me;
     },
     loadPreview:()=>client.query(api.room.preview,{}),
     preview(onState,onError){return client.onUpdate(api.room.preview,{},value=>{offset=value.serverTime-Date.now();onState(value);},error=>onError(errorMessage(error)));},
     async watch(onState,onError){
-      try{await mutate('heartbeat',{connectionId});}catch(error){onError(error.message);return;}
+      try{await mutate('heartbeat',{connectionId,pageOrigin:location.origin});}catch(error){onError(error.message);return;}
       unsubscribe?.();unsubscribe=client.onUpdate(api.room.state,{token},value=>{state=value;me=value.me;offset=value.serverTime-Date.now();onState(value);},error=>onError(errorMessage(error)));
-      clearInterval(heartbeat);heartbeat=setInterval(()=>mutate('heartbeat',{connectionId}).catch(error=>onError(error.message)),15000);
+      clearInterval(heartbeat);heartbeat=setInterval(()=>mutate('heartbeat',{connectionId,pageOrigin:location.origin}).catch(error=>onError(error.message)),15000);
     },
     appearance:look=>mutate('appearance',{look}),
     async voiceCredentials(){try{return await client.action(api.voice.connect,{token});}catch(error){throw new Error(errorMessage(error));}},
@@ -40,6 +40,7 @@ export function createMultiplayer(){
     chat:(body,mode)=>mutate('chat',{body,mode}),
     furniture:items=>mutate('setFurniture',{items,revision:state.room.revision}),
     options:options=>mutate('setOptions',{options,revision:state.room.revision}),
+    danceFloor:on=>mutate('setDanceFloor',{on}),
     createSticky:(id,position,poster)=>mutate('createSticky',{id,position,...(poster?{poster}:{})}),
     editSticky:note=>mutate('editSticky',note),
     appendSticky:(id,text)=>mutate('appendSticky',{id,text}),

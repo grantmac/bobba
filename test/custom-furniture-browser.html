@@ -1,0 +1,27 @@
+<!doctype html><meta charset="utf-8"><title>Custom furniture verification</title>
+<style>body{background:#363b41;color:white;font:14px Verdana;margin:24px}.views{display:flex;gap:18px;flex-wrap:wrap}canvas{background:#aaa98f;width:320px;height:240px}section,dialog{display:none}</style>
+<h1>Custom furniture · four rotations</h1><p id="result">Loading…</p><div id="views"></div>
+<script type="module">
+import {createFurniture} from '/src/furniture.js';
+import {prepareImage} from '/src/sprite-image.js';
+const animations=[];
+for(const type of ['custom_dj_decks','custom_porsche']){
+ const heading=document.createElement('h2');heading.textContent=type==='custom_dj_decks'?'DJ Decks':'Black Porsche 911';document.querySelector('#views').append(heading);
+ const row=document.createElement('div');row.className='views';document.querySelector('#views').append(row);
+ for(const rotation of [0,2,4,6]){
+  const visuals=[],card=document.createElement('div'),label=document.createElement('p'),canvas=document.createElement('canvas');canvas.width=320;canvas.height=240;label.textContent=`Rotation ${rotation}`;card.append(label,canvas);row.append(card);
+  const furniture=await createFurniture({prepareImage,initialItems:[{id:type,type,rotation,x:0,z:0}],worldPoint:(x,z)=>({x:(x-z)*32,y:(x+z)*16}),isTile:()=>true,getAvatar:()=>({x:9,z:9}),stopWalking(){},onChanged(){},onSit(){},focusRoom(){},markTiles(){},makeVisual(canvas){const mesh={canvas,material:{map:{}}};visuals.push(mesh);return mesh;},disposeVisual(mesh){visuals.splice(visuals.indexOf(mesh),1);},positionVisual(mesh,x,y,w,h,order){Object.assign(mesh,{x,y,w,h,renderOrder:order});}});
+  const ctx=canvas.getContext('2d');
+  const draw=now=>{furniture.animate(now);ctx.clearRect(0,0,320,240);for(const v of visuals)ctx.drawImage(v.canvas,v.x*1.5+160,v.y*1.5+55,v.w*1.5,v.h*1.5);};
+  draw(0);const first=canvas.toDataURL();draw(150);if(type==='custom_dj_decks'&&canvas.toDataURL()===first)throw Error('DJ frames did not animate');
+  if(type==='custom_dj_decks'){
+    furniture.receive([{id:type,type,rotation,x:0,z:0,on:false}]);draw(0);const stopped=canvas.toDataURL();draw(150);if(canvas.toDataURL()!==stopped)throw Error('Off decks still animate');
+    furniture.receive([{id:type,type,rotation,x:0,z:0,on:true}]);draw(0);const restarted=canvas.toDataURL();draw(150);if(canvas.toDataURL()===restarted)throw Error('Decks did not restart');
+  }
+  if(visuals.length!==1||furniture.getItems().length!==1)throw Error('Missing custom item');
+  animations.push(draw);
+ }
+}
+document.querySelector('#result').textContent='PASS: four rotations, animated DJ sprites, and saved on/off playback.';
+function animate(now){animations.forEach(draw=>draw(now));requestAnimationFrame(animate);}requestAnimationFrame(animate);
+</script>

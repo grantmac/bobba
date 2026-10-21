@@ -1,6 +1,6 @@
 import {mutation,query,internalMutation,internalQuery} from './_generated/server.js';
 import {v} from 'convex/values';
-import {DEFAULT_ROOM,fail,validName,validateLook,validateRoom,validateFurniture,tileSet,isPlaced,cells,blocked,atTime,freePosition,findPath,playerTiles} from './lib/rules.js';
+import {DEFAULT_ROOM,fail,validName,validateLook,validateRoom,validateFurniture,tileSet,wallTileSet,isPlaced,cells,blocked,atTime,freePosition,findPath,playerTiles} from './lib/rules.js';
 import {internal} from './_generated/api.js';
 import {furniture} from './lib/catalog.js';
 import {STICKY_COLORS,STICKY_LIMIT,STICKY_TEXT_LIMIT,validWallPosition,validPosterPosition,relocateStickies} from '../shared/stickies.js';
@@ -17,7 +17,8 @@ async function playerFor(ctx,token,admin=false){
   if(admin&&player.role!=='admin')fail('Only Grant can edit the room.');
   return player;
 }
-async function notifyArrival(ctx,player,now){
+async function notifyArrival(ctx,player,now,pageOrigin){
+  if(!['https://chat.grantm.ac','https://habbo-room.vercel.app'].includes(pageOrigin))return;
   if(player.role==='admin'||!process.env.NTFY_TOPIC||(player.lastJoinAlertAt!==undefined&&now-player.lastJoinAlertAt<60000))return;
   await ctx.db.patch(player._id,{lastJoinAlertAt:now});
   await ctx.scheduler.runAfter(0,internal.notifications.roomJoin,{name:player.name});
@@ -32,7 +33,7 @@ export const entryAppearance=query({args:{entryCode:v.string()},handler:async(ct
   const player=await ctx.db.query('players').withIndex('by_name',q=>q.eq('nameKey','grant')).unique();
   return player?.look??null;
 }});
-export const join=mutation({args:{token:v.string(),name:v.string(),look:v.any(),entryCode:v.optional(v.string()),replaceLook:v.optional(v.boolean())},handler:async(ctx,args)=>{
+export const join=mutation({args:{token:v.string(),name:v.string(),look:v.any(),entryCode:v.optional(v.string()),replaceLook:v.optional(v.boolean()),pageOrigin:v.optional(v.string())},handler:async(ctx,args)=>{
   validToken(args.token);validateLook(args.look);const named=validName(args.name),digest=await hash(args.token);
   const oldSession=await ctx.db.query('sessions').withIndex('by_token',q=>q.eq('tokenHash',digest)).unique();
   if(oldSession){const p=await playerFor(ctx,args.token);if(p.name.toLowerCase()!==named.key)fail('Please start a new session.');return publicPlayer(p);}
@@ -59,14 +60,14 @@ export const join=mutation({args:{token:v.string(),name:v.string(),look:v.any(),
   }else playerId=await ctx.db.insert('players',{name:admin?'Grant':named.name,nameKey:key,role:admin?'admin':'guest',look:args.look,route:[position],startedAt:now,direction:2,seatId:null,lastSeen:now,lastChat:0});
   await ctx.db.insert('sessions',{tokenHash:digest,playerId,expiresAt:now+(admin?ADMIN_AGE:SESSION_AGE)});
   const joined=await ctx.db.get(playerId);
-  await notifyArrival(ctx,joined,now);
+  await notifyArrival(ctx,joined,now,args.pageOrigin);
   return publicPlayer(joined);
 }});
 // Public visitors can watch the shared room before choosing a character.
 export const preview=query({args:{},handler:async ctx=>{
   const room=await getRoom(ctx),now=Date.now();
   const players=await ctx.db.query('players').withIndex('by_seen',q=>q.gt('lastSeen',now-45000)).take(50);
-  return {serverTime:now,room:{options:room?.options??DEFAULT_ROOM,furniture:room?.furniture.filter(isPlaced)??[],stickies:room?.stickies??[]},players:players.map(publicPlayer)};
+  return {serverTime:now,room:{danceFloorOn:room?.danceFloorOn??true,options:room?.options??DEFAULT_ROOM,furniture:room?.furniture.filter(isPlaced)??[],stickies:room?.stickies??[]},players:players.map(publicPlayer)};
 }});
 export const me=query({args:{token:v.string()},handler:async(ctx,{token})=>publicPlayer(await playerFor(ctx,token))});
 export const voiceIdentity=internalQuery({args:{token:v.string()},handler:async(ctx,{token})=>{
@@ -79,9 +80,9 @@ export const state=query({args:{token:v.string()},handler:async(ctx,{token})=>{
   const players=await ctx.db.query('players').withIndex('by_seen',q=>q.gt('lastSeen',now-45000)).take(50);
   if(!players.some(p=>p._id===me._id))players.push(me);
   const messages=await ctx.db.query('messages').withIndex('by_time').order('desc').take(30);
-  return {serverTime:now,me:publicPlayer(me),players:players.map(publicPlayer),room:{options:room.options,revision:room.revision,furniture:room.furniture.filter(i=>me.role==='admin'||isPlaced(i)),stickies:room.stickies??[]},messages:messages.reverse().map(({_id,name,color,body,mode,x,z,sentAt,playerId})=>({id:_id,name,color,body,mode,x,z,sentAt,playerId}))};
+  return {serverTime:now,me:publicPlayer(me),players:players.map(publicPlayer),room:{danceFloorOn:room.danceFloorOn??true,options:room.options,revision:room.revision,furniture:room.furniture.filter(i=>me.role==='admin'||isPlaced(i)),stickies:room.stickies??[]},messages:messages.reverse().map(({_id,name,color,body,mode,x,z,sentAt,playerId})=>({id:_id,name,color,body,mode,x,z,sentAt,playerId}))};
 }});
-export const heartbeat=mutation({args:{token:v.string(),connectionId:v.string()},handler:async(ctx,{token,connectionId})=>{
+export const heartbeat=mutation({args:{token:v.string(),connectionId:v.string(),pageOrigin:v.optional(v.string())},handler:async(ctx,{token,connectionId,pageOrigin})=>{
   const p=await playerFor(ctx,token),now=Date.now();
   if(!/^[a-f0-9]{64}$/.test(connectionId))fail('Invalid connection.');
   const old=await ctx.db.query('connections').withIndex('by_connection',q=>q.eq('connectionId',connectionId)).unique();
@@ -90,7 +91,7 @@ export const heartbeat=mutation({args:{token:v.string(),connectionId:v.string()}
   else await ctx.db.insert('connections',{connectionId,playerId:p._id,tokenHash:await hash(token),lastSeen:now});
   let positionUpdate={};
   if(p.lastSeen<=now-45000){
-    await notifyArrival(ctx,p,now);
+    await notifyArrival(ctx,p,now,pageOrigin);
     const room=await getRoom(ctx),online=await ctx.db.query('players').withIndex('by_seen',q=>q.gt('lastSeen',now-45000)).take(50);
     positionUpdate={route:[freePosition(room,atTime(p,now),playerTiles(online,now,p._id))],startedAt:now,seatId:null};
   }
@@ -131,7 +132,7 @@ export const move=mutation({args:{token:v.string(),x:v.number(),z:v.number(),sea
   if(!route)fail('That tile cannot be reached.');
   const a=route.at(-2),b=route.at(-1),dx=a?b.x-a.x:0,dz=a?b.z-a.z:0;
   const direction=seat?.rotation??(dx||dz?(Math.abs(dx)>Math.abs(dz)?(dx>0?2:6):(dz>0?4:0)):p.direction);
-  await ctx.db.patch(p._id,{route,startedAt:now,seatId:seat?.id??null,direction,lastSeen:now,action:null});
+  await ctx.db.patch(p._id,{route,startedAt:now,seatId:seat?.id??null,direction,lastSeen:now,action:!seat&&p.action==='dance'?'dance':null});
   return {route,startedAt:now,seatId:seat?.id??null,direction};
 }});
 export const gesture=mutation({args:{token:v.string(),action:v.union(v.literal('wave'),v.literal('dance'))},handler:async(ctx,{token,action})=>{
@@ -160,7 +161,14 @@ export const setFurniture=mutation({args:{token:v.string(),items:v.array(v.any()
   await playerFor(ctx,token,true);const room=await getRoom(ctx);
   if(room.revision!==revision)fail('The room changed. Please try that edit again.');
   validateFurniture(items,room.options);const next={...room,furniture:items};freePosition(next);
-  await ctx.db.patch(room._id,{furniture:items,revision:revision+1});await resetPlayers(ctx,next);
+  const placement=value=>JSON.stringify(value.map(({on,...item})=>item));
+  const changedPlacement=placement(items)!==placement(room.furniture);
+  await ctx.db.patch(room._id,{furniture:items,revision:revision+1});
+  if(changedPlacement)await resetPlayers(ctx,next);
+}});
+export const setDanceFloor=mutation({args:{token:v.string(),on:v.boolean()},handler:async(ctx,{token,on})=>{
+  await playerFor(ctx,token,true);const room=await getRoom(ctx);
+  await ctx.db.patch(room._id,{danceFloorOn:on});
 }});
 export const setOptions=mutation({args:{token:v.string(),options:v.any(),revision:v.number()},handler:async(ctx,{token,options,revision})=>{
   await playerFor(ctx,token,true);const room=await getRoom(ctx);
@@ -171,7 +179,7 @@ export const setOptions=mutation({args:{token:v.string(),options:v.any(),revisio
   }
   validateFurniture(items,options);
   const next={...room,options,furniture:items};freePosition(next);
-  await ctx.db.patch(room._id,{options,furniture:items,stickies:relocateStickies(room.stickies??[],tiles),revision:revision+1});await resetPlayers(ctx,next);
+  await ctx.db.patch(room._id,{options,furniture:items,stickies:relocateStickies(room.stickies??[],wallTileSet(options)),revision:revision+1});await resetPlayers(ctx,next);
 }});
 const wallPosition=v.object({x:v.number(),z:v.number(),side:v.union(v.literal('left'),v.literal('right')),u:v.number(),height:v.number()});
 function stickyText(text){if(text.length>STICKY_TEXT_LIMIT||/[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(text))fail('Notes can contain up to 2,000 characters.');}
@@ -180,7 +188,7 @@ export const createSticky=mutation({args:{token:v.string(),id:v.string(),positio
   if(!/^[a-f0-9-]{36}$/.test(id))fail('Invalid note.');
   if(notes.some(n=>n.id===id))return;
   if(notes.length>=STICKY_LIMIT)fail('The room has reached its 100-note limit.');
-  if(!(poster?validPosterPosition:validWallPosition)(position,tileSet(room.options)))fail('Place the item on a continuous section of wall.');
+  if(!(poster?validPosterPosition:validWallPosition)(position,wallTileSet(room.options)))fail('Place the item on a continuous section of wall.');
   await ctx.db.patch(room._id,{stickies:[...notes,{id,...position,text:'',color:STICKY_COLORS[0],revision:0,...(poster?{poster}:{})}]});
 }});
 export const editSticky=mutation({args:{token:v.string(),id:v.string(),revision:v.number(),text:v.string(),color:v.string(),position:v.optional(wallPosition)},handler:async(ctx,args)=>{
@@ -189,7 +197,7 @@ export const editSticky=mutation({args:{token:v.string(),id:v.string(),revision:
   if(note.revision!==args.revision)fail('This note changed. Close without saving and reopen it to see the latest text.');
   if(note.poster&&(args.text!==''||args.color!==note.color))fail('Poster artwork cannot be edited.');
   stickyText(args.text);if(!STICKY_COLORS.includes(args.color))fail('Invalid note colour.');
-  if(args.position&&!(note.poster?validPosterPosition:validWallPosition)(args.position,tileSet(room.options)))fail('Place the item on a continuous section of wall.');
+  if(args.position&&!(note.poster?validPosterPosition:validWallPosition)(args.position,wallTileSet(room.options)))fail('Place the item on a continuous section of wall.');
   await ctx.db.patch(room._id,{stickies:notes.map(n=>n.id===note.id?{...n,...args.position,text:args.text,color:args.color,revision:n.revision+1}:n)});
 }});
 export const appendSticky=mutation({args:{token:v.string(),id:v.string(),text:v.string()},handler:async(ctx,{token,id,text})=>{

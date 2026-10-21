@@ -15,6 +15,42 @@ afterEach(()=>vi.unstubAllEnvs());
 const guest=()=>t.mutation(api.room.join,{token,name:'Visitor',look});
 const admin=()=>t.mutation(api.room.join,{token:adminToken,name:'Grant',look,entryCode:secret});
 describe('room access and persistence',()=>{
+  it('restricts floor and DJ power to Grant and shares saved settings with visitors',async()=>{
+    await admin();await guest();
+    expect((await t.query(api.room.preview,{})).room.danceFloorOn).toBe(true);
+    await expect(t.mutation(api.room.setDanceFloor,{token,on:false})).rejects.toThrow('Only Grant');
+    await t.mutation(api.room.setDanceFloor,{token:adminToken,on:false});
+    expect((await t.query(api.room.state,{token})).room.danceFloorOn).toBe(false);
+    expect((await t.query(api.room.preview,{})).room.danceFloorOn).toBe(false);
+    const items=[{id:'decks',type:'custom_dj_decks',rotation:2,x:0,z:0,on:false}];
+    await t.mutation(api.room.setFurniture,{token:adminToken,items,revision:0});
+    expect((await t.query(api.room.state,{token})).room.furniture[0].on).toBe(false);
+    await expect(t.mutation(api.room.setFurniture,{token,items:[{...items[0],on:true}],revision:1})).rejects.toThrow('Only Grant');
+    await t.mutation(api.room.gesture,{token,action:'dance'});
+    await t.mutation(api.room.setFurniture,{token:adminToken,items:[{...items[0],on:true}],revision:1});
+    expect((await t.query(api.room.preview,{})).room.furniture[0].on).toBe(true);
+    expect((await t.query(api.room.me,{token})).action).toBe('dance');
+  });
+  it('keeps dancing across walking routes but stops when sitting',async()=>{
+    await admin();await guest();
+    await t.mutation(api.room.setFurniture,{token:adminToken,items:[{id:'seat',type:'small_chair_armas',rotation:0,x:1,z:1}],revision:0});
+    await t.mutation(api.room.gesture,{token,action:'dance'});
+    for(const [x,z] of [[7,7],[6,8]]){
+      await t.mutation(api.room.move,{token,x,z});
+      expect((await t.query(api.room.me,{token})).action).toBe('dance');
+    }
+    await t.mutation(api.room.move,{token,x:1,z:1,seatId:'seat'});
+    expect((await t.query(api.room.me,{token})).action).toBe(null);
+  });
+  it('saves and reloads both custom furniture items in every rotation',async()=>{
+    await admin();
+    let revision=0;
+    for(const rotation of [0,2,4,6]){
+      const items=[{id:'decks',type:'custom_dj_decks',rotation,x:0,z:0},{id:'car',type:'custom_porsche',rotation,x:4,z:0}];
+      await t.mutation(api.room.setFurniture,{token:adminToken,items,revision:revision++});
+      expect((await t.query(api.room.state,{token:adminToken})).room.furniture).toEqual(items);
+    }
+  });
   it('reserves Grant including case, whitespace and Unicode variants',async()=>{
     for(const name of ['Grant','GRANT',' grant ','Ｇｒａｎｔ'])await expect(t.mutation(api.room.join,{token,name,look})).rejects.toThrow('reserved');
   });
@@ -220,6 +256,7 @@ describe('wall posters',()=>{
 });
 
 describe('room join phone alerts',()=>{
+  const guest=()=>t.mutation(api.room.join,{token,name:'Visitor',look,pageOrigin:'https://chat.grantm.ac'});
   const entryLink='https://chat.grantm.ac/#grant=test-entry-only';
   beforeEach(()=>{vi.useFakeTimers();vi.stubEnv('NTFY_TOPIC','test-room-alerts');vi.stubEnv('GRANT_ENTRY_URL',entryLink);vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true}));});
   afterEach(()=>{vi.clearAllTimers();vi.useRealTimers();vi.unstubAllGlobals();});
@@ -229,7 +266,7 @@ describe('room join phone alerts',()=>{
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(fetch).toHaveBeenCalledWith('https://ntfy.sh/test-room-alerts',expect.objectContaining({body:'Visitor joined your room.',headers:expect.objectContaining({Click:entryLink})}));
     await guest();await admin();
-    await t.mutation(api.room.heartbeat,{token,connectionId:'d'.repeat(64)});await delivered();
+    await t.mutation(api.room.heartbeat,{token,pageOrigin:'https://chat.grantm.ac',connectionId:'d'.repeat(64)});await delivered();
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(await t.query(api.room.state,{token}))).not.toContain('lastJoinAlertAt');
     expect(JSON.stringify(await t.query(api.room.state,{token}))).not.toContain(entryLink);
@@ -238,11 +275,21 @@ describe('room join phone alerts',()=>{
   it('alerts for returning guests while suppressing rapid disconnect/reconnect duplicates',async()=>{
     const player=await guest();await delivered();
     await t.run(ctx=>ctx.db.patch(player.id,{lastSeen:0}));
-    await t.mutation(api.room.heartbeat,{token,connectionId:'d'.repeat(64)});await delivered();
+    await t.mutation(api.room.heartbeat,{token,pageOrigin:'https://chat.grantm.ac',connectionId:'d'.repeat(64)});await delivered();
     expect(fetch).toHaveBeenCalledTimes(1);
     await t.run(ctx=>ctx.db.patch(player.id,{lastSeen:0,lastJoinAlertAt:Date.now()-61000}));
-    await t.mutation(api.room.heartbeat,{token,connectionId:'e'.repeat(64)});await delivered();
+    await t.mutation(api.room.heartbeat,{token,pageOrigin:'https://chat.grantm.ac',connectionId:'e'.repeat(64)});await delivered();
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+  it('does not notify for localhost entry or returning local visitors',async()=>{
+    const player=await t.mutation(api.room.join,{token,name:'LocalVisitor',look,pageOrigin:'http://localhost:5175'});await delivered();
+    expect(fetch).not.toHaveBeenCalled();
+    await t.run(ctx=>ctx.db.patch(player.id,{lastSeen:0}));
+    await t.mutation(api.room.heartbeat,{token,connectionId:'d'.repeat(64),pageOrigin:'http://127.0.0.1:5175'});await delivered();
+    expect(fetch).not.toHaveBeenCalled();
+    await t.run(ctx=>ctx.db.patch(player.id,{lastSeen:0}));
+    await t.mutation(api.room.heartbeat,{token,connectionId:'e'.repeat(64),pageOrigin:'https://habbo-room.vercel.app'});await delivered();
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
   it('handles Unicode names and delivery failures without breaking entry',async()=>{
     const warning=vi.spyOn(console,'warn').mockImplementation(()=>{});

@@ -85,15 +85,21 @@ Tests cover server authorization, reserved names, session handling, all selectab
 
 ## Voice chat
 
+The room includes a five-row, full-width dance floor one step below the main floor. Grant can click its tiles to switch the lights on or off; this is saved and shared with everyone. Furniture cannot span the step. Dancing resumes after walking to another tile and stops when sitting.
+
+Custom catalogue items include animated DJ Decks (four rotations, tabletop placement and saved on/off state) and the Black Porsche 911 (four rotations, three-by-two footprint). Sprite sheets are split and trimmed in the renderer; their supplied artwork is preserved. DJ frames loop every 150 ms; source frames have slight geometry differences. Screen-pixel alignment and native display resolution keep the original pixel art crisp.
+
 Voice uses LiveKit Cloud while Convex continues to handle room state and identities. Set `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` on the existing Convex deployment, then publish with `npx convex dev --once`. Keep the API secret server-side; do not use a `VITE_` environment variable or commit credentials.
 
-The microphone button in the bottom bar opens the original blue window style. Guests see only this toolbar icon beside chat. Joining listens with the microphone off; enabling it explicitly requests browser permission. Visitors can mute another participant locally or leave. Speaking indicators follow the avatars only during detected speech and disappear during silence or muting. Voice disconnects when the page closes or the room session fails. Each player has one LiveKit identity, so joining voice in another tab replaces their previous voice connection. Connection attempts time out after 25 seconds; use Chrome if an embedded browser cannot connect.
+The microphone button in the bottom bar opens the original blue window style. Guests see only this toolbar icon beside chat. Clicking Join voice enables the microphone, requesting browser permission if needed. Visitors can mute another participant locally or leave. Speaking indicators follow the avatars only during detected speech and disappear during silence or muting. Voice disconnects when the page closes or the room session fails. Each player has one LiveKit identity, so joining voice in another tab replaces their previous voice connection. Connection attempts time out after 25 seconds; use Chrome if an embedded browser cannot connect.
 
 The backend issues five-minute tokens after validating a live room session. Tokens only allow subscribing and publishing microphone audio in `habbo-room`; they do not grant camera, screen sharing, data publishing, or room administration. The client SDK is loaded only when someone joins voice. No recording or transcription is configured.
 
 `test/voice-browser.html` verifies controls with simulated participants and no microphone capture. `test/voice-mobile-browser.html` embeds the same checks at phone width. Real audio delivery additionally requires the configured LiveKit project and two connected clients.
 
 ## Grant's desktop join alerts
+
+Join alerts are sent only for the deployed origins (`https://chat.grantm.ac` and `https://habbo-room.vercel.app`), including returning visitors. Localhost joins and reconnections stay silent. The client origin is a notification preference, not an authorization boundary.
 
 Room arrivals use the same private ntfy topic as phone alerts. On the desktop, subscribe to that topic in ntfy, allow browser notifications, and enable **Settings → Background notifications → Enabled for ntfy.sh**. This uses Web Push, so neither the room tab nor the ntfy tab needs to stay open. Chrome must still be running, and macOS must allow its notification banners. Reopen ntfy at least weekly to keep its background subscription active.
 

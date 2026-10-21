@@ -1,6 +1,6 @@
 export function createVoice({credentials,onState=()=>{},loadSDK=()=>import('livekit-client')}){
   const panel=document.createElement('section');panel.className='voice-panel';panel.hidden=true;panel.setAttribute('aria-label','Voice chat');
-  panel.innerHTML='<header><h1>Voice chat</h1><button type="button" class="appearance-close" aria-label="Close voice chat">×</button></header><div class="voice-body"><p class="voice-status" role="status">Join to listen. Your microphone starts off.</p><div class="voice-controls"><button type="button" data-voice="join">Join voice</button><button type="button" data-voice="mic" hidden>Turn mic on</button><button type="button" data-voice="audio" hidden>Enable sound</button><button type="button" data-voice="leave" hidden>Leave voice</button></div><ul aria-label="People in voice"></ul></div>';
+  panel.innerHTML='<header><h1>Voice chat</h1><button type="button" class="appearance-close" aria-label="Close voice chat">×</button></header><div class="voice-body"><p class="voice-status" role="status">Join to talk. Your microphone will turn on.</p><div class="voice-controls"><button type="button" data-voice="join">Join voice</button><button type="button" data-voice="mic" hidden>Turn mic on</button><button type="button" data-voice="audio" hidden>Enable sound</button><button type="button" data-voice="leave" hidden>Leave voice</button></div><ul aria-label="People in voice"></ul></div>';
   const audioRoot=document.createElement('div');audioRoot.hidden=true;document.body.append(panel,audioRoot);
   const button=kind=>panel.querySelector(`[data-voice="${kind}"]`),status=panel.querySelector('.voice-status');
   const rows=new Map(),muted=new Set(),markers=new Map(),audio=new Map();
@@ -10,7 +10,7 @@ export function createVoice({credentials,onState=()=>{},loadSDK=()=>import('live
     speaking.clear();participants.filter(p=>p.isMicrophoneEnabled).forEach(p=>speaking.add(p.identity));
     for(const [id,marker] of markers)if(!speaking.has(id)){marker.remove();markers.delete(id);}
     for(const id of speaking)if(!markers.has(id)){
-      const marker=document.createElement('span');marker.className='voice-speaking';marker.textContent='♫';marker.setAttribute('aria-hidden','true');document.body.append(marker);markers.set(id,marker);
+      const marker=document.createElement('span');marker.className='voice-speaking';marker.innerHTML='<i></i><i></i><i></i>';marker.setAttribute('aria-hidden','true');document.body.append(marker);markers.set(id,marker);
     }
     for(const [id,row] of rows)row.element.classList.toggle('is-speaking',speaking.has(id));
   }
@@ -22,7 +22,7 @@ export function createVoice({credentials,onState=()=>{},loadSDK=()=>import('live
     button('mic').textContent=microphone?'Mute mic':'Turn mic on';button('mic').setAttribute('aria-pressed',String(microphone));
     button('leave').hidden=phase==='idle';button('leave').textContent=phase==='connecting'?'Cancel':'Leave voice';
     button('audio').hidden=!connected||room?.canPlaybackAudio!==false;
-    status.textContent=message||(phase==='reconnecting'?'Reconnecting…':connected?(microphone?'Your microphone is on.':'Listening · microphone off.'):busy?'Connecting to voice…':'Join to listen. Your microphone starts off.');
+    status.textContent=message||(phase==='reconnecting'?'Reconnecting…':connected?(microphone?'Your microphone is on.':'Listening · microphone off.'):busy?'Connecting to voice…':'Join to talk. Your microphone will turn on.');
     const participants=room&&connected?[room.localParticipant,...room.remoteParticipants.values()]:[];
     const ids=new Set(participants.map(p=>p.identity));
     for(const [id,row] of rows)if(!ids.has(id)){row.element.remove();rows.delete(id);}
@@ -75,6 +75,8 @@ export function createVoice({credentials,onState=()=>{},loadSDK=()=>import('live
       await candidate.connect(access.url,access.token,{autoSubscribe:true});
       if(!current()){await candidate.disconnect();return;}
       clearTimeout(joinTimeout);joinTimeout=null;phase='connected';update();
+      await toggleMicrophone();
+      if(!current())return;
       try{await candidate.startAudio();}catch{/* The Enable sound button handles browser playback restrictions. */}
       if(current())update();
     }catch(error){
