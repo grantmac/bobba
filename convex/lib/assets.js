@@ -4,7 +4,7 @@
 import {furniture} from './catalog.js';
 import {isPlaced} from '../../shared/furniture-model.js';
 export const ASSET_CATEGORIES=['Decor','Tables','Seating','Rugs','Plants','Lighting','Wall'];
-export const ASSET_LIMIT_PER_PLAYER=50,PLACED_LIMIT_PER_PLAYER=40;
+export const ASSET_LIMIT_PER_PLAYER=50,PLACED_LIMIT_PER_PLAYER=80;
 export const assetType=asset=>`asset_${asset._id}`;
 // Where an avatar sits on a built seat: the builder names one tile (offsets within the footprint
 // as placed facing lower-right, rotation 2, where x runs across the depth and z along the width)
