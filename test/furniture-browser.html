@@ -7,7 +7,10 @@ import {prepareImage} from '/src/sprite-image.js';
 import {createAwayPoster} from '/src/away-poster.js';
 const poster=createAwayPoster();poster.style.width='102px';poster.style.height='174px';document.querySelector('#poster-preview').append(poster);
 const visuals=new Set(),results=document.querySelector('#results');let sitting=0;
+const catalogue=await (await fetch('/assets/furniture/catalog.json')).json(),duck=catalogue.find(def=>def.id==='duck');
+const built=Array.from({length:49},(_,i)=>({...duck,id:`asset_duck_${i}`,owner:'builder',name:i?`Built duck ${i}`:'Rubber duck'}));
 const furniture=await createFurniture({prepareImage,initialItems:[{id:'rug',type:'carpet_armas',rotation:0,x:1,z:1},{id:'chair',type:'small_chair_armas',rotation:0,x:4,z:4},{id:'cinema',type:'cine_bench',rotation:2,x:6,z:6},{id:'table',type:'small_table_armas',rotation:0,x:10,z:10}],
+ initialAssets:built,
  makeVisual(canvas){const mesh={canvas,material:{}};visuals.add(mesh);return mesh;},disposeVisual(mesh){visuals.delete(mesh);},positionVisual(mesh,x,y,w,h,order){Object.assign(mesh,{x,y,renderOrder:order});requestAnimationFrame(()=>{const ctx=document.querySelector('#stack-view').getContext('2d');ctx.clearRect(0,0,128,128);[...visuals].filter(v=>v.x>4900).sort((a,b)=>a.renderOrder-b.renderOrder).forEach(v=>ctx.drawImage(v.canvas,v.x-5000+45,v.y-5000+70));});},markTiles(){},worldPoint:(x,z)=>({x:x*500,y:z*500}),isTile:()=>true,getAvatar:()=>({x:0,z:0}),stopWalking(){},onChanged(){},onSit(){sitting++;},focusRoom(){}
 });
 function hit(index){const coordinate=[500,2000,3000,5000][index],v=[...visuals].find(v=>Math.abs(v.x-coordinate)<150),pixels=v.canvas.getContext('2d').getImageData(0,0,v.canvas.width,v.canvas.height).data;for(let i=3;i<pixels.length;i+=4)if(pixels[i]>40)return {x:v.x+((i-3)/4)%v.canvas.width,y:v.y+Math.floor((i-3)/4/v.canvas.width)};throw Error('Empty sprite');}
@@ -19,13 +22,14 @@ document.querySelector('#run').onclick=()=>{try{
  furniture.pointer(hit(1),{x:4,z:4},true);assert(sitting===1,'Visitor chair click must sit');
  assert(document.querySelector('.furniture-actions').hidden,'Visitor chair popup must be hidden');
  furniture.pointer(hit(2),{x:6,z:6},true);assert(sitting===2,'Recovered cinema bench must be seatable');
- furniture.connect({admin:true,onSave:async()=>{}});furniture.pointer(hit(1),{x:4,z:4},true);
+ furniture.connect({admin:true,me:'builder',onSave:async()=>{}});furniture.pointer(hit(1),{x:4,z:4},true);
  assert(!document.querySelector('.furniture-actions').hidden,'Admin editing popup must remain');
- furniture.open('Catalogue');assert(document.querySelectorAll('.furniture-card').length===48,'Catalogue must paginate');
- assert(document.querySelector('.furniture-pages').textContent.includes('1224'),'Full catalogue count missing');
+ furniture.open();assert(document.querySelectorAll('.furniture-card').length===48,'Built assets must paginate');
+ assert(document.querySelector('.furniture-pages').textContent.includes('49'),'Built asset count missing');
+ document.querySelector('[aria-label="Next furniture page"]').click();assert(document.querySelectorAll('.furniture-card').length===1,'Second page must contain the last asset');
  const search=document.querySelector('[aria-label="Search furniture"]');search.value='Rubber duck';search.dispatchEvent(new Event('input'));document.querySelector('[aria-label="Place Rubber duck"]').click();
- furniture.pointer(hit(3),{x:10,z:10},true);assert(furniture.getItems().some(i=>i.type==='duck'&&i.supportId==='table'),'Duck must be placed on the table');
- results.textContent='PASS: tabletop placement persists;  visitor furniture popup hidden; chairs and recovered benches sit; rug clicks reach floor; admin controls retained; 1,224 pieces with 48 per page.';
+ furniture.pointer(hit(3),{x:10,z:10},true);assert(furniture.getItems().some(i=>i.type==='asset_duck_0'&&i.supportId==='table'),'Built duck must be placed on the table');
+ results.textContent='PASS: tabletop placement persists; visitor furniture popup hidden; chairs and recovered benches sit; rug clicks reach floor; admin controls retained; 49 built assets with 48 per page.';
 }catch(error){results.textContent='FAIL: '+error.message;throw error;}};
 results.textContent='Ready';
 </script>

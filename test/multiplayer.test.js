@@ -136,7 +136,7 @@ describe('room access and persistence',()=>{
     await expect(t.mutation(api.room.setDeckPower,{token:otherToken,id:'decks',on:false})).rejects.toThrow();
     await expect(t.mutation(api.room.setDeckPower,{token,id:'missing',on:false})).rejects.toThrow();
     await t.mutation(api.room.setFurniture,{token:adminToken,items:[{...items[0],x:null,z:null},{id:'chair',type:'small_chair_armas',rotation:0,x:2,z:2}],revision:2});
-    for(const id of ['decks','chair'])await expect(t.mutation(api.room.setDeckPower,{token,id,on:true})).rejects.toThrow('Select decks');
+    for(const id of ['decks','chair'])await expect(t.mutation(api.room.setDeckPower,{token,id,on:true})).rejects.toThrow('can be switched');
   });
   it('saves decks on the record cabinet in both orientations',async()=>{
     await admin();
@@ -422,9 +422,11 @@ describe('room access and persistence',()=>{
     await t.mutation(api.room.setFurniture,{token:adminToken,items:[table,duck],revision:0});
     expect((await t.query(api.room.roomState,{token})).furniture).toEqual([table,duck]);
     await expect(t.mutation(api.room.setFurniture,{token,items:[{...table,x:5},{...duck,x:5}],revision:1})).rejects.toThrow('you built');
-    await expect(t.mutation(api.room.setFurniture,{token:adminToken,items:[duck],revision:1})).rejects.toThrow('tabletop');
-    await expect(t.mutation(api.room.setFurniture,{token:adminToken,items:[table,duck,{...duck,id:'other'}],revision:1})).rejects.toThrow('tabletop');
-    await expect(t.mutation(api.room.setFurniture,{token:adminToken,items:[table,{...duck,height:99}],revision:1})).rejects.toThrow('Invalid furniture');
+    // A piece whose table is gone heals into the inventory rather than failing the save.
+    await t.mutation(api.room.setFurniture,{token:adminToken,items:[duck],revision:1});
+    expect((await t.query(api.room.roomState,{token:adminToken})).furniture).toEqual([{id:'duck',type:'duck',rotation:duck.rotation,x:null,z:null}]);
+    await expect(t.mutation(api.room.setFurniture,{token:adminToken,items:[table,duck,{...duck,id:'other'}],revision:2})).rejects.toThrow('tabletop');
+    await expect(t.mutation(api.room.setFurniture,{token:adminToken,items:[table,{...duck,height:99}],revision:2})).rejects.toThrow('Invalid furniture');
   });
   it('accepts both fridge facings',async()=>{
     await admin();
@@ -566,10 +568,13 @@ describe('wall furniture',()=>{
 describe('agents building pieces',()=>{
   const png=new Blob([new Uint8Array([137,80,78,71,13,10,26,10])],{type:'image/png'});
   const spec=async(storageId,extra={})=>({name:'Boombox',category:'Decor',width:1,depth:1,spriteDensity:3,icon:storageId,parts:[{storageId,direction:2,width:48,height:60,reg:{x:-8,y:46}}],views:[{direction:2,source:2,mirror:false},{direction:4,source:2,mirror:true}],...extra});
-  async function attach(){
+  // A builder with a key and, unless told otherwise, a space of their own (x 21 to 28 on the test shape):
+  // pieces may only be placed inside it.
+  async function attach({space=true}={}){
     const player=await guest();
     const {agentToken}=await t.mutation(api.agents.createKey,{token,label:'Codex'});
     const storageId=await t.run(ctx=>ctx.storage.store(png));
+    if(space)await t.mutation(api.agents.addSpace,{agentToken,name:'Mine'});
     return {player,agentToken,storageId};
   }
   it('hands the player a key for the hosted endpoint and reads uploads back through it',async()=>{
@@ -591,20 +596,25 @@ describe('agents building pieces',()=>{
     expect(built.type).toMatch(/^asset_/);
   });
   it('pairs once with a code, builds a piece everyone can see, and places it as the player',async()=>{
-    const {player,agentToken,storageId}=await attach();
+    const {player,agentToken,storageId}=await attach({space:false});
     expect((await t.query(api.agents.attached,{token})).map(a=>a.label)).toEqual(['Codex']);
     await expect(t.query(api.agents.status,{agentToken:'f'.repeat(64)})).rejects.toThrow('not attached');
     const built=await t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId)});
     const listed=await t.query(api.assets.list,{});
     expect(listed).toHaveLength(1);expect(listed[0]).toMatchObject({id:built.type,name:'Boombox',owner:player.id,ownerName:'Visitor',spriteDensity:3});
     expect(listed[0].parts[0].file).toMatch(/^http/);expect(listed[0].icon).toMatch(/^http/);
-    const {itemId}=await t.mutation(api.agents.place,{agentToken,assetId:built.id,x:3,z:3});
-    expect((await t.query(api.room.preview,{})).room.furniture).toEqual([{id:itemId,type:built.type,rotation:2,x:3,z:3,owner:player.id}]);
-    await expect(t.mutation(api.agents.place,{agentToken,assetId:built.id,x:3,z:3})).rejects.toThrow('free');
+    // Builders place only inside a space of their own; without one, nothing can be placed.
+    await expect(t.mutation(api.agents.place,{agentToken,assetId:built.id,x:3,z:3})).rejects.toThrow('Add a space first');
+    await t.mutation(api.agents.addSpace,{agentToken,name:'Mine'});
+    await expect(t.mutation(api.agents.place,{agentToken,assetId:built.id,x:3,z:3})).rejects.toThrow('own space');
+    await expect(t.mutation(api.agents.place,{agentToken,assetId:built.id,x:29,z:3})).rejects.toThrow('own space');
+    const {itemId}=await t.mutation(api.agents.place,{agentToken,assetId:built.id,x:23,z:3});
+    expect((await t.query(api.room.preview,{})).room.furniture).toEqual([{id:itemId,type:built.type,rotation:2,x:23,z:3,owner:player.id}]);
+    await expect(t.mutation(api.agents.place,{agentToken,assetId:built.id,x:23,z:3})).rejects.toThrow('free');
     const status=await t.query(api.agents.status,{agentToken});
     expect(status.placed).toHaveLength(1);expect(status.assets[0].name).toBe('Boombox');
     const map=await t.query(api.agents.map,{agentToken});
-    expect(map.areas.main.tiles.find(c=>c.x===3&&c.z===3).free).toBe(false);expect(map.walls.length).toBeGreaterThan(0);
+    expect(map.spaces[0].tiles.find(c=>c.x===23&&c.z===3).free).toBe(false);expect(map.areas.main.tiles.find(c=>c.x===3&&c.z===3).free).toBe(true);expect(map.walls.length).toBeGreaterThan(0);
     await t.mutation(api.agents.remove,{agentToken,itemId});
     expect((await t.query(api.room.preview,{})).room.furniture).toEqual([]);
     await t.mutation(api.agents.deleteAsset,{agentToken,id:built.id});
@@ -614,31 +624,59 @@ describe('agents building pieces',()=>{
     await admin();
     const {player,agentToken,storageId}=await attach();
     const built=await t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId)});
-    await t.mutation(api.room.setFurniture,{token:adminToken,items:[{id:'chair',type:'small_chair_armas',rotation:0,x:1,z:1}],revision:0});
-    const mine={id:'mine',type:built.type,rotation:2,x:3,z:3,owner:player.id};
+    // The builder's space bumped the room to revision 1.
+    await t.mutation(api.room.setFurniture,{token:adminToken,items:[{id:'chair',type:'small_chair_armas',rotation:0,x:1,z:1}],revision:1});
+    const mine={id:'mine',type:built.type,rotation:2,x:23,z:3,owner:player.id};
     const revision=()=>t.query(api.room.roomState,{token}).then(r=>r.revision);
     await t.mutation(api.room.setFurniture,{token,items:[{id:'chair',type:'small_chair_armas',rotation:0,x:1,z:1},mine],revision:await revision()});
     await expect(t.mutation(api.room.setFurniture,{token,items:[{id:'chair',type:'small_chair_armas',rotation:0,x:2,z:2},mine],revision:await revision()})).rejects.toThrow('you built');
-    await expect(t.mutation(api.room.setFurniture,{token,items:[{id:'chair',type:'small_chair_armas',rotation:0,x:1,z:1},mine,{id:'theirs',type:'small_chair_armas',rotation:0,x:4,z:4,owner:player.id}],revision:await revision()})).rejects.toThrow('own pieces');
-    await t.mutation(api.room.setFurniture,{token,items:[{id:'chair',type:'small_chair_armas',rotation:0,x:1,z:1},{...mine,x:4,z:4}],revision:await revision()});
-    expect((await t.query(api.room.preview,{})).room.furniture.find(i=>i.id==='mine').x).toBe(4);
+    await expect(t.mutation(api.room.setFurniture,{token,items:[{id:'chair',type:'small_chair_armas',rotation:0,x:1,z:1},mine,{id:'theirs',type:'small_chair_armas',rotation:0,x:24,z:4,owner:player.id}],revision:await revision()})).rejects.toThrow('own pieces');
+    await t.mutation(api.room.setFurniture,{token,items:[{id:'chair',type:'small_chair_armas',rotation:0,x:1,z:1},{...mine,x:24,z:4}],revision:await revision()});
+    expect((await t.query(api.room.preview,{})).room.furniture.find(i=>i.id==='mine').x).toBe(24);
     await expect(t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId,{category:'Castle'})})).rejects.toThrow('Category');
     await expect(t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId,{category:'Wall'})})).rejects.toThrow('wallWidth');
     await t.mutation(api.agents.revoke,{token});
     await expect(t.query(api.agents.status,{agentToken})).rejects.toThrow('not attached');
   });
+  it('lets a builder say which tile of a seat is sat on and how high',async()=>{
+    await admin();const {player,agentToken,storageId}=await attach();
+    await expect(t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId,{name:'Stool',seat:{x:0,z:0,height:20}})})).rejects.toThrow('Only seats');
+    await expect(t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId,{name:'Stool',category:'Seating',width:2,seat:{x:0,z:2,height:20}})})).rejects.toThrow('within the footprint');
+    await expect(t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId,{name:'Stool',category:'Seating',seat:{x:0,z:0,height:99}})})).rejects.toThrow('0 to 40');
+    // A stool beside a counter, two tiles along the front: only the stool tile seats, 20 px up.
+    const stool=await t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId,{name:'Stool and counter',category:'Seating',width:2,seat:{x:0,z:1,height:20}})});
+    const entry=()=>t.query(api.assets.list,{}).then(list=>list.find(d=>d.id===stool.type));
+    expect((await entry()).seat).toEqual({2:{cell:[0,1],direction:2,height:20,offset:[0,6]},4:{cell:[1,0],direction:4,height:20,offset:[0,6]}});
+    const {itemId}=await t.mutation(api.agents.place,{agentToken,assetId:stool.id,x:25,z:5,rotation:2});
+    await expect(t.mutation(api.room.move,{token,x:25,z:5,seatId:itemId})).rejects.toThrow('not available');
+    await t.mutation(api.room.move,{token,x:25,z:6,seatId:itemId});
+    expect((await t.query(api.room.me,{token})).seatId).toBe(itemId);
+    // Adjusting later: the builder (or Grant) only, and null clears it back to the whole piece.
+    await t.mutation(api.room.join,{token:otherToken,name:'Friend',look});const other=(await t.mutation(api.agents.createKey,{token:otherToken,label:'Other'})).agentToken;
+    await expect(t.mutation(api.agents.setSeat,{agentToken:other,assetId:stool.id,seat:{x:0,z:0,height:5}})).rejects.toThrow('not yours');
+    expect((await t.mutation(api.agents.setSeat,{agentToken,assetId:stool.id,seat:{x:0,z:0,height:5}})).seat).toEqual({x:0,z:0,height:5});
+    expect((await entry()).seat[4]).toEqual({cell:[0,0],direction:4,height:5,offset:[0,21]});
+    // A pixel nudge for art drawn off the tile centre: sideways flips on the mirrored rotation.
+    await expect(t.mutation(api.agents.setSeat,{agentToken,assetId:stool.id,seat:{x:0,z:0,height:5,offsetX:40}})).rejects.toThrow('-24 to 24');
+    await t.mutation(api.agents.setSeat,{agentToken,assetId:stool.id,seat:{x:0,z:0,height:5,offsetX:6,offsetY:-3}});
+    expect((await entry()).seat[2].offset).toEqual([6,18]);expect((await entry()).seat[4].offset).toEqual([-6,18]);
+    expect((await t.query(api.agents.status,{agentToken})).assets.find(a=>a.id===stool.id).seat).toEqual({x:0,z:0,height:5,offsetX:6,offsetY:-3});
+    await t.mutation(api.agents.setSeat,{agentToken,assetId:stool.id,seat:null});
+    expect((await entry()).seat).toBeUndefined();
+    await t.mutation(api.room.move,{token,x:25,z:5,seatId:itemId});
+  });
   it('lets builders move, pick up, replace and delete their piece while preserving unseen inventory',async()=>{
     await admin();const {player,agentToken,storageId}=await attach();
     const built=await t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId)});
     const stored={id:'stored',type:'small_chair_armas',rotation:0,x:null,z:null};
-    await t.mutation(api.room.setFurniture,{token:adminToken,items:[stored],revision:0,knowsAssets:true});
-    const {itemId}=await t.mutation(api.agents.place,{agentToken,assetId:built.id,x:3,z:3});
+    await t.mutation(api.room.setFurniture,{token:adminToken,items:[stored],revision:1,knowsAssets:true});
+    const {itemId}=await t.mutation(api.agents.place,{agentToken,assetId:built.id,x:23,z:3});
     const save=async items=>t.mutation(api.room.setFurniture,{token,items,revision:(await t.query(api.room.roomState,{token})).revision,knowsAssets:true});
     let room=await t.query(api.room.roomState,{token});
     expect(room.furniture.map(i=>i.id)).toEqual([itemId]);
     const piece=room.furniture[0];expect(piece.owner).toBe(player.id);
-    await save([{...piece,x:4,z:4}]);
-    expect((await t.query(api.room.preview,{})).room.furniture[0]).toMatchObject({id:itemId,x:4,z:4});
+    await save([{...piece,x:24,z:4}]);
+    expect((await t.query(api.room.preview,{})).room.furniture[0]).toMatchObject({id:itemId,x:24,z:4});
     await save([{...piece,x:null,z:null}]);
     expect((await t.query(api.room.roomState,{token})).furniture).toEqual([{...piece,x:null,z:null}]);
     expect((await t.query(api.room.state,{token})).room.furniture).toEqual([{...piece,x:null,z:null}]);
@@ -646,18 +684,62 @@ describe('agents building pieces',()=>{
     expect((await t.query(api.room.roomState,{token:otherToken})).furniture).toEqual([]);
     expect((await t.query(api.room.state,{token:otherToken})).room.furniture).toEqual([]);
     expect((await t.query(api.room.preview,{})).room.furniture).toEqual([]);
-    await save([{...piece,x:5,z:5}]);
-    await expect(save([{...piece,x:5,z:5},{...stored,x:2,z:2}])).rejects.toThrow('you built');
+    await save([{...piece,x:25,z:5}]);
+    await expect(save([{...piece,x:25,z:5},{...stored,x:2,z:2}])).rejects.toThrow('you built');
     await save([]);
     expect((await t.query(api.room.roomState,{token})).furniture).toEqual([]);
     expect((await t.query(api.room.roomState,{token:adminToken})).furniture).toEqual([stored]);
     expect(await t.query(api.assets.list,{})).toHaveLength(1);
   });
+  it('animates a built piece from frame cells and lets anyone switch it off and on',async()=>{
+    await admin();const {player,agentToken,storageId}=await attach();
+    const cells=[{x:0,y:0,width:48,height:60},{x:48,y:0,width:48,height:60}];
+    await expect(t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId,{parts:[{storageId,direction:2,width:48,height:60,reg:{x:-8,y:46},frames:cells}]})})).rejects.toThrow('needs a frameDuration');
+    await expect(t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId,{switchable:true})})).rejects.toThrow('Only an animated');
+    await expect(t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId,{frameDuration:5000,parts:[{storageId,direction:2,width:48,height:60,reg:{x:-8,y:46},frames:cells}]})})).rejects.toThrow('80 to 2000');
+    const lamp=await t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId,{name:'Lamp',frameDuration:300,switchable:true,parts:[{storageId,direction:2,width:48,height:60,reg:{x:-8,y:46},frames:cells}]})});
+    const entry=(await t.query(api.assets.list,{})).find(d=>d.id===lamp.type);
+    expect(entry).toMatchObject({frameDuration:300,switchable:true});expect(entry.parts[0]).toMatchObject({frames:cells,trimFrames:false});
+    expect((await t.query(api.agents.status,{agentToken})).assets.find(a=>a.id===lamp.id)).toMatchObject({animated:true,frameMs:300,switchable:true});
+    const {itemId}=await t.mutation(api.agents.place,{agentToken,assetId:lamp.id,x:23,z:3});
+    // Anyone in the room can switch it, and the owner can still move it while it is off.
+    await t.mutation(api.room.join,{token:otherToken,name:'Friend',look});
+    await t.mutation(api.room.setDeckPower,{token:otherToken,id:itemId,on:false});
+    expect((await t.query(api.room.scene,{})).furniture.find(i=>i.id===itemId).on).toBe(false);
+    const items=(await t.query(api.room.roomState,{token})).furniture;
+    await t.mutation(api.room.setFurniture,{token,items:items.map(i=>i.id===itemId?{...i,x:24,z:4}:i),revision:(await t.query(api.room.roomState,{token})).revision,knowsAssets:true});
+    expect((await t.query(api.room.scene,{})).furniture.find(i=>i.id===itemId)).toMatchObject({x:24,z:4,on:false});
+    // A plain piece has no switch.
+    const plain=await t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId,{name:'Box'})});
+    const {itemId:box}=await t.mutation(api.agents.place,{agentToken,assetId:plain.id,x:25,z:5});
+    await expect(t.mutation(api.room.setDeckPower,{token:otherToken,id:box,on:false})).rejects.toThrow('can be switched');
+  });
+  it('takes the pieces on a table off with it, and heals one left pointing at a vanished table',async()=>{
+    await admin();const {player,agentToken,storageId}=await attach();
+    const table=await t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId,{name:'Desk',category:'Tables'})});
+    const lamp=await t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId,{name:'Lamp'})});
+    const {itemId:desk}=await t.mutation(api.agents.place,{agentToken,assetId:table.id,x:23,z:3});
+    const save=async(token_,items)=>t.mutation(api.room.setFurniture,{token:token_,items,revision:(await t.query(api.room.roomState,{token:token_})).revision,knowsAssets:true});
+    const room=()=>t.query(api.room.roomState,{token:adminToken}).then(r=>r.furniture);
+    const onDesk={id:'lamp',type:lamp.type,rotation:2,x:23,z:3,supportId:desk,owner:player.id};
+    await save(token,[...await room(),onDesk]);
+    // Removing the desk through the agent takes the lamp back to the inventory rather than stranding it.
+    await t.mutation(api.agents.remove,{agentToken,itemId:desk});
+    expect((await room()).find(i=>i.id==='lamp')).toEqual({id:'lamp',type:lamp.type,rotation:2,x:null,z:null,owner:player.id});
+    // A piece stranded by an older path (its table gone) no longer blocks every save: it heals to the inventory.
+    await t.run(async ctx=>{const r=await ctx.db.query('rooms').withIndex('by_key',q=>q.eq('key','main')).unique();await ctx.db.patch(r._id,{furniture:[{id:'ghost',type:lamp.type,rotation:2,x:24,z:4,supportId:'gone',owner:player.id}]});});
+    const {itemId:again}=await t.mutation(api.agents.place,{agentToken,assetId:lamp.id,x:25,z:5});
+    expect((await room()).map(i=>[i.id,i.x,i.supportId??null])).toEqual([['ghost',null,null],[again,25,null]]);
+    // Someone else's piece on the table keeps it in the room.
+    const {itemId:desk2}=await t.mutation(api.agents.place,{agentToken,assetId:table.id,x:23,z:3});
+    await save(adminToken,[...await room(),{id:'theirs',type:'custom_logbook',rotation:2,x:23,z:3,supportId:desk2}]);
+    await expect(t.mutation(api.agents.remove,{agentToken,itemId:desk2})).rejects.toThrow('Someone else');
+  });
   it('keeps built pieces when an older client saves a list without them',async()=>{
     await admin();
     const {agentToken,storageId}=await attach();
     const built=await t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId)});
-    const {itemId}=await t.mutation(api.agents.place,{agentToken,assetId:built.id,x:3,z:3});
+    const {itemId}=await t.mutation(api.agents.place,{agentToken,assetId:built.id,x:23,z:3});
     const revision=()=>t.query(api.room.roomState,{token:adminToken}).then(r=>r.revision);
     await t.mutation(api.room.setFurniture,{token:adminToken,items:[{id:'chair',type:'small_chair_armas',rotation:0,x:1,z:1}],revision:await revision()});
     expect((await t.query(api.room.preview,{})).room.furniture.map(i=>i.id).sort()).toEqual(['chair',itemId].sort());
@@ -754,6 +836,50 @@ describe('voice room access',()=>{
     await expect(t.action(api.voice.connect,{token})).rejects.toThrow('not ready yet');
   });
 });
+describe('agents asking for pictures',()=>{
+  it('cannot use screenshot cleanup to delete another player’s artwork',async()=>{
+    await guest();const owner=await t.mutation(api.room.join,{token:otherToken,name:'Artist',look});
+    const agentToken=(await t.mutation(api.agents.createKey,{token,label:'Codex'})).agentToken;
+    const png=await t.run(async ctx=>{
+      const storageId=await ctx.storage.store(new Blob([new Uint8Array([137,80,78,71])],{type:'image/png'}));
+      await ctx.db.insert('assets',{ownerId:owner.id,ownerName:'Artist',name:'Protected artwork',category:'Decor',width:1,depth:1,surfaceHeight:0,spriteDensity:3,icon:storageId,parts:[{storageId,direction:2,width:30,height:30,reg:{x:15,y:30}}],views:[{direction:2,source:2,mirror:false}],createdAt:Date.now()});
+      return storageId;
+    });
+    const id=await t.mutation(api.captures.request,{agentToken});await t.mutation(api.captures.take,{token,id});
+    await expect(t.mutation(api.captures.finish,{token,id,storageId:png})).rejects.toThrow('room artwork');
+    // Even a stale request written before the protection must leave the artwork intact.
+    await t.run(ctx=>ctx.db.patch(id,{status:'done',storageId:png}));
+    await t.mutation(api.captures.discard,{agentToken,id});
+    expect(await t.run(ctx=>ctx.db.system.get(png))).not.toBeNull();
+    const stale=await t.mutation(api.captures.request,{agentToken});
+    await t.run(ctx=>ctx.db.patch(stale,{status:'done',storageId:png,requestedAt:Date.now()-600001}));
+    await t.mutation(api.captures.request,{agentToken});
+    expect(await t.run(ctx=>ctx.db.system.get(png))).not.toBeNull();
+  });
+  it('hands a request to an open tab, which uploads the picture for the agent',async()=>{
+    await guest();const agentToken=(await t.mutation(api.agents.createKey,{token,label:'Codex'})).agentToken;
+    expect(await t.query(api.captures.pending,{token})).toBeNull();
+    const id=await t.mutation(api.captures.request,{agentToken,region:{x:21,z:0,width:8,depth:8}});
+    expect(await t.query(api.captures.pending,{token})).toEqual({id,region:{x:21,z:0,width:8,depth:8}});
+    expect((await t.query(api.captures.result,{agentToken,id})).status).toBe('pending');
+    // The first tab to claim it renders; a second claim is refused and the request leaves the queue.
+    expect(await t.mutation(api.captures.take,{token,id})).toBe(true);
+    expect(await t.mutation(api.captures.take,{token,id})).toBe(false);
+    expect(await t.query(api.captures.pending,{token})).toBeNull();
+    const png=await t.run(ctx=>ctx.storage.store(new Blob([new Uint8Array([137,80,78,71])],{type:'image/png'})));
+    await t.mutation(api.room.join,{token:otherToken,name:'Friend',look});
+    await expect(t.mutation(api.captures.finish,{token:otherToken,id,storageId:png})).rejects.toThrow('Another tab');
+    await t.mutation(api.captures.finish,{token,id,storageId:png});
+    const result=await t.query(api.captures.result,{agentToken,id});
+    expect(result.status).toBe('done');expect(result.url).toMatch(/^http/);expect(result.takenBy).toBe('Visitor');
+    // Only the asking agent sees it, and discarding removes the request and its picture.
+    const other=(await t.mutation(api.agents.createKey,{token:otherToken,label:'Other'})).agentToken;
+    await expect(t.query(api.captures.result,{agentToken:other,id})).rejects.toThrow('No such');
+    await t.mutation(api.captures.discard,{agentToken,id});
+    await expect(t.query(api.captures.result,{agentToken,id})).rejects.toThrow('No such');
+    expect(await t.run(ctx=>ctx.db.system.get(png))).toBeNull();
+  });
+});
 describe('agents adding spaces',()=>{
   const png=new Blob([new Uint8Array([137,80,78,71,13,10,26,10])],{type:'image/png'});
   const key=async(t_=token,label='Codex')=>(await t.mutation(api.agents.createKey,{token:t_,label})).agentToken;
@@ -825,6 +951,41 @@ describe('agents adding spaces',()=>{
     // Grant can restyle anyone's space.
     await admin();const adminAgent=await key(adminToken,'Grant');
     expect((await t.mutation(api.agents.styleSpace,{agentToken:adminAgent,spaceId:mine.spaceId,floorColor:'#000000'})).floorColor).toBe('#000000');
+  });
+  it('makes a space wider or narrower and slides the spaces after it along',async()=>{
+    await guest();const agentToken=await key();
+    await t.mutation(api.room.join,{token:otherToken,name:'Friend',look});const other=await key(otherToken,'Other');
+    const mine=await t.mutation(api.agents.addSpace,{agentToken,name:'Mine'});
+    await t.mutation(api.agents.addSpace,{agentToken:other,name:'Theirs'});
+    await expect(t.mutation(api.agents.resizeSpace,{agentToken:other,spaceId:mine.spaceId,width:4})).rejects.toThrow('not yours');
+    await expect(t.mutation(api.agents.resizeSpace,{agentToken,width:3})).rejects.toThrow('4 to 16');
+    // Friend's piece, and Friend, are on the space after mine; widening mine slides them along.
+    const storageId=await t.run(ctx=>ctx.storage.store(png)),build=(agent,name)=>t.mutation(api.agents.createAsset,{agentToken:agent,name,category:'Decor',width:1,depth:1,spriteDensity:3,icon:storageId,parts:[{storageId,direction:2,width:48,height:60,reg:{x:-8,y:46}}],views:[{direction:2,source:2,mirror:false}]});
+    const theirBox=await build(other,'Box'),{itemId}=await t.mutation(api.agents.place,{agentToken:other,assetId:theirBox.id,x:30,z:2});
+    await t.mutation(api.room.move,{token:otherToken,x:31,z:3});
+    expect(await t.mutation(api.agents.resizeSpace,{agentToken,width:12})).toMatchObject({x:21,width:12,depth:8,moved:1});
+    const map=await t.query(api.agents.map,{agentToken});
+    expect(map.spaces.map(s=>[s.x,s.width])).toEqual([[21,12],[33,8]]);expect(map.walkway.tiles).toHaveLength(8+12+8);
+    expect((await t.query(api.room.scene,{})).furniture.find(i=>i.id===itemId)).toMatchObject({x:34,z:2});
+    expect((await t.query(api.room.me,{token:otherToken})).route.at(-1)).toEqual({x:35.5,z:3.5});
+    // A poster hanging on the later space's back wall slides along with it and still hangs there.
+    const poster=await t.mutation(api.agents.createAsset,{agentToken:other,name:'Poster',category:'Wall',width:1,depth:1,spriteDensity:3,wallWidth:32,icon:storageId,parts:[{storageId,direction:4,width:48,height:60,reg:{x:-8,y:46}}],views:[{direction:4,source:4,mirror:false}]});
+    const {itemId:hung}=await t.mutation(api.agents.place,{agentToken:other,assetId:poster.id,x:35,z:0,rotation:4,u:.5,height:60});
+    expect((await t.query(api.room.scene,{})).furniture.find(i=>i.id===hung)).toMatchObject({x:35,z:0,rotation:4,u:.5,height:60});
+    // Narrowing needs the dropped columns clear of furniture and people.
+    const myBox=await build(agentToken,'Crate'),{itemId:crate}=await t.mutation(api.agents.place,{agentToken,assetId:myBox.id,x:31,z:2});
+    await expect(t.mutation(api.agents.resizeSpace,{agentToken,width:8})).rejects.toThrow('Clear the furniture');
+    await t.mutation(api.agents.remove,{agentToken,itemId:crate});
+    await t.mutation(api.room.move,{token,x:31,z:5});
+    await expect(t.mutation(api.agents.resizeSpace,{agentToken,width:8})).rejects.toThrow('Visitor is standing');
+    await t.mutation(api.room.move,{token,x:22,z:5});
+    expect(await t.mutation(api.agents.resizeSpace,{agentToken,width:8})).toMatchObject({width:8,moved:1});
+    expect((await t.query(api.agents.map,{agentToken})).spaces.map(s=>[s.x,s.width])).toEqual([[21,8],[29,8]]);
+    expect((await t.query(api.room.scene,{})).furniture.find(i=>i.id===itemId)).toMatchObject({x:30,z:2});
+    expect((await t.query(api.room.me,{token:otherToken})).route.at(-1)).toEqual({x:31.5,z:3.5});
+    expect((await t.query(api.room.scene,{})).furniture.find(i=>i.id===hung)).toMatchObject({x:31,z:0,rotation:4});
+    // The room still validates with the poster in its new place: another placement goes through.
+    await t.mutation(api.agents.place,{agentToken:other,assetId:theirBox.id,x:33,z:3});
   });
   it('removes only the latest space, only when it is empty, by its owner or Grant',async()=>{
     const player=await guest(),agentToken=await key();

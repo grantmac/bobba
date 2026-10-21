@@ -16,7 +16,7 @@ describe('hosted MCP endpoint',()=>{
   });
   it('lists the tools and answers notifications with 202',async()=>{
     const {result}=await (await post(rpc('tools/list'))).json();
-    expect(result.tools.map(t=>t.name)).toEqual(['status','design_asset','upload_url','submit_asset','add_asset','my_assets','delete_asset','room_map','place','remove','add_space','design_surface','style_space','remove_space']);
+    expect(result.tools.map(t=>t.name)).toEqual(['status','design_asset','upload_url','submit_asset','add_asset','my_assets','set_seat','delete_asset','room_map','room_picture','place','remove','add_space','design_surface','style_space','resize_space','remove_space']);
     const space=result.tools.find(t=>t.name==='add_space');
     expect(space.inputSchema.required).toEqual(['name']);expect(space.inputSchema.properties).not.toHaveProperty('width');expect(space.inputSchema.properties.floor.enum).toEqual(['plain','wood','tiles','carpet']);
     for(const tool of result.tools)expect(tool.inputSchema.type).toBe('object');

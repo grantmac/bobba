@@ -1,6 +1,5 @@
 import {footprint,isPlaced,canPlace,blocksTile,restoreItems,canStack,surfaceHeight,moveWithContents,pickupWithContents,seatFor,approachFor,isWallItem,canHang,wallAnchor} from './furniture-model.js';
 import {LinearFilter,NearestFilter} from 'three';
-import {POSTERS} from '../shared/stickies.js';
 import {drawMacintoshScreen,macintoshScreenPhase} from './macintosh-screen.js';
 import {spriteSheetFrames} from './furniture-spritesheet.js';
 import {prepareCarGlass} from './car-glass.js';
@@ -14,7 +13,7 @@ const src=file=>/^https?:\/\//.test(file)?file:ROOT+file;
 const load=(image,file)=>{if(/^https?:\/\//.test(file))image.crossOrigin='anonymous';image.src=src(file);};
 // Pieces a click uses rather than selects: the player walks up to them first.
 const USABLE=new Set(['custom_dj_decks','fridge','dmg_fridge','custom_logbook','asset_kd7acza4w9bg93w99rxrd5346x8gpfwq']);
-export async function createFurniture({prepareImage,makeVisual,disposeVisual,positionVisual,markTiles,worldPoint,isTile,getAvatar,stopWalking,onChanged,onSit,onUse=()=>{},onInspect=()=>{},focusRoom,onPlaceSticky,onPlacePoster,onAttachAgent,floorHeight=()=>0,hasWall=()=>false,walls=()=>[],initialItems=[],initialAssets=[]}){
+export async function createFurniture({prepareImage,makeVisual,disposeVisual,positionVisual,markTiles,worldPoint,isTile,getAvatar,stopWalking,onChanged,onSit,onUse=()=>{},onInspect=()=>{},canBuildAt=()=>true,focusRoom,onAttachAgent,floorHeight=()=>0,hasWall=()=>false,walls=()=>[],initialItems=[],initialAssets=[]}){
   const response=await fetch(ROOT+'catalog.json');
   if(!response.ok)throw new Error('Furniture could not be loaded.');
   let catalog=[...await response.json(),...initialAssets];const definitions=new Map(catalog.map(d=>[d.id,d]));
@@ -25,7 +24,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     const parts=await Promise.all(def.parts.map(part=>new Promise((resolve,reject)=>{
       const image=new Image();image.onload=async()=>{
         try{
-          const cells=part.frames?spriteSheetFrames(image,part.frames):null;
+          const cells=part.frames?spriteSheetFrames(image,part.frames,part.trimFrames!==false):null;
           if(part.translucentWindows)cells?.forEach(prepareCarGlass);
           let offCanvas;
           if(part.offFile){
@@ -92,10 +91,14 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
   }
   await Promise.all([...new Set(initialItems.filter(isPlaced).map(i=>i.type))].filter(id=>definitions.has(id)).map(id=>loadDefinition(definitions.get(id))));
   let page=0;const pageSize=48;
-  let viewItems=[],items=[],history=[],selected=null,pending=null,visuals=[],tab='Catalogue',filter='',category='All',editable=true,networkSave=null,networkPower=null,onPowerError=()=>{},saving=false;
+  let viewItems=[],items=[],history=[],selected=null,pending=null,visuals=[],filter='',category='All',editable=true,networkSave=null,networkPower=null,onPowerError=()=>{},saving=false;
   // Grant edits anything; everyone else edits only the pieces they built (`owner`).
   let admin=false,me=null,rawItems=initialItems;
   const canEdit=item=>admin||(!!me&&item.owner===me);
+  // Pieces with a power switch: the decks, and built animations marked switchable.
+  const switchable=item=>item?.type==='custom_dj_decks'||!!definitions.get(item?.type)?.switchable;
+  // Builders drop pieces only inside their own space; Grant anywhere. Loading never applies this.
+  const buildTile=(x,z)=>isTile(x,z)&&(admin||canBuildAt(x,z));
   items=restoreItems(initialItems,definitions);
   function fitStoredItems(){
     const fitted=[];
@@ -106,23 +109,11 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
   }
   fitStoredItems();
   const panel=document.createElement('section');panel.className='furniture-panel';panel.hidden=true;panel.setAttribute('aria-label','Furniture');
-  panel.innerHTML=`<header><h1>Furniture</h1><button class="furniture-close" aria-label="Close furniture">×</button></header><nav aria-label="Furniture views">${['Catalogue','Inventory','In room'].map(name=>`<button type="button" data-tab="${name}">${name}</button>`).join('')}</nav><div class="furniture-filters"><input type="search" aria-label="Search furniture" placeholder="Search furniture"><select aria-label="Furniture category">${['All',...new Set(catalog.map(d=>d.category))].map(name=>`<option>${name}</option>`).join('')}</select></div><p class="furniture-description"></p><div class="furniture-grid"></div><div class="furniture-pages"><button type="button" aria-label="Previous furniture page">◀</button><span></span><button type="button" aria-label="Next furniture page">▶</button></div><footer><button class="furniture-undo">Undo</button><span class="furniture-count"></span></footer>`;
+  panel.innerHTML=`<header><h1>Furniture</h1><button class="furniture-close" aria-label="Close furniture">×</button></header><div class="furniture-filters"><input type="search" aria-label="Search furniture" placeholder="Search furniture"><select aria-label="Furniture category">${['All',...new Set(catalog.map(d=>d.category))].map(name=>`<option>${name}</option>`).join('')}</select></div><p class="furniture-description"></p><div class="furniture-grid"></div><div class="furniture-pages"><button type="button" aria-label="Previous furniture page">◀</button><span></span><button type="button" aria-label="Next furniture page">▶</button></div><footer><button class="furniture-undo">Undo</button></footer>`;
   const actions=document.createElement('section');actions.className='furniture-actions';actions.hidden=true;actions.setAttribute('aria-label','Selected furniture');
   const attachButton=document.createElement('button');attachButton.type='button';attachButton.className='agent-attach';attachButton.textContent='Build with your agent';attachButton.hidden=!onAttachAgent;
   attachButton.onclick=()=>{panel.hidden=true;cancel();onAttachAgent?.();};
   panel.querySelector('.furniture-filters').after(attachButton);
-  const stickyButton=document.createElement('button');stickyButton.type='button';stickyButton.className='sticky-catalogue';
-  stickyButton.innerHTML='<img src="/assets/stickies/icon.png" alt=""> Sticky note';
-  stickyButton.onclick=()=>{panel.hidden=true;cancel();onPlaceSticky?.();};
-  panel.querySelector('.furniture-filters').after(stickyButton);
-  const posters=document.createElement('div');posters.className='poster-catalogue';
-  for(const [id,def] of Object.entries(POSTERS)){
-    const button=document.createElement('button');button.type='button';button.className='sticky-catalogue';button.setAttribute('aria-label',`Place ${def.name}`);
-    const img=document.createElement('img');img.src=def.file;img.alt='';
-    button.append(img,document.createTextNode(def.name));button.onclick=()=>{panel.hidden=true;cancel();onPlacePoster?.(id);};
-    posters.append(button);
-  }
-  stickyButton.after(posters);
   actions.innerHTML=`<button class="furniture-close" aria-label="Deselect furniture">×</button><img alt=""><strong></strong><span class="furniture-location"></span><div>${['Move','Rotate','Pick up','Delete','Power'].map(name=>`<button data-action="${name}">${name}</button>`).join('')}</div>`;
   const placement=document.createElement('section');placement.className='furniture-placement';placement.hidden=true;
   placement.innerHTML='<span></span><button data-placement="rotate">Rotate (R)</button><button data-placement="cancel">Cancel (Esc)</button>';
@@ -173,7 +164,9 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
       return {x:p.x+a.x-width/2,y:p.y+floorHeight(item.x,item.z)+a.y-height/2,order:95};
     }
     const cells=footprint(item,def),table=viewItems.find(t=>t.id===item.supportId),orderCells=table?footprint(table,definitions.get(table.type)):cells;
-    const order=def.category==='Rugs'?20:def.category==='Seating'?300+(item.x+item.z)*10+9+(frame.orderShift??0):300+Math.max(...orderCells.map(([x,z])=>x+z))*10+9+(table?0.1+(item.x+item.z)/100:0);
+    // A piece on a table draws just above the table (front ones last) but under an avatar on the
+    // same diagonal (+9.5): someone sitting at the desk is in front of what is on it.
+    const order=def.category==='Rugs'?20:def.category==='Seating'?300+(item.x+item.z)*10+9+(frame.orderShift??0):300+Math.max(...orderCells.map(([x,z])=>x+z))*10+9+(table?0.1+(item.x+item.z)/1000:0);
     const lift=surfaceHeight(item,viewItems,definitions)-floorHeight(item.x,item.z);
     return {x:p.x+frame.left,y:p.y+frame.top-lift+(table?def.tableOffsetY??0:0),order};
   }
@@ -217,26 +210,21 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     visuals.sort((a,b)=>b.mesh.renderOrder-a.mesh.renderOrder);
   }
   function renderList(){
-    stickyButton.hidden=tab!=='Catalogue'||!onPlaceSticky||!admin;
-    posters.hidden=tab!=='Catalogue'||!onPlacePoster||!admin;
-    attachButton.hidden=tab!=='Catalogue'||!onAttachAgent;
-    panel.querySelectorAll('[data-tab]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tab===tab)));
-    panel.querySelector('.furniture-description').textContent=tab==='Catalogue'?(admin?'Choose a piece, then click a floor tile to place it; wall pieces go on a wall.':'Pieces you built. Choose one, then click a floor tile (or a wall) to place it.'):tab==='Inventory'?'Furniture you have picked up. Click a piece to put it back.':'Select a piece to move, rotate, pick up, or delete it.';
+    panel.querySelector('.furniture-description').textContent='Pieces you built. Choose one, then click a floor tile (or a wall) to place it.';
     const grid=panel.querySelector('.furniture-grid');grid.replaceChildren();
-    const entries=tab==='Catalogue'?catalog.filter(def=>admin||(!!me&&def.owner===me)).map(def=>({def})):items.filter(i=>canEdit(i)&&(tab==='Inventory'?!isPlaced(i):isPlaced(i))).map(item=>({def:definitions.get(item.type),item}));
+    const entries=catalog.filter(def=>!!me&&def.owner===me).map(def=>({def,item:items.find(i=>i.type===def.id&&i.owner===me&&!isPlaced(i))}));
     const matching=entries.filter(({def})=>(category==='All'||category===def.category)&&`${def.name} ${def.id}`.toLowerCase().includes(filter));
     const pages=Math.max(1,Math.ceil(matching.length/pageSize));page=Math.max(0,Math.min(page,pages-1));
     panel.querySelector('.furniture-pages span').textContent=`${page+1} / ${pages} · ${matching.length} pieces`;
     const pageButtons=panel.querySelectorAll('.furniture-pages button');pageButtons[0].disabled=page===0;pageButtons[1].disabled=page===pages-1;
     for(const {def,item} of matching.slice(page*pageSize,(page+1)*pageSize)){
-      const button=document.createElement('button');button.className='furniture-card';button.type='button';button.setAttribute('aria-label',`${tab==='In room'?'Select':'Place'} ${def.name}`);
+      const button=document.createElement('button');button.className='furniture-card';button.type='button';button.setAttribute('aria-label',`Place ${def.name}`);
       if(item){button.dataset.itemId=item.id;button.dataset.cell=isPlaced(item)?`${item.x},${item.z}`:'inventory';button.dataset.rotation=item.rotation;button.setAttribute('aria-pressed',String(selected===item.id));}
       const img=document.createElement('img');img.src=src(def.icon);img.alt='';img.loading='lazy';const label=document.createElement('span');label.textContent=def.name;button.append(img,label);
-      button.onclick=()=>{if(tab==='In room'){cancel();selected=item.id;render();}else begin(item||{id:crypto.randomUUID(),type:def.id,rotation:def.views.find(v=>v.direction===2)?.direction??def.views[0].direction,x:null,z:null,...(me?{owner:me}:{})});};
+      button.onclick=()=>begin(item||{id:crypto.randomUUID(),type:def.id,rotation:def.views.find(v=>v.direction===2)?.direction??def.views[0].direction,x:null,z:null,owner:me});
       grid.append(button);
     }
-    if(!matching.length){const empty=document.createElement('p');empty.className='furniture-empty';empty.textContent=filter?'No matching furniture.':tab==='Inventory'?'Your hand is empty. Pick up furniture from your room to store it here.':tab==='Catalogue'?'Nothing built yet. Attach your agent and hand it a picture.':'No furniture here yet.';grid.append(empty);}
-    panel.querySelector('.furniture-count').textContent=`${items.filter(isPlaced).length} in room · ${items.filter(i=>!isPlaced(i)).length} in hand`;
+    if(!matching.length){const empty=document.createElement('p');empty.className='furniture-empty';empty.textContent=filter||category!=='All'?'No matching furniture.':'Nothing built yet. Attach your agent and hand it a picture.';grid.append(empty);}
     panel.querySelector('.furniture-undo').disabled=!history.length;
   }
   let listStale=true;
@@ -247,7 +235,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     actions.hidden=(!mine&&!(networkPower&&item?.type==='custom_dj_decks'))||!item||!isPlaced(item)||!!pending;
     if(!actions.hidden){actions.querySelector('img').src=src(def.icon);actions.querySelector('strong').textContent=def.name;actions.querySelector('.furniture-location').textContent=item.supportId?'On table':isWallItem(def)?'On wall':`Tile ${item.x+1}, ${item.z+1}`;actions.querySelector('[data-action="Rotate"]').disabled=def.views.length<2||isWallItem(def);}
     actions.querySelectorAll('[data-action]').forEach(button=>{button.hidden=!mine;if(saving)button.disabled=true;else if(button.dataset.action!=='Rotate')button.disabled=false;});
-    const power=actions.querySelector('[data-action="Power"]');power.hidden=!networkPower||item?.type!=='custom_dj_decks';power.textContent=item?.on===false?'Turn on':'Turn off';power.setAttribute('aria-pressed',String(item?.on!==false));
+    const power=actions.querySelector('[data-action="Power"]');power.hidden=!networkPower||!switchable(item);power.textContent=item?.on===false?'Turn on':'Turn off';power.setAttribute('aria-pressed',String(item?.on!==false));
     placement.hidden=!pending;
     if(pending){const def=definitions.get(pending.type);placement.querySelector('span').textContent=isWallItem(def)?`${def.name} — click a wall`:def.name;placement.querySelector('[data-placement="rotate"]').disabled=def.views.length<2||isWallItem(def);}
   }
@@ -257,9 +245,9 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     stopWalking();selected=null;pending={...item};panel.hidden=true;
     if(!isPlaced(pending)&&!isWallItem(definitions.get(pending.type))){
       const avatar=getAvatar(),candidates=[];
-      for(let x=0;x<30;x++)for(let z=0;z<30;z++)if(isTile(x,z))candidates.push({x,z});
+      for(let x=0;x<90;x++)for(let z=0;z<30;z++)if(buildTile(x,z))candidates.push({x,z});
       candidates.sort((a,b)=>Math.hypot(a.x-avatar.x,a.z-avatar.z)-Math.hypot(b.x-avatar.x,b.z-avatar.z));
-      const first=candidates.find(cell=>canPlace({...pending,...cell},items,definitions,isTile,avatar,floorHeight));
+      const first=candidates.find(cell=>canPlace({...pending,...cell},items,definitions,buildTile,avatar,floorHeight));
       if(first)Object.assign(pending,first);
     }
     render();focusRoom();
@@ -280,7 +268,6 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     change(()=>{items=moveWithContents(items,{...item,rotation},definitions);});
   }
   panel.querySelector('.furniture-close').onclick=()=>{panel.hidden=true;focusRoom();};
-  panel.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;page=0;renderList();});
   panel.querySelector('input').oninput=event=>{filter=event.target.value.toLowerCase().trim();page=0;renderList();};
   panel.querySelector('select').onchange=event=>{category=event.target.value;page=0;renderList();};
   panel.querySelectorAll('.furniture-pages button').forEach((button,i)=>button.onclick=()=>{page+=i?1:-1;renderList();});
@@ -295,7 +282,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
       case 'Move':begin(item);break;
       case 'Rotate':rotate();break;
       case 'Power':
-        if(!networkPower||saving||item.type!=='custom_dj_decks')break;
+        if(!networkPower||saving||!switchable(item))break;
         saving=true;render();
         try{await networkPower(item.id,item.on===false);}catch(error){onPowerError(error.message);}finally{saving=false;render();}
         break;
@@ -308,10 +295,10 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     }
   });
   placement.querySelector('[data-placement="cancel"]').onclick=cancel;placement.querySelector('[data-placement="rotate"]').onclick=rotate;
-  function open(view){if(!editable)return;cancel();selected=null;tab=view;page=0;panel.hidden=false;listStale=true;render();panel.querySelector('input').focus();}
+  function open(){if(!editable)return;cancel();selected=null;page=0;panel.hidden=false;listStale=true;render();panel.querySelector('input').focus();}
   function validPlacement(item){
     const next=moveWithContents(items,item,definitions);
-    return next.filter(i=>i.id===item.id||i.supportId===item.id).every(i=>canPlace(i,next,definitions,isTile,getAvatar(),floorHeight,hasWall));
+    return next.filter(i=>i.id===item.id||i.supportId===item.id).every(i=>canPlace(i,next,definitions,buildTile,getAvatar(),floorHeight,hasWall));
   }
   function hitVisual(point){
     return visuals.find(({item,frame})=>{
@@ -354,7 +341,13 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
       if(changed)redraw();if(click){commit();render();}return true;
     }
     const hit=hitVisual(point);
-    if(click){selected=hit&&(editable&&canEdit(hit.item)||(networkPower&&hit.item.type==='custom_dj_decks'))?hit.item.id:null;render();onInspect(hit?.item??null,hit?definitions.get(hit.item.type):null);const spot=hit&&clickedSeat(hit.item.id,point);if(spot)onSit(spot);else if(hit&&USABLE.has(hit.item.type))onUse(hit.item.id);}
+    if(click){
+      // A built animation that is switchable flips on or off when anyone else clicks it; its builder (and Grant) get the usual selection with a Power button.
+      const flips=hit&&networkPower&&!!definitions.get(hit.item.type)?.switchable&&!(editable&&canEdit(hit.item));
+      selected=hit&&(editable&&canEdit(hit.item)||(networkPower&&hit.item.type==='custom_dj_decks'))?hit.item.id:null;render();onInspect(hit?.item??null,hit?definitions.get(hit.item.type):null);
+      if(flips)networkPower(hit.item.id,hit.item.on===false).catch(error=>onPowerError(error.message));
+      const spot=hit&&clickedSeat(hit.item.id,point);if(spot)onSit(spot);else if(hit&&USABLE.has(hit.item.type))onUse(hit.item.id);
+    }
     return !!hit&&definitions.get(hit.item.type).category!=='Rugs';
   }
   function key(event){
@@ -401,7 +394,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     return null;
   }
   render();
-  return {open,pointer,key,roomChanged,redraw,seat,animate,approach:(id,from,canWalk)=>{const item=items.find(i=>i.id===id);return item&&visible(item)?approachFor(item,items,definitions,from,canWalk):null;},blocks:(x,z)=>blocksTile(x,z,items,definitions),close:()=>{cancel();selected=null;panel.hidden=true;render();},get placing(){return !!pending;},
+  return {open,pointer,key,roomChanged,redraw,seat,animate,debugVisuals:()=>visuals.map(v=>({id:v.item.id.slice(0,6),type:v.item.type.slice(0,22),x:v.item.x,z:v.item.z,on:v.item.supportId?.slice(0,6)??null,order:v.mesh.renderOrder})),approach:(id,from,canWalk)=>{const item=items.find(i=>i.id===id);return item&&visible(item)?approachFor(item,items,definitions,from,canWalk):null;},blocks:(x,z)=>blocksTile(x,z,items,definitions),close:()=>{cancel();selected=null;panel.hidden=true;render();},get placing(){return !!pending;},
     getItems:()=>structuredClone(items),
     typeOf:id=>items.find(i=>i.id===id)?.type??null,
     // Show a piece's open state until the given time, then fall back to its resting frame.
@@ -415,7 +408,8 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
       const keep=new Set(list.map(d=>d.id));
       for(const def of catalog.filter(d=>d.id.startsWith('asset_')&&!keep.has(d.id))){definitions.delete(def.id);loading.delete(def.id);for(const view of def.views)frames.delete(`${def.id}:${view.direction}`);}
       catalog=[...catalog.filter(d=>!d.id.startsWith('asset_')),...list];
-      for(const def of list)if(!definitions.has(def.id))definitions.set(def.id,def);
+      // A known piece keeps its loaded sprites; only its sitting spot can change after it is built.
+      for(const def of list){const known=definitions.get(def.id);if(!known)definitions.set(def.id,def);else if(JSON.stringify(known.seat)!==JSON.stringify(def.seat))known.seat=def.seat;}
       items=restoreItems(rawItems,definitions);listStale=true;render();
     }
   };

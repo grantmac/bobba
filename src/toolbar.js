@@ -30,13 +30,9 @@ export function createToolbar({onRoomEdit,onFurniture,onChat,onTyping,onVoice,on
   room.innerHTML='<img src="/assets/bar/navigator.png" alt="">';
   room.onclick=onRoomEdit;icons.append(room);
   room.hidden=!admin;const adminButtons=[room];
-  for(const [file,label] of [['messenger','Friends'],['credits','Credits'],['catalogue','Catalogue'],['inventory','Inventory']]){
-    const button=document.createElement('button');button.type='button';button.className='bar-icon';
-    const available=file==='catalogue'||file==='inventory';
-    button.disabled=!available;button.title=available?label:label+' — not available yet';button.setAttribute('aria-label',button.title);
-    if(available)button.onclick=()=>onFurniture(label);
-    button.innerHTML=`<img src="/assets/bar/${file}.png" alt="">`;icons.append(button);
-  }
+  const furniture=document.createElement('button');furniture.type='button';furniture.className='bar-icon';
+  furniture.title='Furniture';furniture.setAttribute('aria-label','Furniture');furniture.onclick=()=>onFurniture();
+  furniture.innerHTML='<img src="/assets/bar/catalogue.png" alt="">';icons.append(furniture);
   const form=bar.querySelector('form'),input=bar.querySelector('input');
   // The indicator shows whenever there is an unsent message in the field, not just while
   // keys are moving: a heartbeat keeps the server's short typing window alive until the

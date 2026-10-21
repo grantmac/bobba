@@ -8,7 +8,10 @@ endpoint with API-key (Bearer) auth, and `skills/habbo-room/SKILL.md` drives the
 image generator, POST the PNG to an `upload_url`, then `submit_asset` with the storage id. `add_space` lets the
 player grow the room by one named 8 by 8 block of floor, chained onto the end of the back wall, and
 `style_space` restyles its floor and back wall with colours, wallpapers or pictures, which `design_surface` keeps in
-the room's pixel-art style and the endpoint remakes at the game's own pixel scale.
+the room's pixel-art style and the endpoint remakes at the game's own pixel scale. `set_seat` fixes where a
+figure sits on a built seat and how high. `room_picture` returns a picture of the room rendered by an open tab,
+so the agent can check its work. `add_asset` with `frames` makes an animated piece from a strip of up to four frames,
+optionally switchable by a click.
 
 The key it asks for is made in the room under Catalogue → **Build with your agent** → **Create
 agent key** (shown once; Disconnect in the same window revokes it).

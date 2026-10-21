@@ -10,6 +10,7 @@
 
 import type * as agents from "../agents.js";
 import type * as assets from "../assets.js";
+import type * as captures from "../captures.js";
 import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as lib_appearance from "../lib/appearance.js";
@@ -34,6 +35,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   agents: typeof agents;
   assets: typeof assets;
+  captures: typeof captures;
   crons: typeof crons;
   http: typeof http;
   "lib/appearance": typeof lib_appearance;

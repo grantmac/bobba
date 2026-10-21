@@ -41,8 +41,21 @@ export function splitSheet(sheet){
   }
   return views;
 }
-export function buildSprite(image,{kind,width,depth,display_width,facing,base_inset,direction}){
-  keyOutBackground(image);trim(image);
+// An animated piece is one view drawn as a strip of 2 to 4 equal frames side by side. The frames
+// are cut to one shared bounding box so the piece never jumps between them.
+export const FRAME_MAX=4;
+export function splitStrip(image,frames){
+  if(!Number.isInteger(frames)||frames<2||frames>FRAME_MAX)throw new Error(`frames must be 2 to ${FRAME_MAX}.`);
+  keyOutBackground(image);
+  const w=Math.floor(image.width/frames),h=image.height;
+  const cells=Array.from({length:frames},(_,i)=>image.clone().crop({x:i*w,y:0,w,h}));
+  let minX=w,minY=h,maxX=-1,maxY=-1;
+  for(const cell of cells)cell.scan(0,0,w,h,(x,y,idx)=>{if(cell.bitmap.data[idx+3]>40){if(x<minX)minX=x;if(y<minY)minY=y;if(x>maxX)maxX=x;if(y>maxY)maxY=y;}});
+  if(maxX<0)throw new Error('The strip is fully transparent.');
+  return cells.map(cell=>cell.crop({x:minX,y:minY,w:maxX-minX+1,h:maxY-minY+1}));
+}
+export function buildSprite(image,{kind,width,depth,display_width,facing,base_inset,direction,prepared=false}){
+  if(!prepared){keyOutBackground(image);trim(image);}
   ({width,depth}=footprintFor(direction??(facing==='left'?4:2),width,depth));
   const span=(width+depth)*32;
   let W=display_width??(kind==='rug'?span:kind==='wall'?48:kind==='tabletop'?40:Math.round(span*.85));
@@ -62,19 +75,33 @@ export function buildSprite(image,{kind,width,depth,display_width,facing,base_in
 // Prepare the sprites of a piece: `views` maps direction to a Jimp image, `upload(pngBuffer)`
 // stores one and returns its storage id. Gives the createAsset arguments (minus the agent
 // token) and a function that turns the mutation's result into the agent's summary.
+// The seat settings an agent gives, in the shape the server stores.
+export const seatSpec=args=>({x:args.seat_x??0,z:args.seat_z??0,height:args.seat_height??10,...(args.seat_offset_x?{offsetX:args.seat_offset_x}:{}),...(args.seat_offset_y?{offsetY:args.seat_offset_y}:{})});
 export async function prepareAsset(args,views,upload){
   const parts=[],viewList=[];let meta=null,icon=null;
   for(const direction of Object.keys(views).map(Number).sort((a,b)=>a-b)){
-    const image=views[direction],single=Object.keys(views).length===1;
-    const sprite=buildSprite(image,{...args,...(single?{}:{direction})});
-    const storageId=await upload(await image.getBuffer('image/png'));
-    parts.push({storageId,direction:single?sprite.views.find(v=>!v.mirror).source:direction,width:sprite.width,height:sprite.height,reg:sprite.reg});
+    const source=views[direction],single=Object.keys(views).length===1,strip=Array.isArray(source)?source:null,image=strip?strip[0]:source;
+    const sprite=buildSprite(image,{...args,...(single?{}:{direction}),prepared:!!strip});
+    let buffer,cells;
+    if(strip){
+      // Every frame is scaled like the first and packed side by side; the client plays the cells in turn.
+      const W=sprite.width*DENSITY,H=sprite.height*DENSITY,sheet=new Jimp({width:W*strip.length,height:H,color:0x00000000});
+      strip.forEach((frame,i)=>{if(i>0)frame.resize({w:W,h:H,mode:ResizeStrategy.BICUBIC});sheet.composite(frame,i*W,0);});
+      buffer=await sheet.getBuffer('image/png');cells=strip.map((_,i)=>({x:i*W,y:0,width:W,height:H}));
+    }else buffer=await image.getBuffer('image/png');
+    const storageId=await upload(buffer);
+    parts.push({storageId,direction:single?sprite.views.find(v=>!v.mirror).source:direction,width:sprite.width,height:sprite.height,reg:sprite.reg,...(cells?{frames:cells}:{})});
     viewList.push(...sprite.views);
     if(direction===2||!icon){icon=storageId;meta=sprite;}
   }
-  const spec={name:args.name,category:meta.category,width:args.width,depth:args.depth,spriteDensity:DENSITY,
+  // A seat may name the tile sat on and the seat top's height; anything else must not.
+  const seatGiven=['seat_x','seat_z','seat_height','seat_offset_x','seat_offset_y'].some(key=>args[key]!==undefined);
+  if(seatGiven&&args.kind!=='seat')throw new Error('seat_x, seat_z, seat_height and seat offsets apply to kind "seat" only.');
+  const animated=Object.values(views).some(Array.isArray);
+  if(args.switchable&&!animated)throw new Error('Only an animated piece (frames) can be switchable.');
+  const spec={name:args.name,category:meta.category,width:args.width,depth:args.depth,spriteDensity:DENSITY,...(seatGiven?{seat:seatSpec(args)}:{}),...(animated?{frameDuration:args.frame_ms??250,...(args.switchable?{switchable:true}:{})}:{}),
     ...(meta.wallWidth!==undefined?{wallWidth:meta.wallWidth}:{}),...(meta.tableOffsetY!==undefined?{tableOffsetY:meta.tableOffsetY}:{}),...(meta.surfaceHeight!==undefined?{surfaceHeight:meta.surfaceHeight}:{}),
     icon,parts,views:viewList.sort((a,b)=>a.direction-b.direction)};
-  const summary=result=>({asset_id:result.id,type:result.type,name:args.name,category:meta.category,rotations:viewList.length,display_size:`${meta.width}x${meta.height} px`,footprint:`${args.width}x${args.depth}`,next:'Call place with this asset_id and a free tile from room_map, or the player can place it from Catalogue (Rotate turns it).'});
+  const summary=result=>({asset_id:result.id,type:result.type,name:args.name,category:meta.category,rotations:viewList.length,...(animated?{frames:Object.values(views).find(Array.isArray).length,frame_ms:spec.frameDuration,switchable:!!spec.switchable}:{}),display_size:`${meta.width}x${meta.height} px`,footprint:`${args.width}x${args.depth}`,next:'Call place with this asset_id and a free tile from room_map, or the player can place it from Furniture (Rotate turns it).'});
   return {spec,summary};
 }

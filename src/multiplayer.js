@@ -108,6 +108,14 @@ export function createMultiplayer(){
       attached:(onList,onError)=>client.onUpdate(api.agents.attached,{token},onList,error=>onError(errorMessage(error))),
       revoke:()=>client.mutation(api.agents.revoke,{token}).catch(error=>{throw new Error(errorMessage(error));}),
     },
+    // Pictures for agents: an open tab takes the request, renders and uploads (src/snapshot.js).
+    captures:{
+      watch:(onPending,onError)=>client.onUpdate(api.captures.pending,{token},onPending,error=>onError(errorMessage(error))),
+      take:id=>client.mutation(api.captures.take,{token,id}),
+      uploadUrl:()=>client.mutation(api.captures.uploadUrl,{token}),
+      finish:(id,storageId)=>client.mutation(api.captures.finish,{token,id,storageId}),
+      failed:(id,reason)=>client.mutation(api.captures.failed,{token,id,reason}),
+    },
     close(){depart();window.removeEventListener('pagehide',depart);unsubscribe?.();unsubscribeRoom?.();unsubscribePong?.();clearInterval(heartbeat);client.close();},
   };
 }

@@ -1,6 +1,6 @@
 import {mutation,query,internalMutation,internalQuery} from './_generated/server.js';
 import {v} from 'convex/values';
-import {DEFAULT_ROOM,isOnline,onlinePlayers,fail,validName,validateLook,validateRoom,validateFurniture,tileSet,wallTileSet,wallChecker,isPlaced,cells,blocked,atTime,freePosition,findPath,playerTiles,layoutFor,pitSeat} from './lib/rules.js';
+import {DEFAULT_ROOM,isOnline,onlinePlayers,ownSpaceCheck,healOrphans,fail,validName,validateLook,validateRoom,validateFurniture,tileSet,wallTileSet,wallChecker,isPlaced,cells,blocked,atTime,freePosition,findPath,playerTiles,layoutFor,pitSeat} from './lib/rules.js';
 import {internal} from './_generated/api.js';
 import {furniture} from './lib/catalog.js';
 import {POSTERS,STICKY_COLORS,STICKY_LIMIT,STICKY_TEXT_LIMIT,validWallPosition,validPosterPosition,relocateStickies} from '../shared/stickies.js';
@@ -259,9 +259,10 @@ export const setFurniture=mutation({args:{token:v.string(),items:v.array(v.any()
   }
   // A client built before player pieces existed drops them as unknown types; keep those.
   if(!knowsAssets){const sent=new Set(items.map(i=>i.id));items=[...items,...room.furniture.filter(i=>i.type.startsWith('asset_')&&!sent.has(i.id))];}
+  items=healOrphans(items);
   validateFurniture(items,room.options,room.definitions,room.spaces??[]);
   // Builders may only touch what they built; Grant may change anything.
-  if(player.role!=='admin'){try{assertOwnedChanges(room.furniture,items,player._id,room.definitions);}catch(error){fail(error.message);}}
+  if(player.role!=='admin'){try{assertOwnedChanges(healOrphans(room.furniture),items,player._id,room.definitions,ownSpaceCheck(room.options,room.spaces??[],player._id,room.definitions));}catch(error){fail(error.message);}}
   const next={...room,furniture:items};freePosition(next);
   // Hanging a wall piece never displaces anyone, so only floor changes reset players.
   const placement=value=>JSON.stringify(value.filter(item=>!isWallItem(room.definitions[item.type])).map(({on,...item})=>item));
@@ -277,7 +278,7 @@ export const setDanceFloor=mutation({args:{token:v.string(),on:v.boolean()},hand
 export const setDeckPower=mutation({args:{token:v.string(),id:v.string(),on:v.boolean()},handler:async(ctx,{token,id,on})=>{
   await playerFor(ctx,token);const room=await getRoom(ctx);
   const item=room.furniture.find(item=>item.id===id);
-  if(!item||item.type!=='custom_dj_decks'||!isPlaced(item))fail('Select decks that are in the room.');
+  if(!item||!isPlaced(item)||!(item.type==='custom_dj_decks'||room.definitions[item.type]?.switchable))fail('Select a piece in the room that can be switched.');
   if((item.on??true)===on)return;
   await ctx.db.patch(room._id,{furniture:room.furniture.map(item=>item.id===id?{...item,on}:item),revision:room.revision+1});
 }});

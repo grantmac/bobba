@@ -38,6 +38,30 @@ export function createSpaceFloor(width,depth,sample){
   }
   ctx.putImageData(data,0,0);return canvas;
 }
+// Steel tread plates with inset seams, raised grips and bolted edge channels.
+export function createMetalWalkway(width,depth){
+  return createSpaceFloor(width,depth,(x,z)=>{
+    const u=Math.floor(x*32)%32,v=Math.floor(z*32),back=depth*32-1;
+    if(v===0)return [187,198,204];
+    if(v===1||v===back)return [77,90,100];
+    if(v===back-1)return [164,178,187];
+    if(u===0)return [52,64,73];
+    if(u===1)return [163,177,185];
+    if(v<5||v>back-5){
+      const row=v<5?v:back-v;
+      if((u===5||u===27)&&row===3)return [44,56,64];
+      if((u===4||u===26)&&row===2)return [206,215,220];
+      return [112,128,139];
+    }
+    const a=u%8,b=v%8,diagonal=(Math.floor(u/8)+Math.floor(v/8))%2?a+b-7:b-a;
+    if(a>=2&&a<=5){
+      if(diagonal===0)return [182,194,202];
+      if(diagonal===1)return [66,80,91];
+    }
+    const tone=Math.floor(x)%2?0:5,brush=v%4===0?3:0;
+    return [116+tone+brush,132+tone+brush,143+tone+brush];
+  });
+}
 // An uploaded picture's pixels, scaled down with smoothing when it is bigger than the area it will
 // cover (so photos do not sparkle), left crisp when it is smaller. Null if the browser cannot read it.
 export function picturePixels(image,maxWidth,maxHeight){

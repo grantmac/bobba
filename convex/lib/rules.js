@@ -57,7 +57,7 @@ export function validateFurniture(items,options,defs=furniture,spaces=[]){
   const ids=new Set(),occupied=new Set(),rugs=new Set(),layout=layoutFor(options,spaces),tiles=new Set([...layout.mainTiles,...layout.danceTiles,...layout.poolDeckTiles,...layout.parkingTiles,...layout.spaceTiles].map(cell=>cell.join(','))),hasWall=wallChecker(options,spaces);
   for(const item of items){
     if(!item||Object.keys(item).some(key=>!['id','type','rotation','x','z','supportId','on','u','height','owner'].includes(key))||!['id','type','rotation','x','z'].every(key=>Object.hasOwn(item,key))||typeof item.id!=='string'||!/^[-a-zA-Z0-9]{1,80}$/.test(item.id)||ids.has(item.id))fail('Invalid furniture.');
-    if(item.on!==undefined&&(typeof item.on!=='boolean'||item.type!=='custom_dj_decks'))fail('Invalid furniture power setting.');
+    if(item.on!==undefined&&(typeof item.on!=='boolean'||!(item.type==='custom_dj_decks'||defs[item.type]?.switchable)))fail('Invalid furniture power setting.');
     if(item.owner!==undefined&&(typeof item.owner!=='string'||!item.owner))fail('Invalid furniture owner.');
     ids.add(item.id);const def=defs[item.type];
     if(!def||!def.views.some(v=>v.direction===item.rotation))fail('Invalid furniture type or rotation.');
@@ -88,6 +88,19 @@ function validSpaceName(raw){
   const name=String(raw??'').normalize('NFKC').replace(/\s+/g,' ').trim();
   if(name.length<1||name.length>SPACE_NAME_MAX||/[^\p{L}\p{N} '&.,!-]/u.test(name))fail(`Name the space with 1 to ${SPACE_NAME_MAX} letters, numbers, spaces or basic punctuation.`);
   return name;
+}
+// A piece left pointing at a table that is no longer in the room goes back to its owner's
+// inventory, so one stranded piece can never block every save with a failed tabletop check.
+export function healOrphans(items){
+  const placed=new Set(items.filter(i=>isPlaced(i)&&!i.supportId).map(i=>i.id));
+  return items.map(item=>{if(!item.supportId||placed.has(item.supportId))return item;const next={...item,x:null,z:null};delete next.supportId;return next;});
+}
+// Builders may put their pieces only in their own spaces: floor pieces (and what sits on their
+// tables) on those tiles, wall pieces on that stretch of the back wall. Pieces placed before the
+// rule stay where they are until moved. Grant builds anywhere.
+export function ownSpaceCheck(options,spaces,playerId,defs){
+  const mine=layoutFor(options,spaces).spaces.filter(s=>s.owner===playerId),tiles=new Set(mine.flatMap(s=>s.tiles.map(c=>c.join(','))));
+  return {hasSpace:mine.length>0,within:item=>{const def=defs[item.type];return !!def&&(isWallItem(def)?item.z===0&&tiles.has(`${item.x},0`):cells(item,defs).every(c=>tiles.has(c.join(','))));}};
 }
 // Restyle a space: only the fields given change, and null clears a wall choice or a picture. Picture
 // uploads are checked by the mutation; here they are already storage ids.

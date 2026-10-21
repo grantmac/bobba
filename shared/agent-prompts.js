@@ -64,3 +64,14 @@ export function surfacePrompt({surface='floor',fit='tile',description='',details
     STYLE_SURFACE,DELIVER_SURFACE,
   ].filter(Boolean).join('\n');
 }
+// An animated piece: one view drawn as a strip of equal frames, for add_asset with `frames`.
+export function stripPrompt({description,kind='floor',width=1,depth=1,details='',frames=2,facing='right'}){
+  const front=facing==='left'?'lower-left':'lower-right';
+  return [
+    `Create ONE transparent isometric pixel-art ANIMATION STRIP for the game shown in the room reference image: ${frames} frames side by side in a single row, each frame exactly the same width, showing the SAME piece facing ${front} at the same size, position and ground line, where only the part that moves changes from frame to frame (a flame flickering, a light blinking, a screen changing, a fan turning). The frames play in turn and loop.`,
+    `The piece: ${description.trim()} It is ${KIND_NOTES[kind]??KIND_NOTES.floor}, ${width===1&&depth===1?'one game tile':`${width} by ${depth} game tiles`} at the scale of the furniture in the room reference.`,
+    details.trim()?`Design: ${details.trim()}`:'',
+    `Layout: divide the canvas into ${frames} equal columns and draw one frame centred in each column with clear transparent space around it and nothing crossing the column lines; keep every frame's outline identical apart from the animated part. All verticals vertical, strict orthographic 2:1 isometric projection, no perspective convergence.`,
+    STYLE,DELIVER.replace('the COMPLETE piece alone','the complete strip of frames and nothing else'),
+  ].filter(Boolean).join('\n');
+}

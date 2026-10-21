@@ -5,6 +5,7 @@
 <script type="module">
 import {createFurniture} from '/src/furniture.js';
 import {prepareImage} from '/src/sprite-image.js';
+import {createToolbar} from '/src/toolbar.js';
 const catalogue=await (await fetch('/assets/furniture/catalog.json')).json();
 const base=catalogue.find(item=>item.id==='custom_traffic_cone');
 const mine={...base,id:'asset_fixture_mine',name:'My cone',owner:'builder'},other={...base,id:'asset_fixture_other',name:'Their cone',owner:'other'};
@@ -16,21 +17,32 @@ const furniture=await createFurniture({prepareImage,initialItems:initial,initial
  worldPoint:(x,z)=>({x:60+x*65,y:90+z*45}),isTile:()=>true,getAvatar:()=>({x:9,z:9}),stopWalking(){},onChanged(){},onSit(){},markTiles(){},focusRoom(){}
 });
 furniture.connect({admin:false,me:'builder',onSave:async items=>{saved=structuredClone(items);furniture.receive(items);}});
+const toolbar=createToolbar({admin:false,onFurniture:()=>furniture.open(),onChat:async()=>{}});
 const actions=document.querySelector('.furniture-actions'),tick=()=>new Promise(resolve=>setTimeout(resolve,0));
 function assert(ok,message){if(!ok)throw Error(message);}
 function hit(item){const p={x:60+item.x*65,y:90+item.z*45};const mesh=visuals.find(v=>Math.abs(v.x-p.x)<100&&Math.abs(v.y-p.y)<100);assert(mesh,'Sprite missing');const pixels=mesh.canvas.getContext('2d').getImageData(0,0,mesh.canvas.width,mesh.canvas.height).data;for(let i=3;i<pixels.length;i+=4)if(pixels[i]>40){const n=(i-3)/4;return {x:mesh.x+((n%mesh.canvas.width)+.5)/(mesh.canvas.width/mesh.w),y:mesh.y+(Math.floor(n/mesh.canvas.width)+.5)/(mesh.canvas.height/mesh.h)};}throw Error('Empty sprite');}
 document.querySelector('#run').onclick=async()=>{try{
+ for(const admin of [false,true]){
+  toolbar.setAdmin(admin);
+  for(const label of ['Friends','Credits','Catalogue','Inventory'])assert(!document.querySelector(`.room-toolbar [aria-label^="${label}"]`),`Unused ${label} toolbar icon remains`);
+  assert(document.querySelectorAll('.room-toolbar [aria-label="Furniture"]').length===1,'Toolbar must have one Furniture button');
+ }
+ document.querySelector('.room-toolbar [aria-label="Furniture"]').click();assert(!document.querySelector('[aria-label="Furniture views"]'),'Furniture still has separate views');
+ assert(document.querySelectorAll('.furniture-card').length===1,'Furniture must show only assets this player built');
+ furniture.connect({admin:true,me:'builder',onSave:async items=>{saved=structuredClone(items);furniture.receive(items);}});
+ assert(document.querySelectorAll('.furniture-card').length===1,'Admin list must also show only their built assets');
+ furniture.connect({admin:false,me:'builder',onSave:async items=>{saved=structuredClone(items);furniture.receive(items);}});furniture.close();
  furniture.pointer(hit(initial[1]),{x:4,z:1},true);assert(actions.hidden,'Another player’s controls were exposed');
  furniture.pointer(hit(initial[0]),{x:1,z:1},true);assert(!actions.hidden,'Owner cannot select their piece');
  for(const name of ['Move','Rotate','Pick up','Delete'])assert(!actions.querySelector(`[data-action="${name}"]`).hidden,`Missing ${name}`);
  actions.querySelector('[data-action="Move"]').click();furniture.pointer({x:60+2*65,y:90+3*45},{x:2,z:3},true);await tick();
  assert(saved.find(i=>i.id==='mine').x===2&&saved.find(i=>i.id==='mine').z===3,'Move was not saved');
  actions.querySelector('[data-action="Pick up"]').click();await tick();assert(saved.find(i=>i.id==='mine').x===null,'Pick up was not saved');
- furniture.open('Inventory');assert(document.querySelectorAll('.furniture-card').length===1,'Own inventory is missing');
+ furniture.open();assert(document.querySelectorAll('.furniture-card').length===1,'Own built asset is missing after pick up');
  document.querySelector('.furniture-card').click();furniture.pointer({x:190,y:180},{x:2,z:2},true);await tick();
  actions.querySelector('[data-action="Delete"]').click();assert(document.querySelector('dialog').open,'Delete confirmation missing');document.querySelector('[data-confirm="delete"]').click();await tick();
  assert(!saved.some(i=>i.id==='mine'),'Delete was not saved');assert(saved.some(i=>i.id==='theirs'),'Another player’s item changed');
- document.querySelector('#result').textContent='PASS: own pieces select, move, pick up, return from inventory and delete; other players’ controls stay hidden.';
+ document.querySelector('#result').textContent='PASS: one built-assets list for players and admins; one Furniture toolbar button; own pieces move, pick up, return from the list and delete; other players’ controls stay hidden.';
 }catch(error){document.querySelector('#result').textContent='FAIL: '+error.message;throw error;}};
 document.querySelector('#run').disabled=false;document.querySelector('#result').textContent='Ready. The left cone belongs to this player; the right cone belongs to someone else.';
 </script>

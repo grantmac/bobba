@@ -14,7 +14,8 @@ import {createStickies} from './stickies.js';
 import {installTouchNavigation} from './touch-navigation.js';
 import {createVoice} from './voice.js';
 import {roomLayout,tileDrop,walkingDrop,tileAtPoint,isPoolWater,pitSeat,backWallTiles,onWalkway,STEP_DOWN,DANCE_ROWS} from '../shared/room-layout.js';
-import {floorSampler,createSpaceFloor,picturePixels,pictureSampler,wallSegment} from './spaces.js';
+import {floorSampler,createSpaceFloor,createMetalWalkway,picturePixels,pictureSampler,wallSegment} from './spaces.js';
+import {renderPicture,startSnapshots} from './snapshot.js';
 import {createDanceFloor} from './dance-floor.js';
 import {createDanceFloorControls} from './dance-floor-controls.js';
 import {createDiscoBall} from './disco-ball.js';
@@ -193,7 +194,8 @@ const characterPoint=(x,z)=>{const p=iso(x,z);p.y+=layout?walkingDrop(layout,z,x
 const spacePictures=new Map(),spacePictureLoads=new Map();
 function loadSpacePictures(spaces){
   return Promise.all((spaces??[]).flatMap(s=>[s.floorImageUrl,s.wallImageUrl]).filter(Boolean).map(url=>{
-    if(!spacePictureLoads.has(url))spacePictureLoads.set(url,new Promise(resolve=>{const image=new Image();image.crossOrigin='anonymous';image.onload=()=>{spacePictures.set(url,image);resolve();};image.onerror=()=>resolve();image.src=url;}));
+    // A slow picture never holds the room up: after eight seconds the rebuild goes ahead without it.
+    if(!spacePictureLoads.has(url))spacePictureLoads.set(url,new Promise(resolve=>{const image=new Image();image.crossOrigin='anonymous';image.onload=()=>{spacePictures.set(url,image);resolve();};image.onerror=()=>resolve();image.src=url;setTimeout(resolve,8000);}));
     return spacePictureLoads.get(url);
   }));
 }
@@ -279,11 +281,10 @@ function buildRoom(options){
     const pixels=picture&&picturePixels(picture,cover?space.width*64:64,cover?space.depth*64:64);
     sprite(createSpaceFloor(space.width,space.depth,pictureSampler(floorSampler(image,finish.type===2),pixels,space.floorFit,space.width,space.depth)),origin.x-space.depth*32,origin.y,12);
   }
-  // The walkway strip along the front of the lounge and spaces: plain grey paving nobody styles,
-  // drawn over the spaces' front faces so it reads as the same floor level.
+  // Steel walkway along the front of the lounge and spaces, over their front faces at floor level.
   if(layout.walkway){
-    const way=layout.walkway,origin=iso(way.x,way.z),paving=surface('flat_floor_1_a_0_0_0.png','floor_tiles2','#cbccd1',[[65,0],[130,32],[65,65],[0,32]]);
-    sprite(createSpaceFloor(way.width,way.depth,floorSampler(paving,false)),origin.x-way.depth*32,origin.y,12.5);
+    const way=layout.walkway,origin=iso(way.x,way.z);
+    sprite(createMetalWalkway(way.width,way.depth),origin.x-way.depth*32,origin.y,12.5);
   }
   // Each space's stretch of the back wall takes that space's wallpaper, colour and picture; the
   // lounge's stretch stays in the room's own.
@@ -393,6 +394,15 @@ function overCharacter(event) {
 }
 
 // A seat by id: a furniture seat, or 'pit' for the sunken sofa's ring tile the player stands on.
+// A picture for an agent (src/snapshot.js): the whole room, or one block of tiles with the wall
+// behind it, at two pixels per room pixel (less for a very wide room), as a PNG.
+function takePicture(region){
+  const r=region??{x:0,z:0,width:layout.extentWidth,depth:layout.depth};
+  const top=iso(r.x,r.z),right=iso(r.x+r.width,r.z),left=iso(r.x,r.z+r.depth),bottom=iso(r.x+r.width,r.z+r.depth),margin=12;
+  const bounds={left:left.x-margin,right:right.x+margin,top:CENTER_Y-top.y+124,bottom:CENTER_Y-bottom.y-28-margin};
+  const scale=Math.max(1,Math.min(2,1600/(bounds.right-bounds.left)));
+  return new Promise((resolve,reject)=>renderPicture(renderer,scene,bounds,scale).toBlob(blob=>blob?resolve(blob):reject(new Error('Could not encode the picture.')),'image/png'));
+}
 function seatInfo(id,point){
   if(id!=='pit')return furniture?.seat(id,point)??null;
   const x=Math.floor(point.x),z=Math.floor(point.z),spot=layout&&pitSeat(layout,x,z);
@@ -439,6 +449,15 @@ function screenCell(event){
   const sx=(event.clientX-r.left-r.width/2-viewOffsetX)/displayScale;
   const sy=(event.clientY-r.top-r.height/2-viewOffsetY)/displayScale+CENTER_Y;
   return layout?tileAtPoint(layout,sx,sy,roomCenterX):null;
+}
+// The space whose stretch of back wall is under a room point, if any: the wall face of tile (x,0)
+// is the parallelogram 32 wide and 117 tall whose top edge drops 16 px across it.
+function spaceWallAt(point){
+  for(const space of layout?.spaces??[])for(let x=space.x;x<space.x+space.width;x++){
+    const p=iso(x,0),u=(point.x-p.x)/32,height=p.y+u*16-point.y;
+    if(u>=0&&u<1&&height>=0&&height<=117)return space;
+  }
+  return null;
 }
 function screenPoint(event){
   const r=container.getBoundingClientRect();
@@ -515,12 +534,14 @@ container.addEventListener('pointerdown',event=>{if(event.button===0)down={x:eve
 container.addEventListener('pointercancel',()=>{down=null;});
 container.addEventListener('pointerup',event=>{
   if(down&&Math.hypot(event.clientX-down.x,event.clientY-down.y)<8){
-    danceControls?.close();const peer=peerAt(event),cell=screenCell(event);
+    danceControls?.close();const peer=peerAt(event),cell=screenCell(event),wallSpace=spaceWallAt(screenPoint(event));
     if(ready&&pongAt(screenPoint(event))){usePong();}
     else if(ready&&whiteboardAt(screenPoint(event))){furniture?.close();whiteboard.open();}
     else if(stickies?.pointer(screenPoint(event),true)){}
     else if(peer)selectPeer(peer);
     else if(furniture?.pointer(screenPoint(event),cell,true))container.focus({preventScroll:true});
+    // A space's back wall names the space and who added it, like a built piece.
+    else if(wallSpace){furniture?.close();infoStand?.inspect({name:wallSpace.name,by:wallSpace.ownerName,icon:null});container.focus({preventScroll:true});}
     else if(overCharacter(event))appearance.open();
     else{
       infoStand?.hide();walkTo(cell);
@@ -727,7 +748,7 @@ function animate(now){
 }
 requestAnimationFrame(animate);
 try{
-  toolbar=createToolbar({admin:false,onTyping:typing=>{if(ready){localTyping=typing;void network.typing(typing).catch(()=>{});}},onAppearance:()=>{if(ready)appearance.open();},onVoice:()=>{if(ready)voice.open();},onRoomEdit:()=>{if(ready&&network.me?.role==='admin')roomEditor.open();},onFurniture:view=>{if(ready)furniture.open(view);},onChat:(body,mode)=>{if(ready)return network.chat(body,mode);},onGesture:action=>{if(ready)network.gesture(action).catch(error=>toolbar.status(error.message));}});
+  toolbar=createToolbar({admin:false,onTyping:typing=>{if(ready){localTyping=typing;void network.typing(typing).catch(()=>{});}},onAppearance:()=>{if(ready)appearance.open();},onVoice:()=>{if(ready)voice.open();},onRoomEdit:()=>{if(ready&&network.me?.role==='admin')roomEditor.open();},onFurniture:()=>{if(ready)furniture.open();},onChat:(body,mode)=>{if(ready)return network.chat(body,mode);},onGesture:action=>{if(ready)network.gesture(action).catch(error=>toolbar.status(error.message));}});
   network=createMultiplayer();
   danceControls=createDanceFloorControls({onChange:on=>network.danceFloor(on),onError:message=>toolbar.status(message)});
   voice=createVoice({credentials:tab=>network.voiceCredentials(tab),onState:state=>toolbar.setVoiceState(state),onSpeaking:speaking=>radio?.duck(speaking)});
@@ -787,7 +808,9 @@ try{
     prepareImage,worldPoint:iso,isTile:(x,z)=>valid(x,z)&&!isPoolWater(layout,x,z)&&!onWalkway(layout,x,z),floorHeight,getAvatar:()=>position,stopWalking,onChanged:()=>{ensureFreeTile();positionAwayPoster();positionDeckSign();},onSit:sitOn,onUse:useItem,
     // Clicking a player-built piece names it and its builder on the info stand; stock pieces clear it.
     onInspect:(item,def)=>{if(def?.ownerName)infoStand.inspect({name:def.name,by:def.ownerName,icon:def.icon});else infoStand.hide();},
-    focusRoom:()=>container.focus({preventScroll:true}),onPlaceSticky:()=>stickies.begin(),onPlacePoster:id=>stickies.begin(null,id),
+    // Builders may only drop pieces in a space they own (the server enforces the same).
+    canBuildAt:(x,z)=>layout.spaces.some(s=>s.owner===network?.me?.id&&x>=s.x&&x<s.x+s.width&&z>=s.z&&z<s.z+s.depth),
+    focusRoom:()=>container.focus({preventScroll:true}),
     hasWall:(x,z,side)=>(side==='left'?leftWallSet:rightWallSet).has(`${x},${z}`),
     walls:()=>[...leftWallSet].map(key=>{const [x,z]=key.split(',').map(Number);return {x,z,side:'left'};}).concat([...rightWallSet].map(key=>{const [x,z]=key.split(',').map(Number);return {x,z,side:'right'};})),
     makeVisual:canvas=>sprite(canvas,0,0,300),
@@ -812,8 +835,10 @@ try{
       stopPreview=network.preview(state=>{
         receiveDanceFloor(state.room.danceFloorOn);receiveFridge(state.room.fridge);
         const rk=JSON.stringify([state.room.options,state.room.spaces??[]]),fk=state.room.revision;
-        if(rk!==roomKey){roomKey=rk;const spaces=state.room.spaces??[],options=state.room.options;loadSpacePictures(spaces).then(()=>{if(roomKey!==rk)return;roomSpaces=spaces;roomEditor.receive(options);});}
-        if(fk!==furnitureKey){furnitureKey=fk;furniture.receive(state.room.furniture);positionAwayPoster();positionDeckSign();}
+        // Furniture lands only after the room it belongs to is built: a resized space moves what hangs on the spaces after it.
+        const applyFurniture=()=>{if(fk!==furnitureKey){furnitureKey=fk;furniture.receive(state.room.furniture);positionAwayPoster();positionDeckSign();}};
+        if(rk!==roomKey){roomKey=rk;const spaces=state.room.spaces??[],options=state.room.options;loadSpacePictures(spaces).then(()=>{if(roomKey!==rk)return;roomSpaces=spaces;roomEditor.receive(options);applyFurniture();});}
+        else applyFurniture();
         receiveStickies(state.room.stickies);
         updatePeers(state.players);resolve();
       },message=>reject(new Error(message)));
@@ -834,7 +859,9 @@ try{
   network.whiteboard.all().then(all=>{whiteboard.load(all);network.whiteboard.watch(all.serial,update=>whiteboard.receive(update));}).catch(error=>toolbar.status(error.message));
   stickies.connect(admin);
   furniture.connect({admin,me:network.me.id,onSave:items=>network.furniture(items),onPower:(id,on)=>network.deckPower(id,on),onError:message=>toolbar.status(message)});
+  if(import.meta.env.DEV)window.__room={get visuals(){return furniture.debugVisuals();},get avatar(){return {order:avatar.renderOrder,x:position.x,z:position.z};},get peers(){return [...peers.values()].map(p=>({name:p.data.name,order:p.mesh.renderOrder,seat:p.data.seatId?.slice(0,6)??null}));}};
   network.assets.watch(list=>furniture.setAssets(list),message=>toolbar.status(message));
+  startSnapshots({captures:network.captures,capture:takePicture,onStatus:message=>toolbar.status(message)});
   toolbar.setAdmin(admin);
   let roomKey='',furnitureKey='',ownLook=JSON.stringify(network.me.look),lookVersion=0;
   const seenMessages=new Set();
@@ -846,8 +873,10 @@ try{
       receiveDanceFloor(room.danceFloorOn);receiveFridge(room.fridge);
       // The server bumps room.revision on every furniture, power and options change, so that one number stands in for the whole list.
       const nextRoom=JSON.stringify([room.options,room.spaces??[]]),nextFurniture=room.revision;
-      if(nextRoom!==roomKey){roomKey=nextRoom;const spaces=room.spaces??[],options=room.options;loadSpacePictures(spaces).then(()=>{if(roomKey!==nextRoom)return;roomSpaces=spaces;roomEditor.receive(options);});}
-      if(nextFurniture!==furnitureKey){furnitureKey=nextFurniture;furniture.receive(room.furniture);positionAwayPoster();positionDeckSign();radio.receive(room.furniture,true);}
+      // Furniture lands only after the room it belongs to is built: a resized space moves what hangs on the spaces after it.
+      const applyFurniture=()=>{if(nextFurniture!==furnitureKey){furnitureKey=nextFurniture;furniture.receive(room.furniture);positionAwayPoster();positionDeckSign();radio.receive(room.furniture,true);}};
+      if(nextRoom!==roomKey){roomKey=nextRoom;const spaces=room.spaces??[],options=room.options;loadSpacePictures(spaces).then(()=>{if(roomKey!==nextRoom)return;roomSpaces=spaces;roomEditor.receive(options);applyFurniture();});}
+      else applyFurniture();
       receiveStickies(room.stickies);
     };
     network.watch(state=>{

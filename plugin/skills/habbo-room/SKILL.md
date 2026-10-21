@@ -30,6 +30,16 @@ concept art, screenshots, real objects):
    `tabletop` is a small object, `rug` lies flat, `wall` hangs on a wall,
    `plant`, `lamp`, otherwise `floor`. Pass the saved path of the user's picture
    as `reference_image_path` so it is listed among the images to attach.
+   For a `seat`, say where the figure sits when you submit it: `seat_x` and
+   `seat_z` pick the tile within the footprint (as placed facing lower-right:
+   x across the depth, z along the width; a lone stool is 0,0) and
+   `seat_height` is the seat top in pixels above the floor (about 10 for a
+   chair, 20 for a bar stool, 0 for a cushion); `seat_offset_x` and
+   `seat_offset_y` nudge the seated figure sideways or up and down by a few
+   pixels when the art sits off the tile centre. Without them the figure sits
+   on every tile at chair height. If it ends up floating, sunk or on the wrong
+   tile, fix it afterwards with `set_seat` (asset_id from `my_assets`) instead
+   of rebuilding; open rooms update at once.
 2. The result has `prompt`, the `attach` list and the `attach_order`. The room
    and sprite references are URLs: download them first (`curl -sO <url>`).
    Generate ONE image with your image-generation tool using the prompt verbatim
@@ -79,16 +89,51 @@ redrawing a reference. Attach the room and sprite references it lists.
 - Players can also place, rotate and delete their own pieces from the room's
   Catalogue, so check `room_map` before assuming the floor is as you left it.
 
-## 5. Adding floor
+## 5. Animated pieces
 
-A player can grow the room by one block of floor with `add_space` (a `name`,
+A piece can animate with a strip of 2 to 4 frames of one view (the
+facing-right view; the other side is mirrored). Call `design_asset` with
+`frames` set: the prompt then asks your image tool for a single row of equal
+frames of the same piece, identical apart from the part that moves (a flame,
+a blinking light, a screen). Check the PNG: the frames must line up in equal
+columns with nothing crossing the column lines, same size and ground line in
+every frame, real transparent background. Upload it and call `add_asset`
+with `frames`, `frame_ms` (how long each frame shows, 250 is a steady blink)
+and `switchable: true` if players should be able to click it off and on
+(off freezes it on its first frame). Its builder clicks it to select it and
+uses the Power button instead.
+
+## 6. Seeing the room
+
+You cannot see the game directly, but `room_picture` returns a PNG of it as
+players see it, rendered just now by a browser tab that has the room open
+(the player's, usually). `focus` is `mine` (the player's space), `space`
+with a `space_id`, or `room` for everything. After placing, moving, restyling
+or fixing a seat, call it and describe what you see; attach or show the
+picture when the user asks how it looks. If it reports that no tab answered,
+ask the user to open https://chat.grantm.ac and try again; never claim to
+have checked when you have not.
+
+## 7. Adding floor
+
+A player's pieces can only be placed inside a space they own (floor pieces
+on its tiles, wall pieces on its stretch of the back wall), so a player with
+no space must add one before anything can be placed; `place` outside it is
+refused. Only Grant builds anywhere. A player can grow the room by one block
+of floor with `add_space` (a `name`,
 an optional `floor` of plain, wood, tiles or carpet and a `floor_color` from
 the palette `status` lists). Every space is the same size, 8 by 8 tiles, and
 where it goes is not a choice: every new space joins the right-hand end of the back
 wall, flush against the latest space (the first joins the games lounge), at
 floor level with the room's wallpaper behind it. The reply and `room_map`
 (`spaces`, each with `tiles` and a `latest` flag) show where it landed, and
-the player's pieces can be placed on those tiles straight away. Each player
+the player's pieces can be placed on those tiles straight away. A one-tile
+walkway runs along the front of the lounge and every space (`room_map` lists
+it under `walkway`): players walk there, so a full space never blocks the
+next one, and nothing can be placed on it. `resize_space` makes a space 4 to
+16 tiles wide (depth stays 8): widening adds columns on its right, narrowing
+removes them once they are clear, and later spaces slide along with
+everything on them. Confirm the width with the user before resizing. Each player
 gets one space; `remove_space` takes the newest one back (only the newest, so
 earlier spaces never float) once nothing is placed or standing on it. Ask the
 user for a name (and a floor, if they care) before adding one; do not add a

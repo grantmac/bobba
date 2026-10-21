@@ -1,18 +1,18 @@
 // The room's MCP endpoint for agents building pieces: Streamable HTTP, stateless, plain JSON
 // replies. Each request carries the player's agent key as a Bearer token, made in the room
-// under Catalogue → Build with your agent. Sprites are cut here (shared/sprite-build.js).
+// under Furniture → Build with your agent. Sprites are cut here (shared/sprite-build.js).
 import {ConvexHttpClient} from 'convex/browser';
 import {anyApi} from 'convex/server';
-import {sheetPrompt,surfacePrompt} from '../shared/agent-prompts.js';
+import {sheetPrompt,surfacePrompt,stripPrompt} from '../shared/agent-prompts.js';
 import {prepareSurface,surfaceSize,SURFACE_COLORS} from '../shared/surface-build.js';
 import {KINDS,CONVENTIONS} from '../shared/sprite-conventions.js';
-import {readImage,splitSheet,prepareAsset} from '../shared/sprite-build.js';
-import {SPACE_LIMIT,SPACES_PER_PLAYER,SPACE_SIZE,SPACE_NAME_MAX,SPACE_FLOORS,SPACE_WALLS,SPACE_FITS} from '../shared/spaces.js';
+import {readImage,splitSheet,splitStrip,prepareAsset,seatSpec,FRAME_MAX} from '../shared/sprite-build.js';
+import {SPACE_LIMIT,SPACES_PER_PLAYER,SPACE_SIZE,SPACE_MIN_WIDTH,SPACE_MAX_WIDTH,SPACE_NAME_MAX,SPACE_FLOORS,SPACE_WALLS,SPACE_FITS} from '../shared/spaces.js';
 
 export const maxDuration=60;
-const api=anyApi,SERVER={name:'habbo-room',version:'0.4.0'},PROTOCOLS=['2024-11-05','2025-03-26','2025-06-18'];
-const INSTRUCTIONS=`Builds furniture into the shared Habbo-style room for the player whose agent key you hold. For any picture that is not already a game sprite: design_asset (prompt + reference image URLs) → draw the 2 by 2 sprite sheet with your image tool → upload_url → POST the PNG to it → submit_asset with the storage id. Then place it from room_map when the player says where. The player can also add one block of floor to the room with add_space: it always joins the right-hand end of the back wall, after the latest space, and the room_map shows it with its tiles; style_space then restyles that space's floor and back wall with colours, wallpapers or pictures; any picture starts with design_surface, and is remade at the game's pixel scale on the way in. ${CONVENTIONS}`;
-const NO_KEY='No agent key. Send the player\'s key as "Authorization: Bearer <key>": they make one in the room under Catalogue → Build with your agent and paste it into the plugin\'s key prompt.';
+const api=anyApi,SERVER={name:'habbo-room',version:'0.8.0'},PROTOCOLS=['2024-11-05','2025-03-26','2025-06-18'];
+const INSTRUCTIONS=`Builds furniture into the shared Habbo-style room for the player whose agent key you hold. For any picture that is not already a game sprite: design_asset (prompt + reference image URLs) → draw the 2 by 2 sprite sheet with your image tool → upload_url → POST the PNG to it → submit_asset with the storage id. Then place it from room_map when the player says where. The player can also add one block of floor to the room with add_space: it always joins the right-hand end of the back wall, after the latest space, and the room_map shows it with its tiles; style_space then restyles that space's floor and back wall with colours, wallpapers or pictures; any picture starts with design_surface, and is remade at the game's pixel scale on the way in. After any change, room_picture returns a picture of the result rendered by an open room tab. ${CONVENTIONS}`;
+const NO_KEY='No agent key. Send the player\'s key as "Authorization: Bearer <key>": in the room, open Furniture → Build with your agent → Copy agent prompt, then paste the prompt into your agent.';
 const message=error=>typeof error?.data==='string'?error.data:(error?.message||String(error)).replace(/\[(CONVEX|Request ID)[^\]]*\]\s*/g,'').replace(/^Server Error\s*/,'').replace(/^Uncaught (\w*Error): /,'').split('\n')[0];
 function convexUrl(){const url=process.env.CONVEX_URL||process.env.VITE_CONVEX_URL;if(!url)throw new Error('The room server is not configured (CONVEX_URL).');return url;}
 async function call(kind,fn,args){try{return await new ConvexHttpClient(convexUrl())[kind](fn,args);}catch(error){throw new Error(message(error));}}
@@ -21,21 +21,27 @@ const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:
 // Tool definitions.
 const KIND={type:'string',enum:Object.keys(KINDS),default:'floor',description:'floor, tabletop, table, seat, plant, lamp, rug or wall'};
 const size={width:{type:'integer',minimum:1,maximum:4,default:1,description:'Length of the piece\'s front in tiles'},depth:{type:'integer',minimum:1,maximum:4,default:1,description:'How far back the piece reaches, in tiles'},kind:KIND};
+const seatOptions={seat_x:{type:'integer',minimum:0,maximum:3,description:'Seats only: the tile the avatar sits on, as an offset within the footprint when the piece is placed facing lower-right (rotation 2): x runs across the depth, 0 to depth-1'},seat_z:{type:'integer',minimum:0,maximum:3,description:'Seats only: the other offset of that tile, along the width, 0 to width-1'},seat_height:{type:'integer',minimum:0,maximum:40,description:'Seats only: pixels from the floor to the seat top, so the avatar sits on it: about 10 for a chair, 20 for a bar stool, 0 for a floor cushion'},seat_offset_x:{type:'integer',minimum:-24,maximum:24,description:'Seats only: nudge the seated figure sideways in screen pixels (positive = right when the piece faces lower-right; mirrored rotations flip it) for art drawn off the tile centre'},seat_offset_y:{type:'integer',minimum:-24,maximum:24,description:'Seats only: nudge the seated figure down (positive) or up in screen pixels, on top of seat_height'}};
+const animationOptions={frames:{type:'integer',minimum:2,maximum:FRAME_MAX,description:`Animated piece: the picture is a horizontal strip of this many equal frames of the one view, played in turn (2 to ${FRAME_MAX})`},frame_ms:{type:'integer',minimum:80,maximum:2000,default:250,description:'How long each frame shows'},switchable:{type:'boolean',description:'Animated pieces only: anyone can click it to switch it off (frozen on its first frame) and on again'}};
 const spriteOptions={display_width:{type:'number',minimum:8,maximum:200,description:'On-screen width of the front view in room pixels; defaults from kind and footprint'},base_inset:{type:'number',minimum:-16,maximum:16,description:'Pixels to lift the base above the near edge of its footprint (default 2)'}};
 const source={storage_id:{type:'string',description:'The storageId returned when the PNG was POSTed to an upload_url'},image_url:{type:'string',description:'Public http(s) URL of the PNG instead of an upload'}};
 const object=(properties,required=[])=>({type:'object',properties,required,additionalProperties:false});
 const TOOLS=[
   {name:'status',description:'Who this agent builds for, the pieces they have built and placed, and the sprite conventions.',inputSchema:object({})},
   {name:'design_asset',description:'START HERE for any picture that is not already a finished game sprite (a photo, a logo, concept art, a real object). Returns the exact prompt for YOUR image-generation tool to redraw the piece in the room\'s isometric pixel-art style as a 2 by 2 sprite sheet of its four rotations, plus the reference images to attach (the player\'s picture, the room, an existing sprite). Generate it, save the PNG, upload it with upload_url, then call submit_asset. Never upload the player\'s picture with add_asset: it would appear in the room as-is.',
-    inputSchema:object({name:{type:'string',maxLength:40,description:'Short name for the catalogue'},description:{type:'string',description:'What the piece is, in a sentence'},...size,reference_image_path:{type:'string',description:'Path of the player\'s picture on your machine, if there is one; it is only echoed back in the list of images to attach'},details:{type:'string',description:'Materials, colours, parts and accessories to keep or add'}},['name','description'])},
+    inputSchema:object({name:{type:'string',maxLength:40,description:'Short name for the catalogue'},description:{type:'string',description:'What the piece is, in a sentence'},...size,frames:{type:'integer',minimum:2,maximum:FRAME_MAX,description:'For an animated piece: ask for a strip of this many frames of one view instead of the four-view sheet, then add_asset with frames'},reference_image_path:{type:'string',description:'Path of the player\'s picture on your machine, if there is one; it is only echoed back in the list of images to attach'},details:{type:'string',description:'Materials, colours, parts and accessories to keep or add'}},['name','description'])},
   {name:'upload_url',description:'Get a one-hour URL to upload a PNG to. POST the raw file to it with Content-Type image/png (for example with curl --data-binary); the JSON reply has the storageId to pass to submit_asset, add_asset or style_space.',inputSchema:object({})},
   {name:'submit_asset',description:'Register an uploaded sprite sheet (from design_asset) as a new catalogue piece with four rotations, visible to everyone at once. The sheet is a 2 by 2 grid: top-left facing lower-right, top-right lower-left, bottom-left upper-left, bottom-right upper-right. Flat backgrounds are keyed out and each view is trimmed and scaled.',
-    inputSchema:object({name:{type:'string',maxLength:40},...source,...size,...spriteOptions},['name'])},
-  {name:'add_asset',description:`ONLY for art that is already a finished game sprite: pixel-art, isometric, transparent background, drawn in the room's style (for example a sprite the player made themselves). It is uploaded as-is with a mirrored second view. For photos, logos, concept art or anything else, do NOT use this: call design_asset, generate the four-view sheet with your image tool, then submit_asset. ${CONVENTIONS}`,
-    inputSchema:object({name:{type:'string',maxLength:40,description:'Short name shown in the catalogue'},...source,image_base64:{type:'string',description:'Base64 or data URL of a small picture'},kind:KIND,width:{type:'integer',minimum:1,maximum:4,default:1,description:'Footprint width in tiles (left-to-right along the right wall)'},depth:{type:'integer',minimum:1,maximum:4,default:1,description:'Footprint depth in tiles'},facing:{type:'string',enum:['right','left'],default:'right',description:'Which way the pictured front faces: lower-right or lower-left'},...spriteOptions},['name'])},
+    inputSchema:object({name:{type:'string',maxLength:40},...source,...size,...spriteOptions,...seatOptions},['name'])},
+  {name:'add_asset',description:`With frames, the picture is a horizontal strip of 2 to ${FRAME_MAX} equal frames of one view and the piece animates (optionally switchable by a click); design_asset with frames writes the prompt for such a strip. Otherwise ONLY for art that is already a finished game sprite: pixel-art, isometric, transparent background, drawn in the room's style (for example a sprite the player made themselves). It is uploaded as-is with a mirrored second view. For photos, logos, concept art or anything else, do NOT use this: call design_asset, generate the four-view sheet with your image tool, then submit_asset. ${CONVENTIONS}`,
+    inputSchema:object({name:{type:'string',maxLength:40,description:'Short name shown in the catalogue'},...source,image_base64:{type:'string',description:'Base64 or data URL of a small picture'},kind:KIND,width:{type:'integer',minimum:1,maximum:4,default:1,description:'Footprint width in tiles (left-to-right along the right wall)'},depth:{type:'integer',minimum:1,maximum:4,default:1,description:'Footprint depth in tiles'},facing:{type:'string',enum:['right','left'],default:'right',description:'Which way the pictured front faces: lower-right or lower-left'},...spriteOptions,...seatOptions,...animationOptions},['name'])},
   {name:'my_assets',description:'List the pieces this player has built.',inputSchema:object({})},
+  {name:'set_seat',description:'Fix where an avatar sits on one of the player\'s built seats (kind seat) and how high, without rebuilding it: the tile within the footprint and the seat top\'s height in pixels, so a figure sits on a stool top rather than beside or inside it. clear: true returns the piece to seating on every tile at chair height. Open rooms pick it up at once.',
+    inputSchema:object({asset_id:{type:'string',description:'From my_assets or submit_asset'},...seatOptions,clear:{type:'boolean'}},['asset_id'])},
   {name:'delete_asset',description:'Delete a piece the player built, removing any placed copies.',inputSchema:object({asset_id:{type:'string'}},['asset_id'])},
   {name:'room_map',description:'The room floor: areas with their tiles (and whether each is free), wall segments for wall pieces (x, z, side, rotation), and placed furniture.',inputSchema:object({})},
+  {name:'room_picture',description:'See the room as players see it: a PNG rendered just now by a tab that has the room open (the player usually does; if nobody does, it says so and the player should open the site). focus "mine" frames the player\'s own space, "space" frames space_id, "room" shows everything. Call it after placing, moving or restyling to check the result and describe it to the player.',
+    inputSchema:object({focus:{type:'string',enum:['mine','space','room'],default:'mine'},space_id:{type:'string',description:'With focus "space": the space to frame, from room_map'}})},
   {name:'place',description:'Place one of the player\'s pieces on a free tile (x, z from room_map). Wall pieces take the wall tile plus rotation 2 (left wall) or 4 (right wall), with u (0.25-0.75 along the tile) and height (26-88 px up the wall).',
     inputSchema:object({asset_id:{type:'string'},x:{type:'integer'},z:{type:'integer'},rotation:{type:'integer',description:'0, 2, 4 or 6; defaults to the piece\'s first view'},u:{type:'number'},height:{type:'number'}},['asset_id','x','z'])},
   {name:'remove',description:'Pick a placed piece of the player\'s out of the room (item id from status or room_map).',inputSchema:object({item_id:{type:'string'}},['item_id'])},
@@ -45,6 +51,8 @@ const TOOLS=[
     inputSchema:object({surface:{type:'string',enum:['floor','wall']},fit:{type:'string',enum:SPACE_FITS,default:'tile',description:'tile: a seamless texture repeated on every tile or wall segment; cover: one picture over the whole floor or wall'},description:{type:'string',description:'What the picture shows, in a sentence or two'},details:{type:'string',description:'Colours, motifs, anything the player specified'}},['surface','description'])},
   {name:'style_space',description:`Restyle the player's space (Grant may restyle any, by space_id). Only the fields given change. Floor: a finish (${SPACE_FLOORS.join(', ')}) and any hex colour, and optionally a picture laid over it. Back wall: a wallpaper (${SPACE_WALLS.join(', ')}) and any hex colour, both defaulting to the room's own, and optionally a picture. Pictures come from design_surface: generate it, POST the PNG to an upload_url and pass its storageId (or give a public image URL). Every picture is remade at the game's pixel scale with at most ${SURFACE_COLORS} colours and hard edges, so it always matches the room's pixel art; the reply says the size it was kept at. Fit 'tile' repeats the picture on every floor tile or wall segment (textures), 'cover' stretches one copy across the whole floor or wall (a mural, a rug design, a big logo); transparent areas show the finish beneath. Pass null for a picture, wall or wall_color to clear it. The name can change too.`,
     inputSchema:object({space_id:{type:'string',description:'From status or room_map; optional when the player has just one space'},name:{type:'string',maxLength:SPACE_NAME_MAX},floor:{type:'string',enum:SPACE_FLOORS},floor_color:{type:'string',description:'Hex colour like #b59232'},floor_image_storage_id:{type:['string','null'],description:'storageId of the uploaded floor picture, or null to clear the picture'},floor_image_url:{type:'string',description:'Public http(s) URL of the floor picture instead of an upload'},floor_fit:{type:'string',enum:SPACE_FITS},wall:{type:['string','null'],description:`Wallpaper: ${SPACE_WALLS.join(', ')}, or null for the room's`},wall_color:{type:['string','null'],description:'Hex colour like #787e9c, or null for the room\'s'},wall_image_storage_id:{type:['string','null'],description:'storageId of the uploaded wall picture, or null to clear the picture'},wall_image_url:{type:'string',description:'Public http(s) URL of the wall picture instead of an upload'},wall_fit:{type:'string',enum:SPACE_FITS}})},
+  {name:'resize_space',description:`Make the player's space wider or narrower along the back wall: ${SPACE_MIN_WIDTH} to ${SPACE_MAX_WIDTH} tiles (it starts at ${SPACE_SIZE}; depth stays ${SPACE_SIZE}). Widening adds columns on its right; narrowing removes them, so they must be empty of furniture and players first. The spaces after it, with their furniture and the players on them, slide along to stay joined. Grant may resize any space by space_id.`,
+    inputSchema:object({space_id:{type:'string',description:'Optional when the player has just one space'},width:{type:'integer',minimum:SPACE_MIN_WIDTH,maximum:SPACE_MAX_WIDTH}},['width'])},
   {name:'remove_space',description:'Remove the latest added space (its id from room_map). Only the newest space can go, so earlier ones never float; it must be the player\'s own (or the player must be Grant) and have no furniture or players on it.',inputSchema:object({space_id:{type:'string'}},['space_id'])},
 ];
 
@@ -80,6 +88,9 @@ const HANDLERS={
   async design_asset(args,{origin}){
     args=defaults(args);
     const reference=name=>`${origin}/agent-reference/${name}`;
+    if(args.frames)return {prompt:stripPrompt(args),attach:[reference('room-style.png'),reference(args.kind==='wall'?'sprite-wall-speaker.png':'sprite-sofa.png')],attach_order:'the room first, then the sprite sample (download the URLs first)',
+      output:`One wide PNG with a transparent background: a single row of ${args.frames} equal frames of the piece facing lower-right.`,
+      then:`Save the PNG, call upload_url and POST the file to it, then call add_asset with the returned storageId as storage_id, name "${args.name}", kind "${args.kind}", width ${args.width}, depth ${args.depth}, frames ${args.frames}, frame_ms for the speed (250 is a steady blink), and switchable true if players should be able to click it off and on.`};
     const attach=[...(args.reference_image_path?[args.reference_image_path]:[]),reference('room-style.png'),reference(args.kind==='wall'?'sprite-wall-speaker.png':'sprite-sofa.png')];
     return {prompt:sheetPrompt({...args,hasReference:!!args.reference_image_path}),attach,attach_order:args.reference_image_path?'reference image 1 is the player\'s picture, then the room, then the sprite sample (download the URLs first)':'the room first, then the sprite sample (download the URLs first)',
       output:'One square PNG (1024x1024 or larger) with a transparent background: a 2 by 2 grid of the four views.',
@@ -90,15 +101,43 @@ const HANDLERS={
     return {upload_url:url,valid_for:'about an hour',post_with:`curl -s -X POST "${url}" -H "Content-Type: image/png" --data-binary @sheet.png`,then:'The JSON reply has a storageId: pass it to submit_asset (a 2 by 2 sheet) or add_asset (a finished sprite) as storage_id.'};
   },
   async submit_asset(args,{token}){args=defaults(args);return register(token,args,splitSheet(await loadSource(token,args)));},
-  async add_asset(args,{token}){args=defaults({facing:'right',...args});return register(token,args,{[args.facing==='left'?4:2]:await loadSource(token,args)});},
+  // With `frames`, the picture is a strip of equal frames of one view: it becomes an animated piece.
+  async add_asset(args,{token}){
+    args=defaults({facing:'right',...args});const image=await loadSource(token,args);
+    return register(token,args,{[args.facing==='left'?4:2]:args.frames?splitStrip(image,args.frames):image});
+  },
+  async set_seat({asset_id,clear,...rest},{token}){
+    const seat=clear?null:seatSpec(rest);
+    return {...await call('mutation',api.agents.setSeat,{agentToken:token,assetId:asset_id,seat}),then:seat?'Ask the player to sit on it, then room_picture shows whether the figure lands on the seat; adjust seat_height or the offsets if it floats, sinks or sits to one side.':'The whole piece seats at chair height again.'};
+  },
   async my_assets(_,{token}){return (await call('query',api.agents.status,{agentToken:token})).assets;},
   async delete_asset({asset_id},{token}){await call('mutation',api.agents.deleteAsset,{agentToken:token,id:asset_id});return 'Deleted.';},
   async room_map(_,{token}){return call('query',api.agents.map,{agentToken:token});},
-  async place({asset_id,...rest},{token}){return call('mutation',api.agents.place,{agentToken:token,assetId:asset_id,...rest});},
+  async place({asset_id,...rest},{token}){return {...await call('mutation',api.agents.place,{agentToken:token,assetId:asset_id,...rest}),then:'Call room_picture to see it in place.'};},
+  // Waits for an open room tab to render and upload the picture (convex/captures.js), then returns it as image content.
+  async room_picture({focus='mine',space_id},{token,origin}){
+    let region=null,label='the whole room';
+    if(focus!=='room'){
+      const map=await call('query',api.agents.map,{agentToken:token}),space=focus==='space'?map.spaces.find(s=>s.id===space_id):map.spaces.find(s=>s.mine);
+      if(!space)throw new Error(focus==='space'?'No space with that id.':'The player has no space yet: use focus "room", or add one.');
+      region={x:space.x,z:space.z,width:space.width,depth:space.depth};label=`the space "${space.name}"`;
+    }
+    const id=await call('mutation',api.captures.request,{agentToken:token,...(region?{region}:{})}),started=Date.now();let last=null;
+    while(Date.now()-started<25000){
+      await new Promise(resolve=>setTimeout(resolve,600));
+      last=await call('query',api.captures.result,{agentToken:token,id});
+      if(last.status==='done'||last.status==='failed')break;
+    }
+    const discard=()=>call('mutation',api.captures.discard,{agentToken:token,id}).catch(()=>{});
+    if(last?.status!=='done'){await discard();throw new Error(last?.status==='failed'?`The room tab could not take the picture: ${last.reason}`:`No open room tab answered within 25 seconds. Someone needs the room open in a browser at ${origin} (the player usually does): ask them to open it, then try again.`);}
+    const response=await fetch(last.url);if(!response.ok){await discard();throw new Error('Could not fetch the picture.');}
+    const data=Buffer.from(await response.arrayBuffer()).toString('base64');await discard();
+    return {content:[{type:'image',data,mimeType:'image/png'},{type:'text',text:`A picture of ${label}, rendered just now by ${last.takenBy?`${last.takenBy}'s`:'an open'} room tab.`}]};
+  },
   async remove({item_id},{token}){await call('mutation',api.agents.remove,{agentToken:token,itemId:item_id});return 'Removed.';},
   async add_space({floor_color,...rest},{token}){
     const space=await call('mutation',api.agents.addSpace,{agentToken:token,...rest,...(floor_color?{floorColor:floor_color}:{})});
-    return {...space,then:'The space is in the room for everyone now. Its tiles are free: place the player\'s pieces on them with place when they say where.'};
+    return {...space,then:'The space is in the room for everyone now. Its tiles are free: place the player\'s pieces on them with place when they say where. room_picture shows it.'};
   },
   async design_surface({surface,fit='tile',description,details=''},{origin}){
     const {w,h}=surfaceSize(surface,fit),id=surface==='floor'?'floor_image_storage_id':'wall_image_storage_id',fitKey=surface==='floor'?'floor_fit':'wall_fit';
@@ -118,7 +157,11 @@ const HANDLERS={
       if(storage_id)await call('mutation',api.agents.discardUpload,{agentToken:token,storageId:storage_id}).catch(()=>{});
     }
     const space=await call('mutation',api.agents.styleSpace,args);
-    return {...space,...kept,then:'Everyone in the room sees the new look now.'};
+    return {...space,...kept,then:'Everyone in the room sees the new look now. Call room_picture to check it.'};
+  },
+  async resize_space({space_id,width},{token}){
+    const space=await call('mutation',api.agents.resizeSpace,{agentToken:token,...(space_id?{spaceId:space_id}:{}),width});
+    return {...space,then:`${space.moved?`The ${space.moved} space${space.moved===1?'':'s'} after it moved along with everything on them. `:''}room_map has the new tiles; room_picture shows it.`};
   },
   async remove_space({space_id},{token}){await call('mutation',api.agents.removeSpace,{agentToken:token,spaceId:space_id});return 'Removed.';},
 };
@@ -140,6 +183,7 @@ async function handle(m,context){
       try{
         if(!context.token)throw new Error(NO_KEY);
         const value=await tool(params.arguments??{},context);
+        if(Array.isArray(value?.content))return reply(id,{content:value.content});
         return reply(id,{content:[{type:'text',text:typeof value==='string'?value:JSON.stringify(value,null,2)}]});
       }catch(error){return reply(id,{content:[{type:'text',text:`Error: ${message(error)}`}],isError:true});}
     }
