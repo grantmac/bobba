@@ -82,3 +82,13 @@ npm run build
 ```
 
 Tests cover server authorization, reserved names, session handling, all selectable appearance choices and palettes, room persistence and revision conflicts, chat identity, movement and seat occupancy, connection expiry, public room previews and shared gestures. Furniture model tests cover footprints, rotation, invalid tiles, collisions, rugs and saved-data validation.
+
+## Voice chat
+
+Voice uses LiveKit Cloud while Convex continues to handle room state and identities. Set `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` on the existing Convex deployment, then publish with `npx convex dev --once`. Keep the API secret server-side; do not use a `VITE_` environment variable or commit credentials.
+
+The microphone button in the bottom bar opens voice controls. Joining listens with the microphone off; enabling it explicitly requests browser permission. Visitors can mute another participant locally or leave. Speaking indicators follow the avatars. Voice disconnects when the page closes or the room session fails. Each player has one LiveKit identity, so joining voice in another tab replaces their previous voice connection.
+
+The backend issues five-minute tokens after validating a live room session. Tokens only allow subscribing and publishing microphone audio in `habbo-room`; they do not grant camera, screen sharing, data publishing, or room administration. The client SDK is loaded only when someone joins voice. No recording or transcription is configured.
+
+`test/voice-browser.html` verifies controls with simulated participants and no microphone capture. `test/voice-mobile-browser.html` embeds the same checks at phone width. Real audio delivery additionally requires the configured LiveKit project and two connected clients.

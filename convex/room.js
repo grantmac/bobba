@@ -1,4 +1,4 @@
-import {mutation,query,internalMutation} from './_generated/server.js';
+import {mutation,query,internalMutation,internalQuery} from './_generated/server.js';
 import {v} from 'convex/values';
 import {DEFAULT_ROOM,fail,validName,validateLook,validateRoom,validateFurniture,tileSet,isPlaced,cells,blocked,atTime,freePosition,findPath,playerTiles} from './lib/rules.js';
 import {internal} from './_generated/api.js';
@@ -69,6 +69,11 @@ export const preview=query({args:{},handler:async ctx=>{
   return {serverTime:now,room:{options:room?.options??DEFAULT_ROOM,furniture:room?.furniture.filter(isPlaced)??[],stickies:room?.stickies??[]},players:players.map(publicPlayer)};
 }});
 export const me=query({args:{token:v.string()},handler:async(ctx,{token})=>publicPlayer(await playerFor(ctx,token))});
+export const voiceIdentity=internalQuery({args:{token:v.string()},handler:async(ctx,{token})=>{
+  const player=await playerFor(ctx,token);
+  if(player.lastSeen<=Date.now()-45000)fail('Enter the room before joining voice.');
+  return player._id;
+}});
 export const state=query({args:{token:v.string()},handler:async(ctx,{token})=>{
   const me=await playerFor(ctx,token),room=await getRoom(ctx),now=Date.now();
   const players=await ctx.db.query('players').withIndex('by_seen',q=>q.gt('lastSeen',now-45000)).take(50);

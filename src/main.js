@@ -11,6 +11,7 @@ import { createMultiplayer, samplePlayer } from './multiplayer.js';
 import {createAwayPoster} from './away-poster.js';
 import {createStickies} from './stickies.js';
 import {installTouchNavigation} from './touch-navigation.js';
+import {createVoice} from './voice.js';
 
 const container = document.querySelector('#scene');
 const scene = new THREE.Scene();
@@ -33,7 +34,7 @@ let displayScale = 1,zoom=1;
 let editingRoom=false,viewOffsetX=0,viewOffsetY=0,panX=0,panY=0,positionBeforeEdit;
 const iso = (x, z) => ({ x: (x-z)*32-roomCenterX, y: (x+z)*16 });
 const valid = (x, z) => walkable.has(`${x},${z}`);
-let furniture,network,toolbar,selfPlayer,infoStand,actionControls,stickies;
+let furniture,network,toolbar,selfPlayer,infoStand,actionControls,stickies,voice;
 let grantOnline=false,awayPoster;
 let initialFurniture=[],posterWalls=[];
 function positionAwayPoster(){
@@ -290,6 +291,7 @@ function disposePeer(peer){
   peer.version++;scene.remove(peer.mesh);peer.mesh.geometry.dispose();peer.mesh.material.dispose();peer.textures.forEach(t=>t.dispose());peer.label.remove();
 }
 function updatePeers(players){
+  voice?.syncPlayers(players);
   grantOnline=players.some(player=>player.role==='admin');
   if(awayPoster)awayPoster.visible=!grantOnline;
   container.dataset.grantOnline=String(grantOnline);
@@ -337,6 +339,8 @@ function animate(now){
     const key=characterFrame(selfPlayer,sample,time,seated);
     if(lastFrame!==key){avatar.material.map=avatarFrames.get(key);avatar.material.needsUpdate=true;lastFrame=key;}
     positionCharacter(avatar,position,seated);
+    const voicePoint=iso(position.x,position.z);
+    voice?.positionSpeaker(selfPlayer.id,container.clientWidth/2+viewOffsetX+voicePoint.x*displayScale,container.offsetTop+container.clientHeight/2+viewOffsetY+(voicePoint.y+(seated?.offsetY??0)-CENTER_Y-78)*displayScale,avatar.visible);
     if(infoStand?.selected){const selected=peers.get(infoStand.selected);infoStand.update(selected?.data,selected?.textures.get('2:-1')?.image);}
     chat.update(now);targetMarker.visible=sample.moving&&!editingRoom;
     container.dataset.cell=`${Math.floor(position.x)},${Math.floor(position.z)}`;
@@ -353,14 +357,16 @@ function animate(now){
       peer.label.style.top=`${container.clientHeight/2+viewOffsetY+(p.y-CENTER_Y-68)*displayScale}px`;
       peer.label.style.width=`${36*displayScale}px`;peer.label.style.height=`${72*displayScale}px`;
       peer.label.hidden=!peer.mesh.visible;
+      voice?.positionSpeaker(peer.data.id,container.clientWidth/2+viewOffsetX+p.x*displayScale,container.offsetTop+container.clientHeight/2+viewOffsetY+(p.y-CENTER_Y-78)*displayScale,peer.mesh.visible);
     }
   }
   renderer.render(scene,camera);requestAnimationFrame(animate);
 }
 requestAnimationFrame(animate);
 try{
-  toolbar=createToolbar({admin:false,onRoomEdit:()=>{if(ready&&network.me?.role==='admin')roomEditor.open();},onFurniture:view=>{if(ready)furniture.open(view);},onChat:(body,mode)=>{if(ready)return network.chat(body,mode);}});
+  toolbar=createToolbar({admin:false,onVoice:()=>{if(ready)voice.open();},onRoomEdit:()=>{if(ready&&network.me?.role==='admin')roomEditor.open();},onFurniture:view=>{if(ready)furniture.open(view);},onChat:(body,mode)=>{if(ready)return network.chat(body,mode);}});
   network=createMultiplayer();
+  voice=createVoice({credentials:()=>network.voiceCredentials(),onState:state=>toolbar.setVoiceState(state)});
   const [catalogResponse,paletteResponse,initialRoom]=await Promise.all([fetch('/assets/room-options/catalog.json'),fetch('/assets/room-options/source-palette.json'),network.loadPreview()]);
   grantOnline=initialRoom.players.some(player=>player.role==='admin');
   initialFurniture=initialRoom.room.furniture;
@@ -451,9 +457,9 @@ try{
       }
       // Bound deduplication memory to the server's current message window.
       const recentIds=new Set(state.messages.map(m=>m.id));for(const id of seenMessages)if(!recentIds.has(id))seenMessages.delete(id);
-      avatar.visible=true;ready=true;
+      avatar.visible=true;ready=true;toolbar.setVoiceEnabled(true);
       if(first){first=false;resolve();}
-    },message=>{toolbar.status(message);if(first)reject(new Error(message));});
+    },message=>{voice.leave();toolbar.setVoiceEnabled(false);toolbar.status(message);if(first)reject(new Error(message));});
   });
   container.focus({preventScroll:true});
 }catch(error){const notice=document.querySelector('#load-error');notice.textContent=error.message||'The room could not be opened. Please reload to try again.';notice.hidden=false;console.error(error);}

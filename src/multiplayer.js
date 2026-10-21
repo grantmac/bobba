@@ -34,6 +34,7 @@ export function createMultiplayer(){
       clearInterval(heartbeat);heartbeat=setInterval(()=>mutate('heartbeat',{connectionId}).catch(error=>onError(error.message)),15000);
     },
     appearance:look=>mutate('appearance',{look}),
+    async voiceCredentials(){try{return await client.action(api.voice.connect,{token});}catch(error){throw new Error(errorMessage(error));}},
     move:(x,z,seatId)=>mutate('move',{x,z,...(seatId?{seatId}:{})}),
     gesture:action=>mutate('gesture',{action}),
     chat:(body,mode)=>mutate('chat',{body,mode}),

@@ -260,3 +260,34 @@ describe('room join phone alerts',()=>{
     }finally{warning.mockRestore();}
   });
 });
+
+describe('voice room access',()=>{
+  beforeEach(()=>{
+    vi.stubEnv('LIVEKIT_URL','wss://example.livekit.cloud');
+    vi.stubEnv('LIVEKIT_API_KEY','test-livekit-key');
+    vi.stubEnv('LIVEKIT_API_SECRET','test-secret-long-enough-for-a-signed-token');
+  });
+  it('issues a short-lived microphone-only token for the authenticated player',async()=>{
+    const player=await guest();
+    const result=await t.action(api.voice.connect,{token});
+    const {TokenVerifier}=await import('livekit-server-sdk');
+    const claims=await new TokenVerifier(process.env.LIVEKIT_API_KEY,process.env.LIVEKIT_API_SECRET).verify(result.token);
+    expect(result.url).toBe('wss://example.livekit.cloud');
+    expect(claims.sub).toBe(player.id);
+    expect(claims.video).toMatchObject({room:'habbo-room',roomJoin:true,canPublish:true,canSubscribe:true,canPublishSources:['microphone'],canPublishData:false,canUpdateOwnMetadata:false});
+    expect(claims.video.roomAdmin).not.toBe(true);
+    expect(claims.exp-Math.floor(Date.now()/1000)).toBeLessThanOrEqual(300);
+    expect(JSON.stringify(result)).not.toContain(process.env.LIVEKIT_API_SECRET);
+  });
+  it('rejects visitors without a valid session and players who have left',async()=>{
+    await expect(t.action(api.voice.connect,{token:otherToken})).rejects.toThrow('session');
+    const player=await guest();await t.run(ctx=>ctx.db.patch(player.id,{lastSeen:0}));
+    await expect(t.action(api.voice.connect,{token})).rejects.toThrow('Enter the room');
+    await t.mutation(api.room.leave,{token});
+    await expect(t.action(api.voice.connect,{token})).rejects.toThrow('session');
+  });
+  it('returns a useful message when voice has not been configured',async()=>{
+    await guest();vi.stubEnv('LIVEKIT_API_SECRET','');
+    await expect(t.action(api.voice.connect,{token})).rejects.toThrow('not ready yet');
+  });
+});
