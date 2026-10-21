@@ -218,3 +218,42 @@ describe('wall posters',()=>{
     for(const bad of [{...position,z:0},{...position,height:24},{...position,height:100}])await expect(t.mutation(api.room.createSticky,{token:adminToken,id,position:bad,poster:'neu'})).rejects.toThrow('wall');
   });
 });
+
+describe('room join phone alerts',()=>{
+  beforeEach(()=>{vi.useFakeTimers();vi.stubEnv('NTFY_TOPIC','test-room-alerts');vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true}));});
+  afterEach(()=>{vi.clearAllTimers();vi.useRealTimers();vi.unstubAllGlobals();});
+  const delivered=async()=>{await vi.advanceTimersByTimeAsync(0);await t.finishInProgressScheduledFunctions();};
+  it('notifies once for a new guest, but not Grant, repeat joins or routine heartbeats',async()=>{
+    await guest();await delivered();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledWith('https://ntfy.sh/test-room-alerts',expect.objectContaining({body:'Visitor joined your room.',headers:expect.objectContaining({Click:'https://chat.grantm.ac'})}));
+    await guest();await admin();
+    await t.mutation(api.room.heartbeat,{token,connectionId:'d'.repeat(64)});await delivered();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(await t.query(api.room.state,{token}))).not.toContain('lastJoinAlertAt');
+  });
+  it('alerts for returning guests while suppressing rapid disconnect/reconnect duplicates',async()=>{
+    const player=await guest();await delivered();
+    await t.run(ctx=>ctx.db.patch(player.id,{lastSeen:0}));
+    await t.mutation(api.room.heartbeat,{token,connectionId:'d'.repeat(64)});await delivered();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    await t.run(ctx=>ctx.db.patch(player.id,{lastSeen:0,lastJoinAlertAt:Date.now()-61000}));
+    await t.mutation(api.room.heartbeat,{token,connectionId:'e'.repeat(64)});await delivered();
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+  it('handles Unicode names and delivery failures without breaking entry',async()=>{
+    const warning=vi.spyOn(console,'warn').mockImplementation(()=>{});
+    try{
+      fetch.mockResolvedValueOnce({ok:false,status:503});
+      await guest();await delivered();
+      expect((await t.query(api.room.me,{token})).name).toBe('Visitor');
+      expect(warning).toHaveBeenCalledWith('Room join notification failed (503).');
+      fetch.mockRejectedValueOnce(new Error('offline'));
+      await t.action(internal.notifications.roomJoin,{name:'Zoë'});
+      expect(fetch).toHaveBeenLastCalledWith(expect.any(String),expect.objectContaining({body:'Zoë joined your room.'}));
+      vi.stubEnv('NTFY_TOPIC','');fetch.mockClear();
+      await t.action(internal.notifications.roomJoin,{name:'No notification'});
+      expect(fetch).not.toHaveBeenCalled();
+    }finally{warning.mockRestore();}
+  });
+});

@@ -17,6 +17,11 @@ async function playerFor(ctx,token,admin=false){
   if(admin&&player.role!=='admin')fail('Only Grant can edit the room.');
   return player;
 }
+async function notifyArrival(ctx,player,now){
+  if(player.role==='admin'||!process.env.NTFY_TOPIC||(player.lastJoinAlertAt!==undefined&&now-player.lastJoinAlertAt<60000))return;
+  await ctx.db.patch(player._id,{lastJoinAlertAt:now});
+  await ctx.scheduler.runAfter(0,internal.notifications.roomJoin,{name:player.name});
+}
 async function getRoom(ctx){return await ctx.db.query('rooms').withIndex('by_key',q=>q.eq('key','main')).unique();}
 function publicPlayer(p){return {id:p._id,name:p.name,role:p.role,look:p.look,route:p.route,startedAt:p.startedAt,direction:p.direction,seatId:p.seatId,lastSeen:p.lastSeen,action:p.action??null,actionStarted:p.actionStarted??0};}
 async function checkEntryCode(code){
@@ -53,7 +58,9 @@ export const join=mutation({args:{token:v.string(),name:v.string(),look:v.any(),
     await ctx.db.patch(playerId,{look:args.replaceLook?args.look:player.look,lastSeen:now,route:[position],startedAt:now,seatId:null});
   }else playerId=await ctx.db.insert('players',{name:admin?'Grant':named.name,nameKey:key,role:admin?'admin':'guest',look:args.look,route:[position],startedAt:now,direction:2,seatId:null,lastSeen:now,lastChat:0});
   await ctx.db.insert('sessions',{tokenHash:digest,playerId,expiresAt:now+(admin?ADMIN_AGE:SESSION_AGE)});
-  return publicPlayer(await ctx.db.get(playerId));
+  const joined=await ctx.db.get(playerId);
+  await notifyArrival(ctx,joined,now);
+  return publicPlayer(joined);
 }});
 // Public visitors can watch the shared room before choosing a character.
 export const preview=query({args:{},handler:async ctx=>{
@@ -78,6 +85,7 @@ export const heartbeat=mutation({args:{token:v.string(),connectionId:v.string()}
   else await ctx.db.insert('connections',{connectionId,playerId:p._id,tokenHash:await hash(token),lastSeen:now});
   let positionUpdate={};
   if(p.lastSeen<=now-45000){
+    await notifyArrival(ctx,p,now);
     const room=await getRoom(ctx),online=await ctx.db.query('players').withIndex('by_seen',q=>q.gt('lastSeen',now-45000)).take(50);
     positionUpdate={route:[freePosition(room,atTime(p,now),playerTiles(online,now,p._id))],startedAt:now,seatId:null};
   }

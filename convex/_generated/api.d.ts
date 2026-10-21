@@ -14,6 +14,7 @@ import type * as lib_appearance from "../lib/appearance.js";
 import type * as lib_catalog from "../lib/catalog.js";
 import type * as lib_furniture from "../lib/furniture.js";
 import type * as lib_rules from "../lib/rules.js";
+import type * as notifications from "../notifications.js";
 import type * as room from "../room.js";
 
 import type {
@@ -29,6 +30,7 @@ declare const fullApi: ApiFromModules<{
   "lib/catalog": typeof lib_catalog;
   "lib/furniture": typeof lib_furniture;
   "lib/rules": typeof lib_rules;
+  notifications: typeof notifications;
   room: typeof room;
 }>;
 
