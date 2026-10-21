@@ -15,11 +15,11 @@ afterEach(()=>vi.unstubAllEnvs());
 const guest=()=>t.mutation(api.room.join,{token,name:'Visitor',look});
 const admin=()=>t.mutation(api.room.join,{token:adminToken,name:'Grant',look,entryCode:secret});
 describe('room access and persistence',()=>{
-  it('restricts floor and DJ power to Grant and shares saved settings with visitors',async()=>{
+  it('lets visitors switch floor and DJ power without giving them furniture editing access',async()=>{
     await admin();await guest();
     expect((await t.query(api.room.preview,{})).room.danceFloorOn).toBe(true);
-    await expect(t.mutation(api.room.setDanceFloor,{token,on:false})).rejects.toThrow('Only Grant');
-    await t.mutation(api.room.setDanceFloor,{token:adminToken,on:false});
+    await expect(t.mutation(api.room.setDanceFloor,{token:otherToken,on:false})).rejects.toThrow();
+    await t.mutation(api.room.setDanceFloor,{token,on:false});
     expect((await t.query(api.room.state,{token})).room.danceFloorOn).toBe(false);
     expect((await t.query(api.room.preview,{})).room.danceFloorOn).toBe(false);
     const items=[{id:'decks',type:'custom_dj_decks',rotation:2,x:0,z:0,on:false}];
@@ -27,9 +27,21 @@ describe('room access and persistence',()=>{
     expect((await t.query(api.room.state,{token})).room.furniture[0].on).toBe(false);
     await expect(t.mutation(api.room.setFurniture,{token,items:[{...items[0],on:true}],revision:1})).rejects.toThrow('Only Grant');
     await t.mutation(api.room.gesture,{token,action:'dance'});
-    await t.mutation(api.room.setFurniture,{token:adminToken,items:[{...items[0],on:true}],revision:1});
+    await t.mutation(api.room.setDeckPower,{token,id:'decks',on:true});
     expect((await t.query(api.room.preview,{})).room.furniture[0].on).toBe(true);
     expect((await t.query(api.room.me,{token})).action).toBe('dance');
+    await expect(t.mutation(api.room.setDeckPower,{token:otherToken,id:'decks',on:false})).rejects.toThrow();
+    await expect(t.mutation(api.room.setDeckPower,{token,id:'missing',on:false})).rejects.toThrow();
+    await t.mutation(api.room.setFurniture,{token:adminToken,items:[{...items[0],x:null,z:null},{id:'chair',type:'small_chair_armas',rotation:0,x:2,z:2}],revision:2});
+    for(const id of ['decks','chair'])await expect(t.mutation(api.room.setDeckPower,{token,id,on:true})).rejects.toThrow('Select decks');
+  });
+  it('saves decks on the record cabinet in both orientations',async()=>{
+    await admin();
+    for(const [revision,rotation] of [2,4].entries()){
+      const items=[{id:'table',type:'custom_dj_table',rotation,x:1,z:1},{id:'decks',type:'custom_dj_decks',rotation,x:1,z:1,supportId:'table'}];
+      await t.mutation(api.room.setFurniture,{token:adminToken,items,revision});
+      expect((await t.query(api.room.preview,{})).room.furniture).toEqual(items);
+    }
   });
   it('keeps dancing across walking routes but stops when sitting',async()=>{
     await admin();await guest();

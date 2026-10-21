@@ -15,6 +15,8 @@ import {createVoice} from './voice.js';
 import {roomLayout,tileDrop,walkingDrop,tileAtPoint,STEP_DOWN} from '../shared/room-layout.js';
 import {createDanceFloor} from './dance-floor.js';
 import {createDanceFloorControls} from './dance-floor-controls.js';
+import {createDiscoBall} from './disco-ball.js';
+import {createRoomRadio} from './room-radio.js';
 
 const container = document.querySelector('#scene');
 const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
@@ -40,7 +42,7 @@ const iso = (x, z) => ({ x: (x-z)*32-roomCenterX, y: (x+z)*16 });
 const valid = (x, z) => walkable.has(`${x},${z}`);
 let furniture,network,toolbar,selfPlayer,infoStand,actionControls,stickies,voice;
 let grantOnline=false,awayPoster;
-let danceFloorOn=true,danceControls;
+let danceFloorOn=true,danceControls,discoBall,discoMesh,radio;
 function receiveDanceFloor(value){danceFloorOn=value??true;danceControls?.receive(danceFloorOn);container.dataset.danceFloorOn=String(danceFloorOn);}
 let initialFurniture=[],posterWalls=[];
 function positionAwayPoster(){
@@ -287,7 +289,7 @@ container.addEventListener('pointerup',event=>{
     else if(overCharacter(event))appearance.open();
     else{
       infoStand?.hide();walkTo(cell);
-      if(ready&&network.me.role==='admin'&&cell?.z>=layout.danceStart)danceControls?.open();
+      if(ready&&cell?.z>=layout.danceStart)danceControls?.open();
       container.focus({preventScroll:true});
     }
   }
@@ -423,6 +425,11 @@ function animate(now){
     }
   }
   if(danceFloor&&danceMesh&&danceFloor.draw(reducedMotion.matches?0:Math.floor((network?.now()??Date.now())/900)%6,danceFloorOn))danceMesh.material.map.needsUpdate=true;
+  if(discoBall&&discoMesh&&layout){
+    if(discoBall.draw(now,danceFloorOn,reducedMotion.matches))discoMesh.material.map.needsUpdate=true;
+    const p=groundPoint(layout.width/2,layout.danceStart+2.5);
+    place(discoMesh,p.x-discoBall.width/2,p.y-156,discoBall.width,discoBall.height);
+  }
   renderer.render(scene,camera);requestAnimationFrame(animate);
 }
 requestAnimationFrame(animate);
@@ -431,6 +438,10 @@ try{
   network=createMultiplayer();
   danceControls=createDanceFloorControls({onChange:on=>network.danceFloor(on),onError:message=>toolbar.status(message)});
   voice=createVoice({credentials:()=>network.voiceCredentials(),onState:state=>toolbar.setVoiceState(state)});
+  radio=createRoomRadio({onState:state=>voice.setMusicState(state)});
+  voice.connectMusic(radio);
+  for(const event of ['pointerdown','keydown'])document.addEventListener(event,()=>{if(ready)void radio.unlock();});
+  window.addEventListener('pagehide',()=>radio.close());
   const [catalogResponse,paletteResponse,initialRoom]=await Promise.all([fetch('/assets/room-options/catalog.json'),fetch('/assets/room-options/source-palette.json'),network.loadPreview()]);
   grantOnline=initialRoom.players.some(player=>player.role==='admin');
   receiveDanceFloor(initialRoom.room.danceFloorOn);
@@ -449,6 +460,8 @@ try{
     editingRoom=false;resize();container.focus({preventScroll:true});
   }});
   buildRoom(roomEditor.initial);
+  discoBall=await createDiscoBall();discoMesh=sprite(discoBall.canvas,0,0,900);
+  discoMesh.scale.setScalar(1/3);discoMesh.material.map.minFilter=THREE.LinearFilter;
   infoStand=await createInfoStand(prepareImage);
   appearance=await createAppearance({prepareImage,onApply:async(frames,look,context)=>{if(!context.entry)await network.appearance(look);setAppearance(frames);},onOpen:()=>{stopWalking();furniture?.close();}});
   setAppearance(appearance.initial);
@@ -497,7 +510,7 @@ try{
   }
   const admin=network.me.role==='admin';
   stickies.connect(admin);
-  furniture.connect({admin,onSave:items=>network.furniture(items)});
+  furniture.connect({admin,onSave:items=>network.furniture(items),onPower:(id,on)=>network.deckPower(id,on),onError:message=>toolbar.status(message)});
   toolbar.setAdmin(admin);
   actionControls=document.createElement('div');actionControls.className='avatar-actions';actionControls.setAttribute('aria-label','Your actions');
   actionControls.innerHTML='<button type="button" data-gesture="wave">Wave</button><button type="button" data-gesture="dance" aria-pressed="false">Dance</button>';
@@ -525,8 +538,9 @@ try{
       // Bound deduplication memory to the server's current message window.
       const recentIds=new Set(state.messages.map(m=>m.id));for(const id of seenMessages)if(!recentIds.has(id))seenMessages.delete(id);
       avatar.visible=true;ready=true;toolbar.setVoiceEnabled(true);
+      radio.receive(state.room.furniture,true);
       if(first){first=false;resolve();}
-    },message=>{voice.leave();toolbar.setVoiceEnabled(false);toolbar.status(message);if(first)reject(new Error(message));});
+    },message=>{voice.leave();radio.close();toolbar.setVoiceEnabled(false);toolbar.status(message);if(first)reject(new Error(message));});
   });
   container.focus({preventScroll:true});
 }catch(error){const notice=document.querySelector('#load-error');notice.textContent=error.message||'The room could not be opened. Please reload to try again.';notice.hidden=false;console.error(error);}

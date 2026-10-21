@@ -59,7 +59,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
   }
   await Promise.all([...new Set(initialItems.filter(isPlaced).map(i=>i.type))].filter(id=>definitions.has(id)).map(id=>loadDefinition(definitions.get(id))));
   let page=0;const pageSize=48;
-  let viewItems=[],items=[],history=[],selected=null,pending=null,visuals=[],tab='Catalogue',filter='',category='All',editable=true,networkSave=null,saving=false;
+  let viewItems=[],items=[],history=[],selected=null,pending=null,visuals=[],tab='Catalogue',filter='',category='All',editable=true,networkSave=null,networkPower=null,onPowerError=()=>{},saving=false;
   items=restoreItems(initialItems,definitions);
   function fitStoredItems(){
     const fitted=[];
@@ -177,10 +177,10 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
   }
   function render(){
     renderList();redraw();const item=items.find(i=>i.id===selected),def=item&&definitions.get(item.type);
-    actions.hidden=!editable||!item||!isPlaced(item)||!!pending;
+    actions.hidden=(!editable&&!(networkPower&&item?.type==='custom_dj_decks'))||!item||!isPlaced(item)||!!pending;
     if(!actions.hidden){actions.querySelector('img').src=ROOT+def.icon;actions.querySelector('strong').textContent=def.name;actions.querySelector('.furniture-location').textContent=item.supportId?'On table':`Tile ${item.x+1}, ${item.z+1}`;actions.querySelector('[data-action="Rotate"]').disabled=def.views.length<2;}
     actions.querySelectorAll('[data-action]').forEach(button=>{button.hidden=!editable;if(saving)button.disabled=true;else if(button.dataset.action!=='Rotate')button.disabled=false;});
-    const power=actions.querySelector('[data-action="Power"]');power.hidden=!editable||!def?.frameDuration;power.textContent=item?.on===false?'Turn on':'Turn off';power.setAttribute('aria-pressed',String(item?.on!==false));
+    const power=actions.querySelector('[data-action="Power"]');power.hidden=!networkPower||item?.type!=='custom_dj_decks';power.textContent=item?.on===false?'Turn on':'Turn off';power.setAttribute('aria-pressed',String(item?.on!==false));
     placement.hidden=!pending;
     if(pending){placement.querySelector('span').textContent=definitions.get(pending.type).name;placement.querySelector('[data-placement="rotate"]').disabled=definitions.get(pending.type).views.length<2;}
   }
@@ -222,12 +222,16 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     const previous=history.at(-1);change(()=>{history.pop();items=previous;fitStoredItems();selected=null;},false);
   };
   actions.querySelector('.furniture-close').onclick=()=>{selected=null;render();};
-  actions.querySelectorAll('[data-action]').forEach(button=>button.onclick=()=>{
+  actions.querySelectorAll('[data-action]').forEach(button=>button.onclick=async()=>{
     const item=items.find(i=>i.id===selected);if(!item)return;
     switch(button.dataset.action){
       case 'Move':begin(item);break;
       case 'Rotate':rotate();break;
-      case 'Power':if(definitions.get(item.type).frameDuration)change(()=>{item.on=item.on===false;});break;
+      case 'Power':
+        if(!networkPower||saving||item.type!=='custom_dj_decks')break;
+        saving=true;render();
+        try{await networkPower(item.id,item.on===false);}catch(error){onPowerError(error.message);}finally{saving=false;render();}
+        break;
       case 'Pick up':change(()=>{items=pickupWithContents(items,item.id);selected=null;});break;
       case 'Delete':{
         deleteId=item.id;const def=definitions.get(item.type);
@@ -269,7 +273,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
       if(changed)redraw();if(click){commit();render();}return true;
     }
     const hit=hitVisual(point);
-    if(click){selected=editable?(hit?.item.id??null):null;render();if(hit&&definitions.get(hit.item.type).category==='Seating')onSit(seat(hit.item.id));}
+    if(click){selected=editable||(networkPower&&hit?.item.type==='custom_dj_decks')?(hit?.item.id??null):null;render();if(hit&&definitions.get(hit.item.type).category==='Seating')onSit(seat(hit.item.id));}
     return !!hit&&definitions.get(hit.item.type).category!=='Rugs';
   }
   function key(event){
@@ -299,7 +303,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
   render();
   return {open,pointer,key,roomChanged,redraw,seat,animate,blocks:(x,z)=>blocksTile(x,z,items,definitions),close:()=>{cancel();selected=null;panel.hidden=true;render();},get placing(){return !!pending;},
     getItems:()=>structuredClone(items),
-    connect({admin,onSave}){editable=admin;networkSave=onSave;history=[];render();},
+    connect({admin,onSave,onPower,onError=()=>{}}){editable=admin;networkSave=onSave;networkPower=onPower;onPowerError=onError;history=[];render();},
     receive(next){items=restoreItems(next,definitions);if(pending&&selected&&!items.some(i=>i.id===selected))pending=null;render();}
   };
 }

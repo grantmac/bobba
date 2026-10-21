@@ -41,6 +41,7 @@ export function createMultiplayer(){
     furniture:items=>mutate('setFurniture',{items,revision:state.room.revision}),
     options:options=>mutate('setOptions',{options,revision:state.room.revision}),
     danceFloor:on=>mutate('setDanceFloor',{on}),
+    deckPower:(id,on)=>mutate('setDeckPower',{id,on}),
     createSticky:(id,position,poster)=>mutate('createSticky',{id,position,...(poster?{poster}:{})}),
     editSticky:note=>mutate('editSticky',note),
     appendSticky:(id,text)=>mutate('appendSticky',{id,text}),

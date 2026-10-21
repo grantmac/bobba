@@ -1,5 +1,50 @@
 [
   {
+    "id": "custom_dj_table",
+    "name": "Record Cabinet",
+    "category": "Tables",
+    "width": 2,
+    "depth": 1,
+    "surfaceHeight": 36,
+    "icon": "custom_dj_table.png",
+    "spriteDensity": 3,
+    "parts": [
+      {
+        "file": "custom_dj_table.png",
+        "layer": "a",
+        "direction": 2,
+        "reg": {
+          "x": 32,
+          "y": 52
+        },
+        "width": 96,
+        "height": 84,
+        "z": 0,
+        "alphaPrepared": true,
+        "frames": [
+          {
+            "x": 0,
+            "y": 0,
+            "width": 1254,
+            "height": 1254
+          }
+        ]
+      }
+    ],
+    "views": [
+      {
+        "direction": 2,
+        "source": 2,
+        "mirror": false
+      },
+      {
+        "direction": 4,
+        "source": 2,
+        "mirror": true
+      }
+    ]
+  },
+  {
     "id": "custom_dj_decks",
     "name": "DJ Decks",
     "category": "Decor",

@@ -67,7 +67,7 @@ python3 tools/import-furniture.py --source /Users/grantmac/Documents/Codex/2026-
 
 The importer keeps full-size floor pieces with inventory icons and valid footprints, skips half-size duplicates and wall-mounted pieces, and generates both client assets and server placement metadata. `furniture-catalogue-audit.json` records the 1,223 included pieces and skipped candidates. Furniture images load when placed or previewed, and the catalogue has search, categories and 48-item pages.
 
-Visitors can sit on chairs and walk over rugs without seeing the furniture editing panel. Only Grant sees that panel.
+Visitors can sit on chairs and walk over rugs without seeing the furniture editing panel. Only Grant sees editing actions. Clicking DJ decks also gives visitors a power switch.
 
 Place decor, plants or lights onto a free table surface. Items must fit within the table and cannot overlap other tabletop items. Contents move and rotate with the table; picking up or deleting a table puts its contents in inventory. The original Object Mover uses surface IDs and placement altitude; this app derives tabletop heights from sprite registration because the original server height metadata is absent. The fridge has a mirrored second facing; no rear artwork is invented.
 
@@ -85,7 +85,7 @@ Tests cover server authorization, reserved names, session handling, all selectab
 
 ## Voice chat
 
-The room includes a five-row, full-width dance floor one step below the main floor. Grant can click its tiles to switch the lights on or off; this is saved and shared with everyone. Furniture cannot span the step. Dancing resumes after walking to another tile and stops when sitting.
+The room includes a five-row, full-width dance floor one step below the main floor. Any joined player can click its tiles to switch the lights on or off; this is saved and shared with everyone. Furniture cannot span the step. Dancing resumes after walking to another tile and stops when sitting.
 
 Custom catalogue items include animated DJ Decks (four rotations, tabletop placement and saved on/off state) and the Black Porsche 911 (four rotations, three-by-two footprint). Sprite sheets are split and trimmed in the renderer; their supplied artwork is preserved. DJ frames loop every 150 ms; source frames have slight geometry differences. Screen-pixel alignment and native display resolution keep the original pixel art crisp.
 
@@ -106,3 +106,11 @@ Room arrivals use the same private ntfy topic as phone alerts. On the desktop, s
 The server sets each alert's click target to the private `GRANT_ENTRY_URL` environment variable. Clicking an alert opens the live Grant entry; no admin link or ntfy topic is included in the public client bundle. Guest arrivals and returns after going offline trigger alerts, with a 60-second per-player cooldown. Grant's own arrivals do not trigger them.
 
 Desktop navigation supports left-button dragging to pan and scrolling to zoom. A click still walks or selects; dragging suppresses that click even if the pointer returns to its starting position. Touch dragging and pinching use the same camera offsets. The Asian Gothic Chair uses a raised sitting anchor to align the avatar with its cushion; its original artwork and layer depths are unchanged.
+
+## Party controls
+
+Any joined player can switch the dance floor and placed DJ decks on/off. Dedicated server mutations change only power; catalogue, placement, movement, deletion and room editing remain admin-only. The supplied four-frame disco ball lowers over the centre of the dance floor when the lights are on and retracts when off. Reduced motion shows a static ball.
+
+The Record Cabinet uses the updated supplied artwork, has the same two-by-one footprint and 96px sprite width as the decks, and supports them 36px above the floor. Both mirrored orientations work with normal tabletop placement.
+
+Powered decks play the public Poolsuite ON AIR feed (`https://s5.radio.co/sc9cb59935/listen`, verified in the public player at https://poolsuite.net/). Each visitor listens directly after joining; this does not capture the host computer or pass music through voice chat. One audio element serves all powered decks. Turning all decks off, picking them up, or leaving stops it. Music mute and volume are local controls in the microphone panel, with Poolsuite attribution. Browsers that block autoplay retry on the next interaction or Enable music. This is live radio, so buffering may differ slightly between listeners.

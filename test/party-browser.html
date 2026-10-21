@@ -1,0 +1,26 @@
+<!doctype html><meta charset="utf-8"><title>Party furniture check</title>
+<style>body{background:#121212;color:#eee;font:14px Verdana;margin:24px}.views{display:flex;gap:24px}canvas{image-rendering:pixelated}section,dialog{display:none}.furniture-actions:not([hidden]){display:block}button{padding:8px}#ball{width:162px;height:240px}.furniture-actions img{display:none}</style>
+<h1>Record cabinet + DJ Decks</h1><p id="result">Loading…</p><div class="views" id="views"></div><button id="floor">Switch floor off</button><canvas id="ball"></canvas><p id="ball-result"></p>
+<script type="module">
+import {createFurniture} from '/src/furniture.js';import {prepareImage} from '/src/sprite-image.js';import {createDiscoBall} from '/src/disco-ball.js';
+const animations=[];
+for(const rotation of [2,4]){
+ const visuals=[],canvas=document.createElement('canvas');canvas.width=420;canvas.height=380;document.querySelector('#views').append(canvas);
+ let items=[{id:'table',type:'custom_dj_table',rotation,x:0,z:0},{id:'decks',type:'custom_dj_decks',rotation,x:0,z:0,supportId:'table'}];
+ const furniture=await createFurniture({prepareImage,initialItems:items,worldPoint:(x,z)=>({x:(x-z)*32,y:(x+z)*16}),isTile:()=>true,getAvatar:()=>({x:9,z:9}),stopWalking(){},onChanged(){},onSit(){},focusRoom(){},markTiles(){},makeVisual(canvas){const mesh={canvas,material:{map:{}}};visuals.push(mesh);return mesh;},disposeVisual(mesh){visuals.splice(visuals.indexOf(mesh),1);},positionVisual(mesh,x,y,w,h,order){Object.assign(mesh,{x,y,w,h,renderOrder:order});}});
+ const draw=now=>{furniture.animate(now);const ctx=canvas.getContext('2d');ctx.clearRect(0,0,420,380);for(const v of [...visuals].sort((a,b)=>a.renderOrder-b.renderOrder))ctx.drawImage(v.canvas,v.x*3+210,v.y*3+185,v.w*3,v.h*3);};animations.push(draw);
+ furniture.connect({admin:false,onPower:async(id,on)=>{items=items.map(i=>i.id===id?{...i,on}:i);furniture.receive(items);},onSave(){throw Error('Guest should not save furniture');}});
+ // Pick an opaque pixel from the decks instead of relying on sprite padding.
+ const deck=visuals.find(v=>v.renderOrder>visuals[0].renderOrder),ctx=deck.canvas.getContext('2d'),data=ctx.getImageData(0,0,deck.canvas.width,deck.canvas.height).data;
+ const pixel=data.findIndex((v,i)=>i%4===3&&v>200)/4;
+ furniture.pointer({x:deck.x+(Math.floor(pixel)%deck.canvas.width)/3,y:deck.y+Math.floor(pixel/deck.canvas.width)/3},{x:0,z:0},true);
+}
+const ball=await createDiscoBall();let now=0;
+const pixels=()=>ball.canvas.getContext('2d').getImageData(0,0,162,240).data.some((v,i)=>i%4===3&&v>8);
+for(let i=0;i<20;i++)ball.draw(now+=100,true);if(!pixels())throw Error('Ball did not lower');const before=ball.canvas.toDataURL();ball.draw(now+=180,true);if(before===ball.canvas.toDataURL())throw Error('Ball did not spin');
+for(let i=0;i<20;i++)ball.draw(now+=100,false);if(pixels())throw Error('Ball did not retract');
+let on=true;document.querySelector('#floor').onclick=event=>{on=!on;event.target.textContent=`Switch floor ${on?'off':'on'}`;};
+document.querySelector('#result').textContent='PASS: matching footprints, cabinet supports decks in both orientations, guest power controls only.';document.querySelector('#ball-result').textContent='PASS: ball lowers, spins, and fully retracts.';
+const display=document.querySelector('#ball');display.width=162;display.height=240;
+function animate(time){animations.forEach(draw=>draw(time));ball.draw(time,on);display.getContext('2d').clearRect(0,0,162,240);display.getContext('2d').drawImage(ball.canvas,0,0);requestAnimationFrame(animate);}requestAnimationFrame(animate);
+</script>

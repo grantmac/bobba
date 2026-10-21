@@ -167,8 +167,16 @@ export const setFurniture=mutation({args:{token:v.string(),items:v.array(v.any()
   if(changedPlacement)await resetPlayers(ctx,next);
 }});
 export const setDanceFloor=mutation({args:{token:v.string(),on:v.boolean()},handler:async(ctx,{token,on})=>{
-  await playerFor(ctx,token,true);const room=await getRoom(ctx);
+  await playerFor(ctx,token);const room=await getRoom(ctx);
   await ctx.db.patch(room._id,{danceFloorOn:on});
+}});
+// Power is shared, but this narrow mutation cannot move or replace furniture.
+export const setDeckPower=mutation({args:{token:v.string(),id:v.string(),on:v.boolean()},handler:async(ctx,{token,id,on})=>{
+  await playerFor(ctx,token);const room=await getRoom(ctx);
+  const item=room.furniture.find(item=>item.id===id);
+  if(!item||item.type!=='custom_dj_decks'||!isPlaced(item))fail('Select decks that are in the room.');
+  if((item.on??true)===on)return;
+  await ctx.db.patch(room._id,{furniture:room.furniture.map(item=>item.id===id?{...item,on}:item),revision:room.revision+1});
 }});
 export const setOptions=mutation({args:{token:v.string(),options:v.any(),revision:v.number()},handler:async(ctx,{token,options,revision})=>{
   await playerFor(ctx,token,true);const room=await getRoom(ctx);
