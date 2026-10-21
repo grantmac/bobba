@@ -1,7 +1,7 @@
 // Public Poolsuite ON AIR endpoint used by https://poolsuite.net/.
 export const POOLSUITE_STREAM='https://s5.radio.co/sc9cb59935/listen';
 export function createRoomRadio({audio=new Audio(),onState=()=>{}}={}){
-  audio.preload='none';audio.volume=.525;
+  audio.preload='none';audio.volume=.7875;
   let active=false,muted=false,pending=false,generation=0,playing=false;
   const emit=()=>onState({active,muted,playing,volume:audio.volume});
   function stop(){generation++;pending=false;playing=false;audio.pause();audio.removeAttribute('src');audio.load();}

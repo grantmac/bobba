@@ -3,7 +3,7 @@ export function createVoice({credentials,onState=()=>{},loadSDK=()=>import('live
   panel.innerHTML='<header><h1>Voice chat</h1><button type="button" class="appearance-close" aria-label="Close voice chat">×</button></header><div class="voice-body"><p class="voice-status" role="status">Join to talk. Your microphone will turn on.</p><div class="voice-controls"><button type="button" data-voice="join">Join voice</button><button type="button" data-voice="mic" hidden>Turn mic on</button><button type="button" data-voice="audio" hidden>Enable sound</button><button type="button" data-voice="leave" hidden>Leave voice</button></div><ul aria-label="People in voice"></ul></div>';
   const audioRoot=document.createElement('div');audioRoot.hidden=true;document.body.append(panel,audioRoot);
   const music=document.createElement('div');music.className='room-music';music.hidden=true;
-  music.innerHTML='<a href="https://poolsuite.net/" target="_blank" rel="noopener">Poolsuite ON AIR</a><button type="button" data-music="sound">Mute music</button><label>Music volume <input type="range" min="0" max="100" value="52.5" step="0.5" aria-label="Music volume"></label>';
+  music.innerHTML='<a href="https://poolsuite.net/" target="_blank" rel="noopener">Poolsuite ON AIR</a><button type="button" data-music="sound">Mute music</button><label>Music volume <input type="range" min="0" max="100" value="78.75" step="0.25" aria-label="Music volume"></label>';
   panel.querySelector('.voice-body').append(music);
   let musicController,musicState={};
   music.querySelector('button').onclick=()=>{if(musicState.muted)musicController?.setMuted(false);else if(!musicState.playing)void musicController?.unlock();else musicController?.setMuted(true);};
