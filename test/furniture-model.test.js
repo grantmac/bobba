@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {footprint,canPlace,blocksTile,restoreItems,moveWithContents,pickupWithContents,surfaceHeight,seatFor,approachFor,canHang,wallAnchor} from '../src/furniture-model.js';
 const definitions=new Map([
   ['sofa',{width:2,depth:1,category:'Seating',views:[{direction:0},{direction:2},{direction:4},{direction:6}]}],
-  ['rug',{width:3,depth:2,category:'Rugs',views:[{direction:0}]}]
+  ['rug',{width:3,depth:2,category:'Rugs',views:[{direction:0}]}],
+  ['sign',{width:1,depth:1,category:'Wall',switchable:true,views:[{direction:2},{direction:4}]}]
 ]);
 const sofa={id:'a',type:'sofa',rotation:0,x:2,z:2};
 const room=(x,z)=>x>=0&&z>=0&&x<8&&z<8&&!(x<2&&z<2);
@@ -28,6 +29,10 @@ test('rugs can sit beneath furniture and remain walkable',()=>{
 test('saved items reject duplicate ids, unknown types and invalid coordinates',()=>{
  assert.deepEqual(restoreItems([sofa,sofa,{...sofa,id:'b',type:'missing'},{...sofa,id:'c',rotation:9},{...sofa,id:'d',x:NaN},{...sofa,id:'e',x:null,z:null}],definitions),[sofa,{...sofa,id:'e',x:null,z:null}]);
  assert.deepEqual(restoreItems({},definitions),[]);
+});
+test('a power flag survives on the decks and on switchable built pieces only',()=>{
+ const sign={id:'s',type:'sign',rotation:4,x:3,z:0,u:.5,height:60,on:false};
+ assert.deepEqual(restoreItems([sign,{...sofa,on:false},{...sign,id:'t',on:'no'}],definitions),[sign]);
 });
 const stackDefinitions=new Map([...definitions,
  ['table',{width:2,depth:1,category:'Tables',surfaceHeight:29,views:[{direction:0},{direction:2},{direction:4},{direction:6}]}],
