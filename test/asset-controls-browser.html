@@ -1,0 +1,36 @@
+<!doctype html><meta charset="utf-8"><title>Player-built furniture controls</title>
+<link rel="stylesheet" href="/src/style.css">
+<style>body{padding:24px;color:white;overflow:auto}#preview{width:460px;height:300px;background:#777e99;image-rendering:pixelated}#result{max-width:460px;line-height:1.6}</style>
+<h1>Player-built furniture</h1><p id="result">Loading…</p><canvas id="preview" width="460" height="300"></canvas><button id="run" disabled>Check ownership controls</button>
+<script type="module">
+import {createFurniture} from '/src/furniture.js';
+import {prepareImage} from '/src/sprite-image.js';
+const catalogue=await (await fetch('/assets/furniture/catalog.json')).json();
+const base=catalogue.find(item=>item.id==='custom_traffic_cone');
+const mine={...base,id:'asset_fixture_mine',name:'My cone',owner:'builder'},other={...base,id:'asset_fixture_other',name:'Their cone',owner:'other'};
+const initial=[{id:'mine',type:mine.id,rotation:2,x:1,z:1,owner:'builder'},{id:'theirs',type:other.id,rotation:2,x:4,z:1,owner:'other'}];
+const visuals=[],canvas=document.querySelector('#preview'),ctx=canvas.getContext('2d');let saved=null;
+function draw(){ctx.clearRect(0,0,460,300);for(const mesh of visuals)ctx.drawImage(mesh.canvas,mesh.x,mesh.y,mesh.w,mesh.h);}
+const furniture=await createFurniture({prepareImage,initialItems:initial,initialAssets:[mine,other],
+ makeVisual(canvas){const mesh={canvas,material:{map:{}}};visuals.push(mesh);return mesh;},disposeVisual(mesh){visuals.splice(visuals.indexOf(mesh),1);},positionVisual(mesh,x,y,w,h){Object.assign(mesh,{x,y,w,h});draw();},
+ worldPoint:(x,z)=>({x:60+x*65,y:90+z*45}),isTile:()=>true,getAvatar:()=>({x:9,z:9}),stopWalking(){},onChanged(){},onSit(){},markTiles(){},focusRoom(){}
+});
+furniture.connect({admin:false,me:'builder',onSave:async items=>{saved=structuredClone(items);furniture.receive(items);}});
+const actions=document.querySelector('.furniture-actions'),tick=()=>new Promise(resolve=>setTimeout(resolve,0));
+function assert(ok,message){if(!ok)throw Error(message);}
+function hit(item){const p={x:60+item.x*65,y:90+item.z*45};const mesh=visuals.find(v=>Math.abs(v.x-p.x)<100&&Math.abs(v.y-p.y)<100);assert(mesh,'Sprite missing');const pixels=mesh.canvas.getContext('2d').getImageData(0,0,mesh.canvas.width,mesh.canvas.height).data;for(let i=3;i<pixels.length;i+=4)if(pixels[i]>40){const n=(i-3)/4;return {x:mesh.x+((n%mesh.canvas.width)+.5)/(mesh.canvas.width/mesh.w),y:mesh.y+(Math.floor(n/mesh.canvas.width)+.5)/(mesh.canvas.height/mesh.h)};}throw Error('Empty sprite');}
+document.querySelector('#run').onclick=async()=>{try{
+ furniture.pointer(hit(initial[1]),{x:4,z:1},true);assert(actions.hidden,'Another player’s controls were exposed');
+ furniture.pointer(hit(initial[0]),{x:1,z:1},true);assert(!actions.hidden,'Owner cannot select their piece');
+ for(const name of ['Move','Rotate','Pick up','Delete'])assert(!actions.querySelector(`[data-action="${name}"]`).hidden,`Missing ${name}`);
+ actions.querySelector('[data-action="Move"]').click();furniture.pointer({x:60+2*65,y:90+3*45},{x:2,z:3},true);await tick();
+ assert(saved.find(i=>i.id==='mine').x===2&&saved.find(i=>i.id==='mine').z===3,'Move was not saved');
+ actions.querySelector('[data-action="Pick up"]').click();await tick();assert(saved.find(i=>i.id==='mine').x===null,'Pick up was not saved');
+ furniture.open('Inventory');assert(document.querySelectorAll('.furniture-card').length===1,'Own inventory is missing');
+ document.querySelector('.furniture-card').click();furniture.pointer({x:190,y:180},{x:2,z:2},true);await tick();
+ actions.querySelector('[data-action="Delete"]').click();assert(document.querySelector('dialog').open,'Delete confirmation missing');document.querySelector('[data-confirm="delete"]').click();await tick();
+ assert(!saved.some(i=>i.id==='mine'),'Delete was not saved');assert(saved.some(i=>i.id==='theirs'),'Another player’s item changed');
+ document.querySelector('#result').textContent='PASS: own pieces select, move, pick up, return from inventory and delete; other players’ controls stay hidden.';
+}catch(error){document.querySelector('#result').textContent='FAIL: '+error.message;throw error;}};
+document.querySelector('#run').disabled=false;document.querySelector('#result').textContent='Ready. The left cone belongs to this player; the right cone belongs to someone else.';
+</script>

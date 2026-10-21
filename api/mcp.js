@@ -3,13 +3,15 @@
 // under Catalogue → Build with your agent. Sprites are cut here (shared/sprite-build.js).
 import {ConvexHttpClient} from 'convex/browser';
 import {anyApi} from 'convex/server';
-import {sheetPrompt} from '../shared/agent-prompts.js';
+import {sheetPrompt,surfacePrompt} from '../shared/agent-prompts.js';
+import {prepareSurface,surfaceSize,SURFACE_COLORS} from '../shared/surface-build.js';
 import {KINDS,CONVENTIONS} from '../shared/sprite-conventions.js';
 import {readImage,splitSheet,prepareAsset} from '../shared/sprite-build.js';
+import {SPACE_LIMIT,SPACES_PER_PLAYER,SPACE_SIZE,SPACE_NAME_MAX,SPACE_FLOORS,SPACE_WALLS,SPACE_FITS} from '../shared/spaces.js';
 
 export const maxDuration=60;
-const api=anyApi,SERVER={name:'habbo-room',version:'0.2.0'},PROTOCOLS=['2024-11-05','2025-03-26','2025-06-18'];
-const INSTRUCTIONS=`Builds furniture into the shared Habbo-style room for the player whose agent key you hold. For any picture that is not already a game sprite: design_asset (prompt + reference image URLs) → draw the 2 by 2 sprite sheet with your image tool → upload_url → POST the PNG to it → submit_asset with the storage id. Then place it from room_map when the player says where. ${CONVENTIONS}`;
+const api=anyApi,SERVER={name:'habbo-room',version:'0.4.0'},PROTOCOLS=['2024-11-05','2025-03-26','2025-06-18'];
+const INSTRUCTIONS=`Builds furniture into the shared Habbo-style room for the player whose agent key you hold. For any picture that is not already a game sprite: design_asset (prompt + reference image URLs) → draw the 2 by 2 sprite sheet with your image tool → upload_url → POST the PNG to it → submit_asset with the storage id. Then place it from room_map when the player says where. The player can also add one block of floor to the room with add_space: it always joins the right-hand end of the back wall, after the latest space, and the room_map shows it with its tiles; style_space then restyles that space's floor and back wall with colours, wallpapers or pictures; any picture starts with design_surface, and is remade at the game's pixel scale on the way in. ${CONVENTIONS}`;
 const NO_KEY='No agent key. Send the player\'s key as "Authorization: Bearer <key>": they make one in the room under Catalogue → Build with your agent and paste it into the plugin\'s key prompt.';
 const message=error=>typeof error?.data==='string'?error.data:(error?.message||String(error)).replace(/\[(CONVEX|Request ID)[^\]]*\]\s*/g,'').replace(/^Server Error\s*/,'').replace(/^Uncaught (\w*Error): /,'').split('\n')[0];
 function convexUrl(){const url=process.env.CONVEX_URL||process.env.VITE_CONVEX_URL;if(!url)throw new Error('The room server is not configured (CONVEX_URL).');return url;}
@@ -26,7 +28,7 @@ const TOOLS=[
   {name:'status',description:'Who this agent builds for, the pieces they have built and placed, and the sprite conventions.',inputSchema:object({})},
   {name:'design_asset',description:'START HERE for any picture that is not already a finished game sprite (a photo, a logo, concept art, a real object). Returns the exact prompt for YOUR image-generation tool to redraw the piece in the room\'s isometric pixel-art style as a 2 by 2 sprite sheet of its four rotations, plus the reference images to attach (the player\'s picture, the room, an existing sprite). Generate it, save the PNG, upload it with upload_url, then call submit_asset. Never upload the player\'s picture with add_asset: it would appear in the room as-is.',
     inputSchema:object({name:{type:'string',maxLength:40,description:'Short name for the catalogue'},description:{type:'string',description:'What the piece is, in a sentence'},...size,reference_image_path:{type:'string',description:'Path of the player\'s picture on your machine, if there is one; it is only echoed back in the list of images to attach'},details:{type:'string',description:'Materials, colours, parts and accessories to keep or add'}},['name','description'])},
-  {name:'upload_url',description:'Get a one-hour URL to upload a PNG to. POST the raw file to it with Content-Type image/png (for example with curl --data-binary); the JSON reply has the storageId to pass to submit_asset or add_asset.',inputSchema:object({})},
+  {name:'upload_url',description:'Get a one-hour URL to upload a PNG to. POST the raw file to it with Content-Type image/png (for example with curl --data-binary); the JSON reply has the storageId to pass to submit_asset, add_asset or style_space.',inputSchema:object({})},
   {name:'submit_asset',description:'Register an uploaded sprite sheet (from design_asset) as a new catalogue piece with four rotations, visible to everyone at once. The sheet is a 2 by 2 grid: top-left facing lower-right, top-right lower-left, bottom-left upper-left, bottom-right upper-right. Flat backgrounds are keyed out and each view is trimmed and scaled.',
     inputSchema:object({name:{type:'string',maxLength:40},...source,...size,...spriteOptions},['name'])},
   {name:'add_asset',description:`ONLY for art that is already a finished game sprite: pixel-art, isometric, transparent background, drawn in the room's style (for example a sprite the player made themselves). It is uploaded as-is with a mirrored second view. For photos, logos, concept art or anything else, do NOT use this: call design_asset, generate the four-view sheet with your image tool, then submit_asset. ${CONVENTIONS}`,
@@ -37,6 +39,13 @@ const TOOLS=[
   {name:'place',description:'Place one of the player\'s pieces on a free tile (x, z from room_map). Wall pieces take the wall tile plus rotation 2 (left wall) or 4 (right wall), with u (0.25-0.75 along the tile) and height (26-88 px up the wall).',
     inputSchema:object({asset_id:{type:'string'},x:{type:'integer'},z:{type:'integer'},rotation:{type:'integer',description:'0, 2, 4 or 6; defaults to the piece\'s first view'},u:{type:'number'},height:{type:'number'}},['asset_id','x','z'])},
   {name:'remove',description:'Pick a placed piece of the player\'s out of the room (item id from status or room_map).',inputSchema:object({item_id:{type:'string'}},['item_id'])},
+  {name:'add_space',description:`Add a block of floor to the room for this player. Position is not a choice: every new space joins the right-hand end of the back wall, flush against the latest space (the first joins the games lounge), at floor level with the room's wallpaper behind it. Every space is ${SPACE_SIZE} by ${SPACE_SIZE} tiles. Each player can add ${SPACES_PER_PLAYER} space (${SPACE_LIMIT} in the room altogether); the reply and room_map list its tiles, which the player's pieces can then be placed on.`,
+    inputSchema:object({name:{type:'string',maxLength:SPACE_NAME_MAX,description:'What to call the space, up to 24 characters'},floor:{type:'string',enum:SPACE_FLOORS,default:'carpet',description:'Floor finish'},floor_color:{type:'string',description:'A colour from the room\'s floor palette (status lists them); defaults to the first'}},['name'])},
+  {name:'design_surface',description:'START HERE for any picture that will go on a space\'s floor or wall. Returns the exact prompt for YOUR image-generation tool to draw it in the room\'s pixel-art style at the game\'s own pixel scale, with the room reference to attach, then the upload and style_space steps. Floors are drawn as a top view and walls flat on: the game projects and skews them itself.',
+    inputSchema:object({surface:{type:'string',enum:['floor','wall']},fit:{type:'string',enum:SPACE_FITS,default:'tile',description:'tile: a seamless texture repeated on every tile or wall segment; cover: one picture over the whole floor or wall'},description:{type:'string',description:'What the picture shows, in a sentence or two'},details:{type:'string',description:'Colours, motifs, anything the player specified'}},['surface','description'])},
+  {name:'style_space',description:`Restyle the player's space (Grant may restyle any, by space_id). Only the fields given change. Floor: a finish (${SPACE_FLOORS.join(', ')}) and any hex colour, and optionally a picture laid over it. Back wall: a wallpaper (${SPACE_WALLS.join(', ')}) and any hex colour, both defaulting to the room's own, and optionally a picture. Pictures come from design_surface: generate it, POST the PNG to an upload_url and pass its storageId (or give a public image URL). Every picture is remade at the game's pixel scale with at most ${SURFACE_COLORS} colours and hard edges, so it always matches the room's pixel art; the reply says the size it was kept at. Fit 'tile' repeats the picture on every floor tile or wall segment (textures), 'cover' stretches one copy across the whole floor or wall (a mural, a rug design, a big logo); transparent areas show the finish beneath. Pass null for a picture, wall or wall_color to clear it. The name can change too.`,
+    inputSchema:object({space_id:{type:'string',description:'From status or room_map; optional when the player has just one space'},name:{type:'string',maxLength:SPACE_NAME_MAX},floor:{type:'string',enum:SPACE_FLOORS},floor_color:{type:'string',description:'Hex colour like #b59232'},floor_image_storage_id:{type:['string','null'],description:'storageId of the uploaded floor picture, or null to clear the picture'},floor_image_url:{type:'string',description:'Public http(s) URL of the floor picture instead of an upload'},floor_fit:{type:'string',enum:SPACE_FITS},wall:{type:['string','null'],description:`Wallpaper: ${SPACE_WALLS.join(', ')}, or null for the room's`},wall_color:{type:['string','null'],description:'Hex colour like #787e9c, or null for the room\'s'},wall_image_storage_id:{type:['string','null'],description:'storageId of the uploaded wall picture, or null to clear the picture'},wall_image_url:{type:'string',description:'Public http(s) URL of the wall picture instead of an upload'},wall_fit:{type:'string',enum:SPACE_FITS}})},
+  {name:'remove_space',description:'Remove the latest added space (its id from room_map). Only the newest space can go, so earlier ones never float; it must be the player\'s own (or the player must be Grant) and have no furniture or players on it.',inputSchema:object({space_id:{type:'string'}},['space_id'])},
 ];
 
 const defaults=args=>({width:1,depth:1,kind:'floor',...args});
@@ -53,13 +62,14 @@ async function loadSource(token,{storage_id,image_url,image_base64}){
   else throw new Error('Give storage_id (from upload_url) or image_url.');
   return readImage(buffer);
 }
+const uploader=token=>async buffer=>{
+  const url=await call('mutation',api.agents.uploadUrl,{agentToken:token});
+  const response=await fetch(url,{method:'POST',headers:{'Content-Type':'image/png'},body:buffer});
+  if(!response.ok)throw new Error('Upload failed.');
+  return (await response.json()).storageId;
+};
 async function register(token,args,views){
-  const upload=async buffer=>{
-    const url=await call('mutation',api.agents.uploadUrl,{agentToken:token});
-    const response=await fetch(url,{method:'POST',headers:{'Content-Type':'image/png'},body:buffer});
-    if(!response.ok)throw new Error('Upload failed.');
-    return (await response.json()).storageId;
-  };
+  const upload=uploader(token);
   const {spec,summary}=await prepareAsset(args,views,upload);
   const result=await call('mutation',api.agents.createAsset,{agentToken:token,...spec});
   if(args.storage_id)await call('mutation',api.agents.discardUpload,{agentToken:token,storageId:args.storage_id}).catch(()=>{});
@@ -86,6 +96,31 @@ const HANDLERS={
   async room_map(_,{token}){return call('query',api.agents.map,{agentToken:token});},
   async place({asset_id,...rest},{token}){return call('mutation',api.agents.place,{agentToken:token,assetId:asset_id,...rest});},
   async remove({item_id},{token}){await call('mutation',api.agents.remove,{agentToken:token,itemId:item_id});return 'Removed.';},
+  async add_space({floor_color,...rest},{token}){
+    const space=await call('mutation',api.agents.addSpace,{agentToken:token,...rest,...(floor_color?{floorColor:floor_color}:{})});
+    return {...space,then:'The space is in the room for everyone now. Its tiles are free: place the player\'s pieces on them with place when they say where.'};
+  },
+  async design_surface({surface,fit='tile',description,details=''},{origin}){
+    const {w,h}=surfaceSize(surface,fit),id=surface==='floor'?'floor_image_storage_id':'wall_image_storage_id',fitKey=surface==='floor'?'floor_fit':'wall_fit';
+    return {prompt:surfacePrompt({surface,fit,description,details,width:w,height:h}),attach:[`${origin}/agent-reference/room-style.png`],attach_order:'the room reference (download the URL first)',
+      output:`One PNG, ${w} by ${h} pixels or an exact multiple of it (for example ${w*8} by ${h*8}); the game keeps it at ${w} by ${h} with at most ${SURFACE_COLORS} colours.`,
+      then:`Save the generated PNG, call upload_url and POST the file to it (curl -s -X POST "<upload_url>" -H "Content-Type: image/png" --data-binary @picture.png), then call style_space with ${id} set to the returned storageId and ${fitKey} "${fit}".`};
+  },
+  // Every picture is remade at game scale (shared/surface-build.js) before it reaches the room, so
+  // the space keeps the room's pixel-art look however the picture was made.
+  async style_space({space_id,floor_color,floor_image_storage_id,floor_image_url,floor_fit,wall_color,wall_image_storage_id,wall_image_url,wall_fit,...rest},{token}){
+    const args={agentToken:token,...rest},upload=uploader(token),kept={};
+    for(const [value,key] of [[space_id,'spaceId'],[floor_color,'floorColor'],[floor_image_storage_id,'floorImage'],[floor_fit,'floorFit'],[wall_color,'wallColor'],[wall_image_storage_id,'wallImage'],[wall_fit,'wallFit']])if(value!==undefined)args[key]=value;
+    for(const [surface,storage_id,image_url,key,fit] of [['floor',floor_image_storage_id,floor_image_url,'floorImage',floor_fit??'tile'],['wall',wall_image_storage_id,wall_image_url,'wallImage',wall_fit??'tile']]){
+      if(!storage_id&&!image_url)continue;
+      const {buffer,width,height}=await prepareSurface(await loadSource(token,{storage_id,image_url}),{surface,fit});
+      args[key]=await upload(buffer);kept[`${surface}_picture`]=`${width} by ${height} pixels, ${fit}`;
+      if(storage_id)await call('mutation',api.agents.discardUpload,{agentToken:token,storageId:storage_id}).catch(()=>{});
+    }
+    const space=await call('mutation',api.agents.styleSpace,args);
+    return {...space,...kept,then:'Everyone in the room sees the new look now.'};
+  },
+  async remove_space({space_id},{token}){await call('mutation',api.agents.removeSpace,{agentToken:token,spaceId:space_id});return 'Removed.';},
 };
 
 // JSON-RPC over one POST: a single message or a batch; notifications get no reply.

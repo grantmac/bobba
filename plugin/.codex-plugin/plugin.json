@@ -1,12 +1,12 @@
 {
   "name": "habbo-room",
-  "version": "0.2.1",
-  "description": "Build furniture into the Habbo-style room: redraw any picture as an isometric pixel-art piece with four rotations, then place it.",
+  "version": "0.4.0",
+  "description": "Build furniture into the Habbo-style room: redraw any picture as an isometric pixel-art piece with four rotations, then place it, or add a block of floor to the room.",
   "author": { "name": "Grant Mac" },
   "interface": {
     "displayName": "Habbo Room",
     "shortDescription": "Build pieces into the room",
-    "longDescription": "Turn any picture (a photo, a logo, concept art, a real object) into a piece of furniture for the shared Habbo-style room at chat.grantm.ac. The plugin writes the sprite-sheet prompt, Codex draws the four rotations with its image generator in the room's hand-drawn pixel-art style, and the piece lands in the catalogue for everyone at once. Make an agent key in the room under Catalogue → Build with your agent and paste it when asked; then paste pictures, place pieces on tiles or walls, and tidy up.",
+    "longDescription": "Turn any picture (a photo, a logo, concept art, a real object) into a piece of furniture for the shared Habbo-style room at chat.grantm.ac. The plugin writes the sprite-sheet prompt, Codex draws the four rotations with its image generator in the room's hand-drawn pixel-art style, and the piece lands in the catalogue for everyone at once. Make an agent key in the room under Catalogue → Build with your agent and paste it when asked; then paste pictures, place pieces on tiles or walls, add a named block of floor, and tidy up.",
     "developerName": "Grant Mac",
     "category": "Lifestyle",
     "capabilities": ["Read", "Write"],

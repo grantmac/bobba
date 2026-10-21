@@ -12,7 +12,15 @@ export function createMultiplayer(){
   try{token=localStorage.getItem(KEY)||'';}catch{}
   function errorMessage(error){return typeof error?.data==='string'?error.data:error?.message?.replace(/\[CONVEX[^\]]*\]\s*/,'').split('\n')[0]||'The room could not be reached.';}
   async function mutatePong(name,args={}){try{return await client.mutation(api.pong[name],{token,...args});}catch(error){throw new Error(errorMessage(error));}}
-  async function mutate(name,args={}){try{return await client.mutation(api.room[name],{token,...args});}catch(error){throw new Error(errorMessage(error));}}
+  async function mutate(name,args={}){
+    const sent=Date.now();
+    try{
+      const result=await client.mutation(api.room[name],{token,...args});
+      // Presence can stay cached for hours while the room is idle; time comes from a fresh heartbeat.
+      if(name==='heartbeat'&&Number.isFinite(result?.serverTime))offset=result.serverTime-(sent+Date.now())/2;
+      return result;
+    }catch(error){throw new Error(errorMessage(error));}
+  }
   function randomToken(){return [...crypto.getRandomValues(new Uint8Array(32))].map(b=>b.toString(16).padStart(2,'0')).join('');}
   const connectionId=randomToken();
   const depart=()=>{if(token&&me)navigator.sendBeacon(import.meta.env.VITE_CONVEX_SITE_URL+'/disconnect',JSON.stringify({token,connectionId}));};
@@ -27,14 +35,30 @@ export function createMultiplayer(){
       try{me=await client.mutation(api.room.join,{token,name,look,pageOrigin:location.origin,...(entryCode?{entryCode,replaceLook:appearanceChanged}:{})});}catch(error){throw new Error(errorMessage(error));}
       entryCode='';try{localStorage.setItem(KEY,token);}catch{}return me;
     },
-    loadPreview:()=>client.query(api.room.preview,{}),
-    preview(onState,onError){return client.onUpdate(api.room.preview,{},value=>{offset=value.serverTime-Date.now();onState(value);},error=>onError(errorMessage(error)));},
+    async loadPreview(){const value=await client.query(api.room.preview,{});offset=value.serverTime-Date.now();return value;},
+    preview(onState,onError){
+      let presence=null,scene=null;const error=e=>onError(errorMessage(e));
+      const emit=()=>{if(presence&&scene)onState({...presence,room:scene});};
+      const stops=[client.onUpdate(api.room.presence,{},value=>{presence=value;emit();},error),client.onUpdate(api.room.scene,{},value=>{scene=value;emit();},error)];
+      return ()=>stops.forEach(stop=>stop());
+    },
     async watch(onState,onError,onRoom,onPong){
       try{await mutate('heartbeat',{connectionId,pageOrigin:location.origin});}catch(error){onError(error.message);return;}
       unsubscribe?.();unsubscribeRoom?.();
-      unsubscribe=client.onUpdate(api.room.state,{token,presenceOnly:true},value=>{state=value;me=value.me;offset=value.serverTime-Date.now();onState(value);},error=>onError(errorMessage(error)));
-      unsubscribePong?.();unsubscribePong=client.onUpdate(api.pong.state,{},value=>onPong?.(value),error=>onError(errorMessage(error)));
-      unsubscribeRoom=client.onUpdate(api.room.roomState,{token},value=>{room=value;onRoom?.(value);},error=>onError(errorMessage(error)));
+      let presence=null,messages=null;const error=e=>onError(errorMessage(e));
+      const emit=()=>{
+        if(!presence||messages===null)return;
+        me=presence.players.find(p=>p.id===me.id)??me;
+        state={...presence,me,messages};onState(state);
+      };
+      const stops=[
+        client.onUpdate(api.room.session,{token},()=>{},error),
+        client.onUpdate(api.room.presence,{},value=>{presence=value;emit();},error),
+        client.onUpdate(api.room.chatFeed,{token},value=>{messages=value;emit();},error)
+      ];
+      unsubscribe=()=>stops.forEach(stop=>stop());
+      unsubscribePong?.();unsubscribePong=client.onUpdate(api.pong.state,{},value=>onPong?.(value),error);
+      unsubscribeRoom=client.onUpdate(api.room.roomState,{token},value=>{room=value;onRoom?.(value);},error);
       clearInterval(heartbeat);heartbeat=setInterval(()=>mutate('heartbeat',{connectionId,pageOrigin:location.origin}).catch(error=>onError(error.message)),15000);
     },
     appearance:look=>mutate('appearance',{look}),

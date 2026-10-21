@@ -5,7 +5,10 @@ The Codex plugin for building pieces into the room through its hosted MCP endpoi
 local parts: `plugin.json` and `.codex-plugin/plugin.json` describe it, `mcp.json` points at the
 endpoint with API-key (Bearer) auth, and `skills/habbo-room/SKILL.md` drives the loop: ask
 `design_asset` for the prompt and reference pictures, draw the 2×2 sprite sheet with Codex's
-image generator, POST the PNG to an `upload_url`, then `submit_asset` with the storage id.
+image generator, POST the PNG to an `upload_url`, then `submit_asset` with the storage id. `add_space` lets the
+player grow the room by one named 8 by 8 block of floor, chained onto the end of the back wall, and
+`style_space` restyles its floor and back wall with colours, wallpapers or pictures, which `design_surface` keeps in
+the room's pixel-art style and the endpoint remakes at the game's own pixel scale.
 
 The key it asks for is made in the room under Catalogue → **Build with your agent** → **Create
 agent key** (shown once; Disconnect in the same window revokes it).

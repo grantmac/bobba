@@ -1,5 +1,6 @@
 import {query,internalMutation} from './_generated/server.js';
 import {v} from 'convex/values';
+import {isOnline} from './lib/rules.js';
 import {playerFor} from './room.js';
 
 // A page of the guest book, newest first; pass the oldest enteredAt you have to page back.
@@ -16,7 +17,7 @@ export const backfill=internalMutation({args:{},handler:async(ctx)=>{
   for(const p of players){
     const any=await ctx.db.query('visits').withIndex('by_open').filter(q=>q.eq(q.field('playerId'),p._id)).first();
     if(any)continue;
-    const present=p.lastSeen>now-45000,entered=p._creationTime;
+    const present=isOnline(p,now),entered=p._creationTime;
     const leftAt=present?null:p.lastSeen>entered?p.lastSeen:entered;
     await ctx.db.insert('visits',{playerId:p._id,name:p.name,enteredAt:entered,leftAt,estimated:!present&&p.lastSeen<=entered});added++;
   }

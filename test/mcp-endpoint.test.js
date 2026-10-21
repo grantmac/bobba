@@ -16,7 +16,9 @@ describe('hosted MCP endpoint',()=>{
   });
   it('lists the tools and answers notifications with 202',async()=>{
     const {result}=await (await post(rpc('tools/list'))).json();
-    expect(result.tools.map(t=>t.name)).toEqual(['status','design_asset','upload_url','submit_asset','add_asset','my_assets','delete_asset','room_map','place','remove']);
+    expect(result.tools.map(t=>t.name)).toEqual(['status','design_asset','upload_url','submit_asset','add_asset','my_assets','delete_asset','room_map','place','remove','add_space','design_surface','style_space','remove_space']);
+    const space=result.tools.find(t=>t.name==='add_space');
+    expect(space.inputSchema.required).toEqual(['name']);expect(space.inputSchema.properties).not.toHaveProperty('width');expect(space.inputSchema.properties.floor.enum).toEqual(['plain','wood','tiles','carpet']);
     for(const tool of result.tools)expect(tool.inputSchema.type).toBe('object');
     expect((await post({jsonrpc:'2.0',method:'notifications/initialized'})).status).toBe(202);
   });
@@ -36,6 +38,14 @@ describe('hosted MCP endpoint',()=>{
     expect(design.then).toMatch(/upload_url/);
     const wall=JSON.parse((await (await post(rpc('tools/call',{name:'design_asset',arguments:{name:'Sign',description:'A neon sign.',kind:'wall'}}),{Authorization:`Bearer ${key}`})).json()).result.content[0].text);
     expect(wall.attach).toEqual(['https://chat.example.test/agent-reference/room-style.png','https://chat.example.test/agent-reference/sprite-wall-speaker.png']);
+  });
+  it('writes a floor or wall picture prompt at the game\'s pixel scale',async()=>{
+    const key='a'.repeat(64);
+    const floor=JSON.parse((await (await post(rpc('tools/call',{name:'design_surface',arguments:{surface:'floor',description:'Black and white chequered tiles.'}}),{Authorization:`Bearer ${key}`})).json()).result.content[0].text);
+    expect(floor.prompt).toMatch(/seamless pixel-art FLOOR TEXTURE/);expect(floor.prompt).toMatch(/exactly 64 by 64 game pixels/);expect(floor.prompt).toMatch(/edges wrap/);
+    expect(floor.attach).toEqual(['https://chat.example.test/agent-reference/room-style.png']);expect(floor.then).toMatch(/floor_image_storage_id/);
+    const wall=JSON.parse((await (await post(rpc('tools/call',{name:'design_surface',arguments:{surface:'wall',fit:'cover',description:'A night skyline.'}}),{Authorization:`Bearer ${key}`})).json()).result.content[0].text);
+    expect(wall.prompt).toMatch(/WALL MURAL/);expect(wall.prompt).toMatch(/exactly 256 by 117 game pixels/);expect(wall.prompt).not.toMatch(/edges wrap/);expect(wall.then).toMatch(/wall_fit "cover"/);
   });
   it('rejects malformed requests, unknown methods and tools, and other verbs',async()=>{
     expect((await post('{not json')).status).toBe(400);

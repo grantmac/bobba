@@ -13,7 +13,8 @@ import {createAgentLink} from './agent-link.js';
 import {createStickies} from './stickies.js';
 import {installTouchNavigation} from './touch-navigation.js';
 import {createVoice} from './voice.js';
-import {roomLayout,tileDrop,walkingDrop,tileAtPoint,isPoolWater,pitSeat,STEP_DOWN,DANCE_ROWS} from '../shared/room-layout.js';
+import {roomLayout,tileDrop,walkingDrop,tileAtPoint,isPoolWater,pitSeat,backWallTiles,onWalkway,STEP_DOWN,DANCE_ROWS} from '../shared/room-layout.js';
+import {floorSampler,createSpaceFloor,picturePixels,pictureSampler,wallSegment} from './spaces.js';
 import {createDanceFloor} from './dance-floor.js';
 import {createDanceFloorControls} from './dance-floor-controls.js';
 import {createDiscoBall} from './disco-ball.js';
@@ -183,10 +184,19 @@ function polygon(points,color,order=0,outline=false) {
 }
 
 const roomGroup=new THREE.Group();scene.add(roomGroup);
-let drawTarget=scene, roomCatalog, roomEditor, roomOptions={}, roomAssets={}, roomShape, layout, mainTiles=new Set(),walkable=new Set(), roomWidth=8, roomDepth=8, roomCenterX=0,danceFloor,danceMesh,pool,poolMesh,discoLights,discoLightsMesh;
+let drawTarget=scene, roomCatalog, roomEditor, roomOptions={}, roomSpaces=[], roomAssets={}, roomShape, layout, mainTiles=new Set(),walkable=new Set(), roomWidth=8, roomDepth=8, roomCenterX=0,danceFloor,danceMesh,pool,poolMesh,discoLights,discoLightsMesh;
 const floorHeight=(x,z)=>layout?tileDrop(layout,x,z):0;
 const groundPoint=(x,z)=>{const p=iso(x,z);p.y+=floorHeight(x,z);return p;};
 const characterPoint=(x,z)=>{const p=iso(x,z);p.y+=layout?walkingDrop(layout,z,x):0;return p;};
+// Pictures uploaded for space floors and walls, fetched once per URL before the room is built;
+// one that fails to load leaves the finish beneath showing.
+const spacePictures=new Map(),spacePictureLoads=new Map();
+function loadSpacePictures(spaces){
+  return Promise.all((spaces??[]).flatMap(s=>[s.floorImageUrl,s.wallImageUrl]).filter(Boolean).map(url=>{
+    if(!spacePictureLoads.has(url))spacePictureLoads.set(url,new Promise(resolve=>{const image=new Image();image.crossOrigin='anonymous';image.onload=()=>{spacePictures.set(url,image);resolve();};image.onerror=()=>resolve();image.src=url;}));
+    return spacePictureLoads.get(url);
+  }));
+}
 const surfaceCache=new Map();
 function surface(file,paletteName,tint,mask){
   const key=file+paletteName+tint;
@@ -200,7 +210,7 @@ function surface(file,paletteName,tint,mask){
 function buildRoom(options){
   roomOptions={...options};
   roomShape=roomCatalog.shapes.find(s=>s.id===options.shape);
-  layout=roomLayout(roomShape.tiles);mainTiles=new Set(roomShape.tiles.map(([x,z])=>`${x},${z}`));
+  layout=roomLayout(roomShape.tiles,roomSpaces);mainTiles=new Set(roomShape.tiles.map(([x,z])=>`${x},${z}`));
   walkable=new Set(layout.tiles.map(([x,z])=>`${x},${z}`));
   roomWidth=layout.width;roomDepth=layout.depth;
   roomCenterX=(layout.extentWidth-roomDepth)*16;CENTER_Y=((layout.extentWidth+roomDepth)*16-116)/2;
@@ -229,22 +239,13 @@ function buildRoom(options){
   const floorCanvas=document.createElement('canvas');
   floorCanvas.width=(roomWidth+roomDepth)*32;floorCanvas.height=(roomWidth+roomDepth)*16;
   const floorContext=floorCanvas.getContext('2d'),floorPixels=floorContext.createImageData(floorCanvas.width,floorCanvas.height);
-  const sourcePixels=floorImage.getContext('2d').getImageData(0,0,floorImage.width,floorImage.height).data;
-  // Wood gets grain: planks run along x, half a tile wide, each with its own tone and fine streaks.
-  const wood=floor.type===2,plain=sourcePixels.slice((20*floorImage.width+65)*4,(20*floorImage.width+65)*4+3);
+  // Wood gets grain: planks run along x, half a tile wide, each with its own tone and fine streaks (src/spaces.js).
+  const sampleMain=floorSampler(floorImage,floor.type===2);
   for(let py=0;py<floorCanvas.height;py++)for(let px=0;px<floorCanvas.width;px++){
     const sx=px+.5-roomDepth*32,sy=py+.5,x=sx/64+sy/32,z=sy/32-sx/64;
     if(!mainTiles.has(`${Math.floor(x)},${Math.floor(z)}`))continue;
-    const u=((x%2)+2)%2,v=((z%2)+2)%2;
-    const tx=Math.floor(65+(u-v)*32),ty=Math.floor((u+v)*16);
-    const from=(ty*floorImage.width+tx)*4,to=(py*floorCanvas.width+px)*4;
-    let factor=1;
-    if(wood&&sourcePixels[from]===plain[0]&&sourcePixels[from+1]===plain[1]&&sourcePixels[from+2]===plain[2]){
-      const plank=Math.floor(z*2),section=Math.floor((x+(plank%2)*.5)/1.5);
-      const grain=Math.sin(x*3.1+plank*2.3)*Math.sin(z*97+x*1.7+section);
-      factor=(1+(((plank*7+section*13)%5)-2)*.022)*(grain>.72?1.05:grain<-.76?.93:1);
-    }
-    floorPixels.data[to]=Math.min(255,sourcePixels[from]*factor);floorPixels.data[to+1]=Math.min(255,sourcePixels[from+1]*factor);floorPixels.data[to+2]=Math.min(255,sourcePixels[from+2]*factor);floorPixels.data[to+3]=255;
+    const [r,g,b]=sampleMain(x,z),to=(py*floorCanvas.width+px)*4;
+    floorPixels.data[to]=r;floorPixels.data[to+1]=g;floorPixels.data[to+2]=b;floorPixels.data[to+3]=255;
   }
   floorContext.putImageData(floorPixels,0,0);
   sprite(floorCanvas,-roomDepth*32-roomCenterX,0,10);
@@ -269,11 +270,36 @@ function buildRoom(options){
     mesh.scale.setScalar(1/2);mesh.material.map.minFilter=THREE.LinearFilter;mesh.material.map.magFilter=THREE.LinearFilter;
     place(mesh,pitOrigin.x+sofa.left,pitOrigin.y+sofa.top,sofa.width,sofa.height);
   }
-  for(let x=layout.lounge.x;x<layout.lounge.x+layout.lounge.width;x++){
-    const p=iso(x,layout.lounge.z);
-    sprite(right,p.x,p.y-116,50+x);
-    polygon([[p.x,p.y-115],[p.x+7,p.y-118],[p.x+39,p.y-102],[p.x+32,p.y-99]],options.wallColor,82,true);
-    if(x===layout.lounge.x+layout.lounge.width-1)polygon([[p.x+32,p.y-99],[p.x+39,p.y-102],[p.x+39,p.y+14],[p.x+32,p.y+18]],options.wallColor,81,true);
+  // Player-added spaces chain on past the lounge: each gets its own floor finish from the room's
+  // floor textures, with the owner's picture laid over it if they uploaded one, and the back wall
+  // carries on behind them to an end cap on the last one.
+  for(const space of layout.spaces){
+    const finish=FLOORS[space.floor]??FLOORS.carpet,image=surface(`flat_floor_${finish.type}_a_0_0_0.png`,finish.palette,space.floorColor,[[65,0],[130,32],[65,65],[0,32]]);
+    const origin=iso(space.x,space.z),picture=spacePictures.get(space.floorImageUrl),cover=space.floorFit==='cover';
+    const pixels=picture&&picturePixels(picture,cover?space.width*64:64,cover?space.depth*64:64);
+    sprite(createSpaceFloor(space.width,space.depth,pictureSampler(floorSampler(image,finish.type===2),pixels,space.floorFit,space.width,space.depth)),origin.x-space.depth*32,origin.y,12);
+  }
+  // The walkway strip along the front of the lounge and spaces: plain grey paving nobody styles,
+  // drawn over the spaces' front faces so it reads as the same floor level.
+  if(layout.walkway){
+    const way=layout.walkway,origin=iso(way.x,way.z),paving=surface('flat_floor_1_a_0_0_0.png','floor_tiles2','#cbccd1',[[65,0],[130,32],[65,65],[0,32]]);
+    sprite(createSpaceFloor(way.width,way.depth,floorSampler(paving,false)),origin.x-way.depth*32,origin.y,12.5);
+  }
+  // Each space's stretch of the back wall takes that space's wallpaper, colour and picture; the
+  // lounge's stretch stays in the room's own.
+  const backWall=backWallTiles(layout),spaceAt=x=>layout.spaces.find(s=>x>=s.x&&x<s.x+s.width);
+  for(const [x,z] of backWall){
+    const p=iso(x,z),space=spaceAt(x);
+    let face=right,color=options.wallColor;
+    if(space){
+      color=space.wallColor??options.wallColor;
+      const paper=WALLS[space.wall]??wall,picture=spacePictures.get(space.wallImageUrl);
+      face=surface(`right_wallpart_${paper.type}_a_0_2_0.png`,paper.palette,color,[[0,0],[32,16],[32,133],[0,117]]);
+      if(picture)face=wallSegment(face,picture,space.wallFit,x-space.x,space.width);
+    }
+    sprite(face,p.x,p.y-116,50+x);
+    polygon([[p.x,p.y-115],[p.x+7,p.y-118],[p.x+39,p.y-102],[p.x+32,p.y-99]],color,82,true);
+    if(x===layout.extentWidth-1)polygon([[p.x+32,p.y-99],[p.x+39,p.y-102],[p.x+39,p.y+14],[p.x+32,p.y+18]],color,81,true);
   }
   // The main floor's exposed front edge becomes the riser of the lower terrace.
   // The dance floor's open edges get a slate riser with a pale lip, so the terrace reads as a
@@ -305,7 +331,8 @@ function buildRoom(options){
   }
   const minX=Math.min(...leftWalls.map(t=>t[0]));const entrance=leftWalls.filter(t=>t[0]===minX&&t[1]<layout.danceStart).sort((a,b)=>b[1]-a[1]);
   if(entrance.length){const p=iso(...entrance[Math.min(1,entrance.length-1)]);sprite(prepareImage(roomAssets.door,{matte:true}),p.x-32,p.y-84,90);}
-  leftWallSet=new Set(leftWalls.map(t=>t.join(',')));rightWallSet=new Set(rightWalls.map(t=>t.join(',')));
+  // Wall pieces can also hang on the back wall behind the lounge and the added spaces.
+  leftWallSet=new Set(leftWalls.map(t=>t.join(',')));rightWallSet=new Set([...rightWalls,...backWall].map(t=>t.join(',')));
   posterWalls=leftWalls.filter(t=>t[1]<layout.danceStart);awayPoster=null;
   if(leftWalls.length){
     awayPoster=sprite(createAwayPoster(),0,0,91);
@@ -726,7 +753,7 @@ try{
     furniture?.roomChanged(committed);ensureFreeTile();
     editingRoom=false;resize();container.focus({preventScroll:true});
   }});
-  buildRoom(roomEditor.initial);
+  roomSpaces=initialRoom.room.spaces??[];await loadSpacePictures(roomSpaces);buildRoom(roomEditor.initial);
   // Restore the camera from an update snapshot before anything is drawn, so nothing jumps.
   const earlyView=peekUpdateSession()?.view;
   if(earlyView&&[earlyView.zoom,earlyView.panX,earlyView.panY].every(Number.isFinite)){zoom=earlyView.zoom;panX=earlyView.panX;panY=earlyView.panY;viewRestored=true;resize();}
@@ -757,7 +784,9 @@ try{
   const agentLink=createAgentLink({network,focusRoom:()=>container.focus({preventScroll:true})});
   const initialAssets=await network.assets.list().catch(()=>[]);
   furniture=await createFurniture({initialItems:initialRoom.room.furniture,initialAssets,onAttachAgent:()=>agentLink.open(),
-    prepareImage,worldPoint:iso,isTile:(x,z)=>valid(x,z)&&!isPoolWater(layout,x,z),floorHeight,getAvatar:()=>position,stopWalking,onChanged:()=>{ensureFreeTile();positionAwayPoster();positionDeckSign();},onSit:sitOn,onUse:useItem,
+    prepareImage,worldPoint:iso,isTile:(x,z)=>valid(x,z)&&!isPoolWater(layout,x,z)&&!onWalkway(layout,x,z),floorHeight,getAvatar:()=>position,stopWalking,onChanged:()=>{ensureFreeTile();positionAwayPoster();positionDeckSign();},onSit:sitOn,onUse:useItem,
+    // Clicking a player-built piece names it and its builder on the info stand; stock pieces clear it.
+    onInspect:(item,def)=>{if(def?.ownerName)infoStand.inspect({name:def.name,by:def.ownerName,icon:def.icon});else infoStand.hide();},
     focusRoom:()=>container.focus({preventScroll:true}),onPlaceSticky:()=>stickies.begin(),onPlacePoster:id=>stickies.begin(null,id),
     hasWall:(x,z,side)=>(side==='left'?leftWallSet:rightWallSet).has(`${x},${z}`),
     walls:()=>[...leftWallSet].map(key=>{const [x,z]=key.split(',').map(Number);return {x,z,side:'left'};}).concat([...rightWallSet].map(key=>{const [x,z]=key.split(',').map(Number);return {x,z,side:'right'};})),
@@ -782,8 +811,8 @@ try{
       let roomKey='',furnitureKey='';
       stopPreview=network.preview(state=>{
         receiveDanceFloor(state.room.danceFloorOn);receiveFridge(state.room.fridge);
-        const rk=JSON.stringify(state.room.options),fk=state.room.revision;
-        if(rk!==roomKey){roomKey=rk;roomEditor.receive(state.room.options);}
+        const rk=JSON.stringify([state.room.options,state.room.spaces??[]]),fk=state.room.revision;
+        if(rk!==roomKey){roomKey=rk;const spaces=state.room.spaces??[],options=state.room.options;loadSpacePictures(spaces).then(()=>{if(roomKey!==rk)return;roomSpaces=spaces;roomEditor.receive(options);});}
         if(fk!==furnitureKey){furnitureKey=fk;furniture.receive(state.room.furniture);positionAwayPoster();positionDeckSign();}
         receiveStickies(state.room.stickies);
         updatePeers(state.players);resolve();
@@ -816,8 +845,8 @@ try{
     const onRoom=room=>{
       receiveDanceFloor(room.danceFloorOn);receiveFridge(room.fridge);
       // The server bumps room.revision on every furniture, power and options change, so that one number stands in for the whole list.
-      const nextRoom=JSON.stringify(room.options),nextFurniture=room.revision;
-      if(nextRoom!==roomKey){roomKey=nextRoom;roomEditor.receive(room.options);}
+      const nextRoom=JSON.stringify([room.options,room.spaces??[]]),nextFurniture=room.revision;
+      if(nextRoom!==roomKey){roomKey=nextRoom;const spaces=room.spaces??[],options=room.options;loadSpacePictures(spaces).then(()=>{if(roomKey!==nextRoom)return;roomSpaces=spaces;roomEditor.receive(options);});}
       if(nextFurniture!==furnitureKey){furnitureKey=nextFurniture;furniture.receive(room.furniture);positionAwayPoster();positionDeckSign();radio.receive(room.furniture,true);}
       receiveStickies(room.stickies);
     };

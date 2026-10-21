@@ -13,8 +13,8 @@ const src=file=>/^https?:\/\//.test(file)?file:ROOT+file;
 // Sprites served from storage must load with CORS so their canvases can be read back.
 const load=(image,file)=>{if(/^https?:\/\//.test(file))image.crossOrigin='anonymous';image.src=src(file);};
 // Pieces a click uses rather than selects: the player walks up to them first.
-const USABLE=new Set(['custom_dj_decks','fridge','dmg_fridge','custom_logbook']);
-export async function createFurniture({prepareImage,makeVisual,disposeVisual,positionVisual,markTiles,worldPoint,isTile,getAvatar,stopWalking,onChanged,onSit,onUse=()=>{},focusRoom,onPlaceSticky,onPlacePoster,onAttachAgent,floorHeight=()=>0,hasWall=()=>false,walls=()=>[],initialItems=[],initialAssets=[]}){
+const USABLE=new Set(['custom_dj_decks','fridge','dmg_fridge','custom_logbook','asset_kd7acza4w9bg93w99rxrd5346x8gpfwq']);
+export async function createFurniture({prepareImage,makeVisual,disposeVisual,positionVisual,markTiles,worldPoint,isTile,getAvatar,stopWalking,onChanged,onSit,onUse=()=>{},onInspect=()=>{},focusRoom,onPlaceSticky,onPlacePoster,onAttachAgent,floorHeight=()=>0,hasWall=()=>false,walls=()=>[],initialItems=[],initialAssets=[]}){
   const response=await fetch(ROOT+'catalog.json');
   if(!response.ok)throw new Error('Furniture could not be loaded.');
   let catalog=[...await response.json(),...initialAssets];const definitions=new Map(catalog.map(d=>[d.id,d]));
@@ -354,7 +354,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
       if(changed)redraw();if(click){commit();render();}return true;
     }
     const hit=hitVisual(point);
-    if(click){selected=hit&&(editable&&canEdit(hit.item)||(networkPower&&hit.item.type==='custom_dj_decks'))?hit.item.id:null;render();const spot=hit&&clickedSeat(hit.item.id,point);if(spot)onSit(spot);else if(hit&&USABLE.has(hit.item.type))onUse(hit.item.id);}
+    if(click){selected=hit&&(editable&&canEdit(hit.item)||(networkPower&&hit.item.type==='custom_dj_decks'))?hit.item.id:null;render();onInspect(hit?.item??null,hit?definitions.get(hit.item.type):null);const spot=hit&&clickedSeat(hit.item.id,point);if(spot)onSit(spot);else if(hit&&USABLE.has(hit.item.type))onUse(hit.item.id);}
     return !!hit&&definitions.get(hit.item.type).category!=='Rugs';
   }
   function key(event){

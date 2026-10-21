@@ -46,3 +46,21 @@ export function sheetPrompt({description,kind='floor',width=1,depth=1,details=''
     STYLE,DELIVER.replace('the COMPLETE piece alone','the complete sheet with the four views and nothing else'),
   ].filter(Boolean).join('\n');
 }
+// A floor or wall picture for a player's space: the same art direction as the sprites, drawn flat
+// at the room's own pixel scale (the game projects floors and skews walls itself).
+const STYLE_SURFACE=`Art direction: genuinely match the room reference's retro hand-drawn pixel art: flat colour areas, a small palette of about 8 to 24 colours, crisp stair-step edges, thin near-black outlines where the room's own furniture has them, compact shading ramps with the light from the upper left. It must look drawn for the room's existing floors, wallpapers and furniture, not a photo, a realistic render or a smooth vector illustration. No antialiasing, gradients, glow, blur, noise, grain, lens effects, depth of field, text, watermark or signature.`;
+const DELIVER_SURFACE=`Deliver the picture alone, filling the whole canvas edge to edge: no transparent margins (transparency only where the floor or wall finish beneath should show through), no room, furniture, people, border, frame or drop shadow.`;
+export function surfacePrompt({surface='floor',fit='tile',description='',details='',width,height}){
+  const seamless=fit==='tile';
+  const what=surface==='wall'
+    ?(seamless?'ONE seamless pixel-art WALLPAPER TEXTURE seen flat on (a front view, not isometric: the game skews it onto the wall itself) that repeats on every one-tile-wide segment of the back wall'
+      :'ONE pixel-art WALL MURAL seen flat on (a front view, not isometric: the game skews it onto the wall itself) covering the whole back wall of an 8-tile-wide block of floor as one picture')
+    :(seamless?'ONE seamless pixel-art FLOOR TEXTURE seen straight down (a top view, not isometric: the game projects it onto the floor itself) that repeats on every floor tile of an 8 by 8 block'
+      :'ONE pixel-art FLOOR DESIGN seen straight down (a top view, not isometric: the game projects it onto the floor itself) covering an 8 by 8 block of floor tiles as one picture, like a big rug or a painted floor');
+  return [
+    `Create ${what} for the game shown in the room reference image.`,
+    `${description.trim()}${details.trim()?` Design: ${details.trim()}`:''}`.trim(),
+    `Draw it for exactly ${width} by ${height} game pixels, one game pixel per drawn pixel (a larger canvas is fine only as an exact multiple, say ${width*8} by ${height*8}, with each game pixel a solid ${8} by ${8} block): every detail must be at least one game pixel, readable at that size.${seamless?' Make the edges wrap: the right edge must continue seamlessly into the left edge and the bottom into the top, with no border, frame or vignette.':''}`,
+    STYLE_SURFACE,DELIVER_SURFACE,
+  ].filter(Boolean).join('\n');
+}

@@ -1,14 +1,13 @@
 import {mutation,query} from './_generated/server.js';
 import {v} from 'convex/values';
-import {fail} from './lib/rules.js';
+import {fail,isOnline} from './lib/rules.js';
 import {advance,serve,bounce,missed,hits,arrival,controllers,clampPaddle,WIN_SCORE,OVER_DELAY} from '../shared/pong.js';
 import {playerFor} from './room.js';
 
-const ONLINE=45000;
 async function getGame(ctx){return await ctx.db.query('pong').withIndex('by_key',q=>q.eq('key','main')).unique();}
 async function withOnline(ctx,game,now){
   if(!game)return null;
-  const side=async s=>{if(!game[s])return null;const p=await ctx.db.get(game[s].id);return {...game[s],online:!!p&&p.lastSeen>now-ONLINE};};
+  const side=async s=>{if(!game[s])return null;const p=await ctx.db.get(game[s].id);return {...game[s],online:isOnline(p,now)};};
   return {...game,a:await side('a'),b:await side('b')};
 }
 const fresh=now=>({key:'main',status:'playing',a:null,b:null,scores:{a:0,b:0},ball:serve(now,'b'),paddles:{a:{y:36,at:now},b:{y:36,at:now}},winner:null,endsAt:null,updatedAt:now});

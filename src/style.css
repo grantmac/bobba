@@ -233,6 +233,8 @@ button:disabled{cursor:wait;opacity:.6}
 .info-portrait{left:63px;top:-29px}
 .info-name-bg{left:0;top:78px;opacity:.7}
 .info-name{position:absolute;left:18px;top:82px;width:124px;color:#eee;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font:10px/12px Verdana,sans-serif}
+.info-by{position:absolute;left:18px;top:100px;width:124px;color:#bbb;text-align:center;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font:9px/11px Verdana,sans-serif}
+.info-by:empty{display:none}
 
 /* Keyboard target only: pointer clicks go to the room's live hit test, which follows a moving player. */
 .player-target{position:absolute;border:0;margin:0;padding:0;background:transparent;cursor:pointer;z-index:2;appearance:none;pointer-events:none}
