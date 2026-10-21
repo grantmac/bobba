@@ -4,9 +4,10 @@ import {createFurniture} from '/src/furniture.js';import {createAppearance} from
 import {ConvexHttpClient} from 'convex/browser';import {api} from '/convex/_generated/api.js';
 const state=await new ConvexHttpClient(import.meta.env.VITE_CONVEX_URL).query(api.room.preview,{});
 const editor=await createAppearance({prepareImage,onApply(){},onOpen(){}}),look=state.players.find(p=>p.role==='admin')?.look;
+const type=new URLSearchParams(location.search).get('type')||'exe_chair';document.querySelector('h1').textContent=type+' — all four directions';
 for(const direction of [0,2,4,6]){
  const visuals=[];
- const furniture=await createFurniture({prepareImage,initialItems:[{id:'chair',type:'exe_chair',rotation:direction,x:0,z:0}],worldPoint:(x,z)=>({x:(x-z)*32,y:(x+z)*16}),isTile:()=>true,getAvatar:()=>({x:5,z:5}),stopWalking(){},onChanged(){},onSit(){},focusRoom(){},markTiles(){},makeVisual(canvas){const mesh={canvas,material:{}};visuals.push(mesh);return mesh;},disposeVisual(mesh){visuals.splice(visuals.indexOf(mesh),1);},positionVisual(mesh,x,y,w,h,order){Object.assign(mesh,{x,y,w,h,renderOrder:order});}});
+ const furniture=await createFurniture({prepareImage,initialItems:[{id:'chair',type,rotation:direction,x:0,z:0}],worldPoint:(x,z)=>({x:(x-z)*32,y:(x+z)*16}),isTile:()=>true,getAvatar:()=>({x:5,z:5}),stopWalking(){},onChanged(){},onSit(){},focusRoom(){},markTiles(){},makeVisual(canvas){const mesh={canvas,material:{}};visuals.push(mesh);return mesh;},disposeVisual(mesh){visuals.splice(visuals.indexOf(mesh),1);},positionVisual(mesh,x,y,w,h,order){Object.assign(mesh,{x,y,w,h,renderOrder:order});}});
  const avatar=await editor.previewFrame(look,direction,-1,true),seat=furniture.seat('chair');
  const layers=[...visuals,{canvas:avatar,x:-48,y:16+seat.offsetY-101,w:96,h:112,renderOrder:309.5}].sort((a,b)=>a.renderOrder-b.renderOrder);
  if(!visuals.some(v=>v.renderOrder<309.5)||!visuals.some(v=>v.renderOrder>309.5))throw Error('Chair must straddle avatar');

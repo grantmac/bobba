@@ -11,6 +11,9 @@ class Room{
  async disconnect(){this.localParticipant.isMicrophoneEnabled=false;this.emit(RoomEvent.Disconnected);}
 }
 const toolbar=createToolbar({admin:true,onVoice:()=>voice.open(),onRoomEdit(){},onFurniture(){},onChat(){}});
+toolbar.setAdmin(false);
+if([...document.querySelectorAll('.bar-icons>button')].filter(button=>!button.hidden).some(button=>!button.classList.contains('voice-toggle')))throw Error('Guests must only see the voice icon');
+toolbar.setAdmin(true);
 const voice=createVoice({credentials:()=>deferred??Promise.resolve({url:'wss://fixture.invalid',token:'fixture'}),loadSDK:async()=>({Room,RoomEvent,Track}),onState:state=>toolbar.setVoiceState(state)});
 voice.syncPlayers([{id:'me',name:'Grant'},{id:'other',name:'Visitor'}]);toolbar.setVoiceEnabled(true);voice.open();
 const click=selector=>document.querySelector(selector).click();
@@ -26,8 +29,22 @@ click('[data-voice=leave]');await tick();
 let resolveCredentials;deferred=new Promise(resolve=>{resolveCredentials=resolve;});const previous=active;
 click('[data-voice=join]');click('[data-voice=leave]');resolveCredentials({url:'wss://fixture.invalid',token:'fixture'});await tick();
 if(active!==previous||document.querySelector('[data-voice=join]').hidden)throw Error('Cancelled join completed late');
+const realSetTimeout=window.setTimeout;let expireJoin;
+window.setTimeout=(callback,delay,...args)=>{if(delay===25000){expireJoin=callback;return 0;}return realSetTimeout(callback,delay,...args);};
+deferred=new Promise(resolve=>{resolveCredentials=resolve;});click('[data-voice=join]');expireJoin();
+window.setTimeout=realSetTimeout;
+if(!document.querySelector('.voice-status').textContent.includes('Chrome')||document.querySelector('[data-voice=join]').disabled)throw Error('Timed-out join did not recover');
+resolveCredentials({url:'wss://fixture.invalid',token:'fixture'});await tick();
+if(active!==previous)throw Error('Timed-out credentials connected late');
 deferred=null;click('[data-voice=join]');await tick();
-document.querySelector('#result').textContent='PASS: muted join, explicit mic, local mute/unmute, leave cleanup, muted rejoin and cancelled connection.';
+active.emit(RoomEvent.ActiveSpeakersChanged,[active.visitor]);voice.positionSpeaker('other',150,200);
+if(document.querySelectorAll('.voice-speaking').length!==1||document.querySelector('.voice-speaking').style.left!=='150px')throw Error('Speaker indicator did not follow visitor');
+active.emit(RoomEvent.ActiveSpeakersChanged,[]);if(document.querySelector('.voice-speaking'))throw Error('Indicator remained during silence');
+click('[data-voice=mic]');await tick();active.emit(RoomEvent.ActiveSpeakersChanged,[active.localParticipant]);
+if(document.querySelectorAll('.voice-speaking').length!==1)throw Error('Own speaking indicator missing');
+click('[data-voice=mic]');await tick();active.emit(RoomEvent.TrackMuted);
+if(document.querySelector('.voice-speaking'))throw Error('Muted speaker kept an indicator');
+document.querySelector('#result').textContent='PASS: guest toolbar, muted join, mic and mute controls, cleanup, cancellation, connection timeout and speaking-only avatar indicators.';
 document.querySelector('#talk').onclick=()=>{active.activeSpeakers=active.activeSpeakers.length?[]:[active.visitor];active.emit(RoomEvent.ActiveSpeakersChanged,active.activeSpeakers);voice.positionSpeaker('other',innerWidth/2,innerHeight/2);};
 document.querySelector('#reconnect').onclick=()=>{active.emit(RoomEvent.Reconnecting);setTimeout(()=>active.emit(RoomEvent.Reconnected),1200);};
 </script>

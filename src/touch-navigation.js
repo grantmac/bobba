@@ -10,7 +10,7 @@ export function installTouchNavigation(element,{getView,setView,cancelTap}){
     return {x:(a.x+b.x)/2,y:(a.y+b.y)/2,distance:Math.hypot(a.x-b.x,a.y-b.y)};
   };
   element.addEventListener('pointerdown',e=>{
-    if(e.pointerType!=='touch')return;
+    if(e.pointerType!=='touch'&&(e.pointerType!=='mouse'||e.button!==0))return;
     if(!touches.size){dragged=false;start=point(e);}
     touches.set(e.pointerId,point(e));element.setPointerCapture(e.pointerId);
     if(touches.size>1){dragged=true;cancelTap();e.stopImmediatePropagation();}
@@ -23,15 +23,16 @@ export function installTouchNavigation(element,{getView,setView,cancelTap}){
       setView(pinchView(getView(),before,pair(),{x:rect.left+rect.width/2,y:rect.top+rect.height/2}));
       dragged=true;
     }else if(dragged||Math.hypot(e.clientX-start.x,e.clientY-start.y)>8){
-      const view=getView();setView({...view,panX:view.panX+e.clientX-old.x,panY:view.panY+e.clientY-old.y});dragged=true;
+      const view=getView(),from=dragged?old:start;setView({...view,panX:view.panX+e.clientX-from.x,panY:view.panY+e.clientY-from.y});dragged=true;
     }
-    if(dragged){cancelTap();e.preventDefault();e.stopImmediatePropagation();}
+    if(dragged){if(element.style)element.style.cursor='grabbing';cancelTap();e.preventDefault();e.stopImmediatePropagation();}
   },{capture:true,passive:false});
   const end=e=>{
     if(!touches.has(e.pointerId))return;
     touches.delete(e.pointerId);
-    if(dragged||e.type==='pointercancel'){cancelTap();e.stopImmediatePropagation();}
-    if(!touches.size){dragged=false;start=null;}
+    if(dragged||e.type==='pointercancel'||e.type==='lostpointercapture'){cancelTap();e.stopImmediatePropagation();}
+    if(!touches.size){dragged=false;start=null;if(element.style)element.style.cursor='';}
   };
   element.addEventListener('pointerup',end,true);element.addEventListener('pointercancel',end,true);
+  element.addEventListener('lostpointercapture',end,true);
 }

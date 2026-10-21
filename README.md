@@ -87,8 +87,16 @@ Tests cover server authorization, reserved names, session handling, all selectab
 
 Voice uses LiveKit Cloud while Convex continues to handle room state and identities. Set `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET` on the existing Convex deployment, then publish with `npx convex dev --once`. Keep the API secret server-side; do not use a `VITE_` environment variable or commit credentials.
 
-The microphone button in the bottom bar opens voice controls. Joining listens with the microphone off; enabling it explicitly requests browser permission. Visitors can mute another participant locally or leave. Speaking indicators follow the avatars. Voice disconnects when the page closes or the room session fails. Each player has one LiveKit identity, so joining voice in another tab replaces their previous voice connection.
+The microphone button in the bottom bar opens the original blue window style. Guests see only this toolbar icon beside chat. Joining listens with the microphone off; enabling it explicitly requests browser permission. Visitors can mute another participant locally or leave. Speaking indicators follow the avatars only during detected speech and disappear during silence or muting. Voice disconnects when the page closes or the room session fails. Each player has one LiveKit identity, so joining voice in another tab replaces their previous voice connection. Connection attempts time out after 25 seconds; use Chrome if an embedded browser cannot connect.
 
 The backend issues five-minute tokens after validating a live room session. Tokens only allow subscribing and publishing microphone audio in `habbo-room`; they do not grant camera, screen sharing, data publishing, or room administration. The client SDK is loaded only when someone joins voice. No recording or transcription is configured.
 
 `test/voice-browser.html` verifies controls with simulated participants and no microphone capture. `test/voice-mobile-browser.html` embeds the same checks at phone width. Real audio delivery additionally requires the configured LiveKit project and two connected clients.
+
+## Grant's desktop join alerts
+
+Room arrivals use the same private ntfy topic as phone alerts. On the desktop, subscribe to that topic in ntfy, allow browser notifications, and enable **Settings → Background notifications → Enabled for ntfy.sh**. This uses Web Push, so neither the room tab nor the ntfy tab needs to stay open. Chrome must still be running, and macOS must allow its notification banners. Reopen ntfy at least weekly to keep its background subscription active.
+
+The server sets each alert's click target to the private `GRANT_ENTRY_URL` environment variable. Clicking an alert opens the live Grant entry; no admin link or ntfy topic is included in the public client bundle. Guest arrivals and returns after going offline trigger alerts, with a 60-second per-player cooldown. Grant's own arrivals do not trigger them.
+
+Desktop navigation supports left-button dragging to pan and scrolling to zoom. A click still walks or selects; dragging suppresses that click even if the pointer returns to its starting position. Touch dragging and pinching use the same camera offsets. The Asian Gothic Chair uses a raised sitting anchor to align the avatar with its cushion; its original artwork and layer depths are unchanged.

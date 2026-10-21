@@ -234,7 +234,7 @@ container.addEventListener('pointermove',event=>{
   if(hoverCell){const p=iso(hoverCell.x,hoverCell.z);place(hover,p.x-32,p.y,64,32);}
 });
 container.addEventListener('pointerleave',()=>{hover.visible=false;down=null;});
-container.addEventListener('pointerdown',event=>{down={x:event.clientX,y:event.clientY};});
+container.addEventListener('pointerdown',event=>{if(event.button===0)down={x:event.clientX,y:event.clientY};});
 container.addEventListener('pointercancel',()=>{down=null;});
 container.addEventListener('pointerup',event=>{if(down&&Math.hypot(event.clientX-down.x,event.clientY-down.y)<8){const peer=peerAt(event);if(stickies?.pointer(screenPoint(event),true)){}else if(peer){selectPeer(peer);}else if(furniture?.pointer(screenPoint(event),screenCell(event),true)){container.focus({preventScroll:true});}else if(overCharacter(event)){appearance.open();}else{infoStand?.hide();walkTo(screenCell(event));container.focus({preventScroll:true});}}down=null;});
 container.addEventListener('keydown',event=>{

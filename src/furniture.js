@@ -280,7 +280,9 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
   function seat(id){
     const item=items.find(i=>i.id===id);
     if(!item||!visible(item)||definitions.get(item.type).category!=='Seating')return null;
-    return {id,cells:footprint(item,definitions.get(item.type)),direction:item.rotation,offsetY:item.type==='throne'?4:16};
+    // These raised seats need a higher avatar anchor than ordinary chairs.
+    const offsetY=({throne:4,asian_gothic_chair:0})[item.type]??16;
+    return {id,cells:footprint(item,definitions.get(item.type)),direction:item.rotation,offsetY};
   }
   render();
   return {open,pointer,key,roomChanged,redraw,seat,animate,blocks:(x,z)=>blocksTile(x,z,items,definitions),close:()=>{cancel();selected=null;panel.hidden=true;render();},get placing(){return !!pending;},

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="40" viewBox="0 0 32 40" shape-rendering="crispEdges">
+  <!-- Isometric desk microphone, drawn on the toolbar's native pixel grid. -->
+  <path fill="#151515" d="M16 28h4v2h4v2h4v4h-2v1h-2v1h-8v-1h-4v-2H8v-4h4v-2h4z"/>
+  <path fill="#858477" d="M17 30h4v2h4v1h2v2h-4v1h-6v-1h-4v-2h-3v-1h4v-1h3z"/>
+  <path fill="#d9d7bd" d="M17 29h3v2h4v1h2v1h-5v1h-5v-1h-4v-1h2v-1h3z"/>
+  <path fill="#3c4140" d="M17 23h5v9h-2v1h-3z"/>
+  <path fill="#e3e4cc" d="M18 24h2v7h-2z"/>
+  <path fill="#161a19" d="M7 14h3v8l6 3h5l4-2V12h3v13l-6 4h-7l-8-4z"/>
+  <path fill="#a6ac9c" d="M8 16h1v7l7 4h5l5-3V14h1v11l-5 3h-7l-7-4z"/>
+  <path fill="#171b1a" d="M15 1h4v1h2v1h2v1h2v3h1v13h-2v2h-2v1h-2v1h-3v-1h-2v-1h-2v-1h-2v-2h-1V7h1V4h2V2h2z"/>
+  <path fill="#727d78" d="M20 6h4v14h-2v1h-2v1h-2V8z"/>
+  <path fill="#bcc8b9" d="M12 7h3v1h2v1h2v13h-2v-1h-2v-1h-2v-2h-1z"/>
+  <path fill="#f1efcf" d="M15 3h4v1h2v1h2v1h-2v1h-2v1h-2V7h-2V6h-2V4h2z"/>
+  <path fill="#e7e9d0" d="M12 8h1v10h-1zM14 9h1v10h-1z"/>
+  <path fill="#434c46" d="M15 10h2v1h2v1h-2v-1h-2zM15 13h2v1h2v1h-2v-1h-2zM15 16h2v1h2v1h-2v-1h-2zM21 9h2v1h-2zM21 12h2v1h-2zM21 15h2v1h-2zM21 18h2v1h-2z"/>
+  <path fill="#d1aa54" d="M8 17h2v3H8zM25 15h2v3h-2z"/>
+</svg>

@@ -28,6 +28,16 @@ describe('visitor and touch controls',()=>{
     const mac=furniture.find(d=>d.id==='custom_macintosh');expect(mac.views).toEqual([{direction:2,source:2,mirror:false},{direction:4,source:2,mirror:true}]);
     for(const rotation of [2,4])expect(()=>validateFurniture([{id:'table',type:'small_table_armas',rotation:0,x:2,z:2},{id:'mac',type:mac.id,rotation,x:2,z:2,supportId:'table'}],DEFAULT_ROOM)).not.toThrow();
   });
+  it('pans with the left mouse button, preserves clicks and cancels a lost drag',()=>{
+    const handlers={},element={style:{},addEventListener:(type,fn)=>handlers[type]=fn,setPointerCapture(){}};let view={zoom:1,panX:0,panY:0},cancelled=0;
+    installTouchNavigation(element,{getView:()=>view,setView:v=>view=v,cancelTap:()=>cancelled++});
+    const event=(type,x,y,button=0)=>({type,pointerType:'mouse',pointerId:1,button,clientX:x,clientY:y,preventDefault(){},stopImmediatePropagation(){this.stopped=true;}});
+    handlers.pointerdown(event('pointerdown',100,100));let up=event('pointerup',102,101);handlers.pointerup(up);expect(up.stopped).toBeUndefined();expect(cancelled).toBe(0);
+    handlers.pointerdown(event('pointerdown',100,100));handlers.pointermove(event('pointermove',104,100));handlers.pointermove(event('pointermove',130,115));expect(view).toEqual({zoom:1,panX:30,panY:15});expect(element.style.cursor).toBe('grabbing');
+    handlers.pointermove(event('pointermove',100,100));up=event('pointerup',100,100);handlers.pointerup(up);expect(up.stopped).toBe(true);expect(element.style.cursor).toBe('');
+    handlers.pointerdown(event('pointerdown',100,100,2));handlers.pointermove(event('pointermove',200,200,2));expect(view.panX).toBe(0);
+    handlers.pointerdown(event('pointerdown',100,100));handlers.pointermove(event('pointermove',120,100));handlers.lostpointercapture(event('lostpointercapture',120,100));handlers.pointermove(event('pointermove',200,100));expect(view.panX).toBe(20);
+  });
 });
 
 import {appearanceChoices,appearanceGender,changeAppearanceGender} from '../src/appearance-options.js';

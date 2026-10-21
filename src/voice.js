@@ -1,13 +1,13 @@
 export function createVoice({credentials,onState=()=>{},loadSDK=()=>import('livekit-client')}){
   const panel=document.createElement('section');panel.className='voice-panel';panel.hidden=true;panel.setAttribute('aria-label','Voice chat');
-  panel.innerHTML='<header><strong>Voice chat</strong><button type="button" aria-label="Close voice chat">×</button></header><p class="voice-status" role="status">Join to listen. Your microphone starts off.</p><div class="voice-controls"><button type="button" data-voice="join">Join voice</button><button type="button" data-voice="mic" hidden>Turn mic on</button><button type="button" data-voice="audio" hidden>Enable sound</button><button type="button" data-voice="leave" hidden>Leave voice</button></div><ul aria-label="People in voice"></ul>';
+  panel.innerHTML='<header><h1>Voice chat</h1><button type="button" class="appearance-close" aria-label="Close voice chat">×</button></header><div class="voice-body"><p class="voice-status" role="status">Join to listen. Your microphone starts off.</p><div class="voice-controls"><button type="button" data-voice="join">Join voice</button><button type="button" data-voice="mic" hidden>Turn mic on</button><button type="button" data-voice="audio" hidden>Enable sound</button><button type="button" data-voice="leave" hidden>Leave voice</button></div><ul aria-label="People in voice"></ul></div>';
   const audioRoot=document.createElement('div');audioRoot.hidden=true;document.body.append(panel,audioRoot);
   const button=kind=>panel.querySelector(`[data-voice="${kind}"]`),status=panel.querySelector('.voice-status');
   const rows=new Map(),muted=new Set(),markers=new Map(),audio=new Map();
-  let room=null,generation=0,phase='idle',micBusy=false,message='',players=new Map(),sdk=null;
+  let room=null,generation=0,phase='idle',micBusy=false,message='',players=new Map(),sdk=null,joinTimeout=null;
   const speaking=new Set();
   function updateSpeakers(participants=[]){
-    speaking.clear();participants.forEach(p=>speaking.add(p.identity));
+    speaking.clear();participants.filter(p=>p.isMicrophoneEnabled).forEach(p=>speaking.add(p.identity));
     for(const [id,marker] of markers)if(!speaking.has(id)){marker.remove();markers.delete(id);}
     for(const id of speaking)if(!markers.has(id)){
       const marker=document.createElement('span');marker.className='voice-speaking';marker.textContent='♫';marker.setAttribute('aria-hidden','true');document.body.append(marker);markers.set(id,marker);
@@ -44,6 +44,7 @@ export function createVoice({credentials,onState=()=>{},loadSDK=()=>import('live
   function detach(track){const element=audio.get(track);if(element){track.detach(element);element.remove();audio.delete(track);}}
   function clean(){for(const track of [...audio.keys()])detach(track);updateSpeakers();muted.clear();}
   function leave(){
+    clearTimeout(joinTimeout);joinTimeout=null;
     generation++;const old=room;room=null;phase='idle';micBusy=false;message='';clean();update();
     // LiveKit disconnect stops local capture, including pending microphone tracks.
     if(old)void old.disconnect().catch(()=>{});
@@ -51,6 +52,10 @@ export function createVoice({credentials,onState=()=>{},loadSDK=()=>import('live
   async function join(){
     if(phase!=='idle')return;
     const attempt=++generation;phase='connecting';message='';update();let candidate;
+    joinTimeout=setTimeout(()=>{
+      if(attempt!==generation)return;
+      leave();message='Voice could not connect. Try opening the room in Chrome.';update();
+    },25000);
     try{
       const [loaded,access]=await Promise.all([loadSDK(),credentials()]);
       if(attempt!==generation)return;sdk=loaded;
@@ -69,7 +74,7 @@ export function createVoice({credentials,onState=()=>{},loadSDK=()=>import('live
       candidate.on(sdk.RoomEvent.Disconnected,()=>{if(current()){leave();message='Voice disconnected. You can join again.';update();}});
       await candidate.connect(access.url,access.token,{autoSubscribe:true});
       if(!current()){await candidate.disconnect();return;}
-      phase='connected';update();
+      clearTimeout(joinTimeout);joinTimeout=null;phase='connected';update();
       try{await candidate.startAudio();}catch{/* The Enable sound button handles browser playback restrictions. */}
       if(current())update();
     }catch(error){
