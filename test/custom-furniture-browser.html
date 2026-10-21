@@ -15,7 +15,7 @@ for(const type of ['custom_dj_decks','custom_porsche']){
   const draw=now=>{furniture.animate(now);ctx.clearRect(0,0,320,240);for(const v of visuals)ctx.drawImage(v.canvas,v.x*1.5+160,v.y*1.5+55,v.w*1.5,v.h*1.5);};
   draw(0);const first=canvas.toDataURL();draw(200);if(type==='custom_dj_decks'&&canvas.toDataURL()===first)throw Error('DJ frames did not animate');
   if(type==='custom_dj_decks'){
-    furniture.receive([{id:type,type,rotation,x:0,z:0,on:false}]);draw(0);const stopped=canvas.toDataURL();draw(200);if(canvas.toDataURL()!==stopped)throw Error('Off decks still animate');
+    furniture.receive([{id:type,type,rotation,x:0,z:0,on:false}]);draw(0);const stopped=canvas.toDataURL();if(stopped===first)throw Error('Off decks must use parked tonearms');draw(200);if(canvas.toDataURL()!==stopped)throw Error('Off decks still animate');
     furniture.receive([{id:type,type,rotation,x:0,z:0,on:true}]);draw(0);const restarted=canvas.toDataURL();draw(200);if(canvas.toDataURL()===restarted)throw Error('Decks did not restart');
   }
   if(visuals.length!==1||furniture.getItems().length!==1)throw Error('Missing custom item');

@@ -12,12 +12,13 @@ import {createAwayPoster} from './away-poster.js';
 import {createStickies} from './stickies.js';
 import {installTouchNavigation} from './touch-navigation.js';
 import {createVoice} from './voice.js';
-import {roomLayout,tileDrop,walkingDrop,tileAtPoint,STEP_DOWN} from '../shared/room-layout.js';
+import {roomLayout,tileDrop,walkingDrop,tileAtPoint,isPoolWater,STEP_DOWN} from '../shared/room-layout.js';
 import {createDanceFloor} from './dance-floor.js';
 import {createDanceFloorControls} from './dance-floor-controls.js';
 import {createDiscoBall} from './disco-ball.js';
 import {createRoomRadio} from './room-radio.js';
 import {installAutoUpdate,saveUpdateSession,takeUpdateSession} from './auto-update.js';
+import {createPool,createWoodDeck,loadPoolAssets} from './pool.js';
 
 const container = document.querySelector('#scene');
 const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
@@ -33,6 +34,7 @@ try {
   throw error;
 }
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 3));
+renderer.localClippingEnabled=true;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 container.append(renderer.domElement);
 let CENTER_Y = 70;
@@ -89,10 +91,10 @@ function polygon(points,color,order=0,outline=false) {
 }
 
 const roomGroup=new THREE.Group();scene.add(roomGroup);
-let drawTarget=scene, roomCatalog, roomEditor, roomOptions={}, roomAssets={}, roomShape, layout, mainTiles=new Set(),walkable=new Set(), roomWidth=8, roomDepth=8, roomCenterX=0,danceFloor,danceMesh;
+let drawTarget=scene, roomCatalog, roomEditor, roomOptions={}, roomAssets={}, roomShape, layout, mainTiles=new Set(),walkable=new Set(), roomWidth=8, roomDepth=8, roomCenterX=0,danceFloor,danceMesh,pool,poolMesh;
 const floorHeight=(x,z)=>layout?tileDrop(layout,x,z):0;
 const groundPoint=(x,z)=>{const p=iso(x,z);p.y+=floorHeight(x,z);return p;};
-const characterPoint=(x,z)=>{const p=iso(x,z);p.y+=layout?walkingDrop(layout,z):0;return p;};
+const characterPoint=(x,z)=>{const p=iso(x,z);p.y+=layout?walkingDrop(layout,z,x):0;return p;};
 const surfaceCache=new Map();
 function surface(file,paletteName,tint,mask){
   const key=file+paletteName+tint;
@@ -109,7 +111,7 @@ function buildRoom(options){
   layout=roomLayout(roomShape.tiles);mainTiles=new Set(roomShape.tiles.map(([x,z])=>`${x},${z}`));
   walkable=new Set(layout.tiles.map(([x,z])=>`${x},${z}`));
   roomWidth=layout.width;roomDepth=layout.depth;
-  roomCenterX=(roomWidth-roomDepth)*16;CENTER_Y=((roomWidth+roomDepth)*16-116)/2;
+  roomCenterX=(layout.extentWidth-roomDepth)*16;CENTER_Y=((layout.extentWidth+roomDepth)*16-116)/2;
   roomGroup.traverse(object=>{object.geometry?.dispose();if(object.material){object.material.map?.dispose();object.material.dispose();}});roomGroup.clear();drawTarget=roomGroup;
   const wall=WALLS[options.wall],floor=FLOORS[options.floor];
   const dark='#'+options.wallColor.slice(1).match(/../g).map(v=>Math.max(0,parseInt(v,16)-16).toString(16).padStart(2,'0')).join('');
@@ -148,6 +150,11 @@ function buildRoom(options){
   sprite(floorCanvas,-roomDepth*32-roomCenterX,0,10);
   danceFloor=createDanceFloor(roomWidth);
   danceMesh=sprite(danceFloor.canvas,-roomDepth*32-roomCenterX,layout.danceStart*16+STEP_DOWN,9);
+  pool=createPool(layout.pool.depth,roomAssets.pool);pool.draw(0);
+  const poolOrigin=iso(layout.pool.x,layout.pool.z);
+  poolMesh=sprite(pool.canvas,poolOrigin.x+pool.left,poolOrigin.y,12);
+  const decking=createWoodDeck(layout.parking.width,layout.parking.depth),deckOrigin=iso(layout.parking.x,layout.parking.z);
+  sprite(decking,deckOrigin.x-layout.parking.depth*32,deckOrigin.y,12);
   // The main floor's exposed front edge becomes the riser of the lower terrace.
   for(const [x,z] of layout.danceTiles){
     const l=groundPoint(x,z+1),r=groundPoint(x+1,z),b=groundPoint(x+1,z+1);
@@ -158,10 +165,10 @@ function buildRoom(options){
   const mainValid=(x,z)=>mainTiles.has(`${x},${z}`);
   for(const [x,z] of roomShape.tiles){
     const p=iso(x,z),l=iso(x,z+1),r=iso(x+1,z),b=iso(x+1,z+1);
-    if(!mainValid(x+1,z))polygon([[r.x,r.y],[b.x,b.y],[b.x,b.y+STEP_DOWN+7],[r.x,r.y+STEP_DOWN+7]],'#77776c',0,true);
+    if(!valid(x+1,z))polygon([[r.x,r.y],[b.x,b.y],[b.x,b.y+STEP_DOWN+7],[r.x,r.y+STEP_DOWN+7]],'#77776c',0,true);
     if(!mainValid(x,z+1)){const drop=z+1===layout.danceStart?STEP_DOWN:STEP_DOWN+7;polygon([[l.x,l.y],[b.x,b.y],[b.x,b.y+drop],[l.x,l.y+drop]],'#5f6057',11,true);}
   }
-  for(const [x,z] of layout.tiles){
+  for(const [x,z] of [...layout.mainTiles,...layout.danceTiles]){
     const p=iso(x,z),drop=floorHeight(x,z);
     if(!valid(x-1,z)){
       leftWalls.push([x,z]);sprite(drop?lowerLeft:left,p.x-32,p.y-115,50+x+z/100);
@@ -314,14 +321,15 @@ function resize(){
   const w=container.clientWidth,h=container.clientHeight;
   const reserved=editingRoom&&w>1000?550:0;
   const mobile=matchMedia('(pointer: coarse)').matches||w<=640;
-  const fit=Math.min(1.5,(w-reserved)/((roomWidth+roomDepth)*32+(mobile?80:90)),h/((roomWidth+roomDepth)*16+(mobile?130:160)));
+  const boundsWidth=layout?.extentWidth??roomWidth;
+  const fit=Math.min(1.5,(w-reserved)/((boundsWidth+roomDepth)*32+(mobile?80:90)),h/((boundsWidth+roomDepth)*16+(mobile?130:160)));
   const pixelRatio=Math.min(window.devicePixelRatio,3);
   renderer.setPixelRatio(pixelRatio);
   displayScale=fit*zoom;
   const physicalScale=displayScale*pixelRatio,nearest=Math.round(physicalScale);
   if(nearest>=1&&Math.abs(nearest-physicalScale)/physicalScale<.08)displayScale=nearest/pixelRatio;
-  panX=Math.max(-((roomWidth+roomDepth)*32*displayScale+w)/2+60,Math.min(((roomWidth+roomDepth)*32*displayScale+w)/2-60,panX));
-  panY=Math.max(-((roomWidth+roomDepth)*16*displayScale+h)/2+60,Math.min(((roomWidth+roomDepth)*16*displayScale+h)/2-60,panY));
+  panX=Math.max(-((boundsWidth+roomDepth)*32*displayScale+w)/2+60,Math.min(((boundsWidth+roomDepth)*32*displayScale+w)/2-60,panX));
+  panY=Math.max(-((boundsWidth+roomDepth)*16*displayScale+h)/2+60,Math.min(((boundsWidth+roomDepth)*16*displayScale+h)/2-60,panY));
   viewOffsetX=Math.round((w/2+panX-reserved/2)*pixelRatio)/pixelRatio-w/2;
   viewOffsetY=Math.round((h/2+panY-CENTER_Y*displayScale)*pixelRatio)/pixelRatio-h/2+CENTER_Y*displayScale;
   camera.left=(-w/2-viewOffsetX)/displayScale;camera.right=(w/2-viewOffsetX)/displayScale;
@@ -383,6 +391,12 @@ function updatePeers(players){
   }
 }
 function positionCharacter(mesh,point,seat){
+  const inWater=isPoolWater(layout,point.x,point.z);
+  if(inWater){
+    const plane=mesh.userData.waterClip??=new THREE.Plane(new THREE.Vector3(0,1,0));
+    plane.constant=iso(point.x,point.z).y+7-CENTER_Y;
+    if(!mesh.material.clippingPlanes){mesh.material.clippingPlanes=[plane];mesh.material.needsUpdate=true;}
+  }else if(mesh.material.clippingPlanes){mesh.material.clippingPlanes=null;mesh.material.needsUpdate=true;}
   const p=characterPoint(point.x,point.z);p.y+=seat?.offsetY??0;
   place(mesh,Math.round(p.x)-48,Math.round(p.y)-101,96,112);
   mesh.renderOrder=300+(point.x+point.z-1)*10+9.5;
@@ -426,6 +440,7 @@ function animate(now){
     }
   }
   if(danceFloor&&danceMesh&&danceFloor.draw(reducedMotion.matches?0:Math.floor((network?.now()??Date.now())/900)%6,danceFloorOn))danceMesh.material.map.needsUpdate=true;
+  if(pool&&poolMesh&&pool.draw(reducedMotion.matches?0:Math.floor(now/220)%6))poolMesh.material.map.needsUpdate=true;
   if(discoBall&&discoMesh&&layout){
     if(discoBall.draw(now,danceFloorOn,reducedMotion.matches))discoMesh.material.map.needsUpdate=true;
     const p=groundPoint(layout.width/2,layout.danceStart+2.5);
@@ -451,6 +466,7 @@ try{
   const files=['left_wallpart_0_a_0_0_0.png','right_wallpart_0_a_0_2_0.png','left_wallpart_1_a_0_0_0.png','right_wallpart_1_a_0_2_0.png','flat_floor_0_a_0_0_0.png','flat_floor_1_a_0_0_0.png','flat_floor_2_a_0_0_0.png'];
   await Promise.all(files.map(file=>new Promise((resolve,reject)=>{const image=new Image();image.onload=()=>{roomAssets[file]=image;resolve();};image.onerror=reject;image.src='/assets/room-options/'+file;})));
   [roomAssets.door,roomAssets.window,roomAssets.windowRight]=await Promise.all(['door.png','window.png','window-right.png'].map(loadImage));
+  roomAssets.pool=await loadPoolAssets();
   const stopWalking=()=>{path=[];seatTarget=null;if(seated){seated=null;ensureFreeTile();}hover.visible=false;targetMarker.visible=false;};
   roomEditor=createRoomEditor({catalog:roomCatalog,initial:initialRoom.room.options,onSave:options=>network.options(options),onPreview:buildRoom,onOpen:()=>{
     stopWalking();furniture?.close();positionBeforeEdit={...position};editingRoom=true;resize();
@@ -465,7 +481,7 @@ try{
   infoStand=await createInfoStand(prepareImage);
   appearance=await createAppearance({prepareImage,onApply:async(frames,look,context)=>{if(!context.entry)await network.appearance(look);setAppearance(frames);},onOpen:()=>{stopWalking();furniture?.close();}});
   setAppearance(appearance.initial);
-  stickies=await createStickies({network,prepareImage,worldPoint:groundPoint,getTiles:()=>walkable,
+  stickies=await createStickies({network,prepareImage,worldPoint:groundPoint,getTiles:()=>new Set([...layout.mainTiles,...layout.danceTiles].map(cell=>cell.join(','))),
     makeVisual:canvas=>sprite(canvas,0,0,95),
     disposeVisual:mesh=>{scene.remove(mesh);mesh.geometry.dispose();mesh.material.map.dispose();mesh.material.dispose();},
     positionVisual:(mesh,x,y,w,h,order)=>{place(mesh,x,y,w,h);mesh.renderOrder=order;},
@@ -474,7 +490,7 @@ try{
   stickies.receive(initialRoom.room.stickies??[]);
   const furnitureMarks=new THREE.Group();scene.add(furnitureMarks);
   furniture=await createFurniture({initialItems:initialRoom.room.furniture,
-    prepareImage,worldPoint:iso,isTile:valid,floorHeight,getAvatar:()=>position,stopWalking,onChanged:()=>{ensureFreeTile();positionAwayPoster();},onSit:sitOn,
+    prepareImage,worldPoint:iso,isTile:(x,z)=>valid(x,z)&&!isPoolWater(layout,x,z),floorHeight,getAvatar:()=>position,stopWalking,onChanged:()=>{ensureFreeTile();positionAwayPoster();},onSit:sitOn,
     focusRoom:()=>container.focus({preventScroll:true}),onPlaceSticky:()=>stickies.begin(),onPlacePoster:id=>stickies.begin(null,id),
     makeVisual:canvas=>sprite(canvas,0,0,300),
     disposeVisual:mesh=>{scene.remove(mesh);mesh.geometry.dispose();mesh.material.map.dispose();mesh.material.dispose();},

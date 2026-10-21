@@ -159,3 +159,20 @@ describe('deployment updates',()=>{
     saveUpdateSession(snapshot,storage,1000);expect(takeUpdateSession('grant',storage,121000)).toBeNull();
   });
 });
+
+describe('right-hand jacuzzi and parking deck',()=>{
+ it('keeps the water clear, connects the surround in every room shape and preserves existing tiles',()=>{
+  for(const [shape,main] of Object.entries(shapes)){
+   const layout=roomLayout(main),room={options:{...DEFAULT_ROOM,shape},furniture:[]},tiles=new Set(layout.tiles.map(cell=>cell.join(','))),start={x:main[0][0]+.5,z:main[0][1]+.5};
+   expect(layout.pool.x).toBe(layout.width);expect(layout.tiles.slice(0,main.length)).toEqual(main);
+   for(const [x,z] of layout.waterTiles){expect(tiles.has(`${x},${z}`)).toBe(true);expect(findPath(room,start,{x,z})).not.toBeNull();expect(wallExists({x,z,side:'left'},wallTileSet(room.options))).toBe(false);}
+   for(const [x,z] of layout.poolDeckTiles){expect(findPath(room,start,{x,z}),shape).not.toBeNull();expect(tileAtPoint(layout,(x-z)*32,(x+z+1)*16,0)).toEqual({x,z});}
+  }
+ });
+});
+
+ it('parks the Porsche in every orientation and keeps furniture out of the hot tub',()=>{
+  const layout=roomLayout(shapes.square),parking=layout.parking;
+  for(const rotation of [0,2,4,6])expect(()=>validateFurniture([{id:'car',type:'custom_porsche',rotation,x:parking.x,z:parking.z}],DEFAULT_ROOM)).not.toThrow();
+  const [x,z]=layout.waterTiles[0];expect(()=>validateFurniture([{id:'chair',type:'small_chair_armas',rotation:0,x,z}],DEFAULT_ROOM)).toThrow();
+ });

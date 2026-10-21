@@ -29,14 +29,14 @@ export function cells(item){
   return Array.from({length:w*d},(_,i)=>[item.x+i%w,item.z+Math.floor(i/w)]);
 }
 export const layoutFor=options=>roomLayout(shapes[options.shape]);
-export function wallTileSet(options){return tileSet(options);}
+export function wallTileSet(options){const layout=layoutFor(options);return new Set([...layout.mainTiles,...layout.danceTiles].map(t=>t.join(',')));}
 export function tileSet(options){return new Set(layoutFor(options).tiles.map(t=>t.join(',')));}
 export function blocked(room,x,z,ignore=null){
   return room.furniture.some(i=>i.id!==ignore&&isPlaced(i)&&furniture[i.type].category!=='Rugs'&&cells(i).some(([a,b])=>a===x&&b===z));
 }
 export function validateFurniture(items,options){
   if(items.length>200)fail('The room can hold up to 200 pieces.');
-  const ids=new Set(),occupied=new Set(),rugs=new Set(),tiles=tileSet(options),layout=layoutFor(options);
+  const ids=new Set(),occupied=new Set(),rugs=new Set(),layout=layoutFor(options),tiles=new Set([...layout.mainTiles,...layout.danceTiles,...layout.poolDeckTiles,...layout.parkingTiles].map(cell=>cell.join(',')));
   for(const item of items){
     if(!item||Object.keys(item).some(key=>!['id','type','rotation','x','z','supportId','on'].includes(key))||!['id','type','rotation','x','z'].every(key=>Object.hasOwn(item,key))||typeof item.id!=='string'||!/^[-a-zA-Z0-9]{1,80}$/.test(item.id)||ids.has(item.id))fail('Invalid furniture.');
     if(item.on!==undefined&&(typeof item.on!=='boolean'||item.type!=='custom_dj_decks'))fail('Invalid furniture power setting.');

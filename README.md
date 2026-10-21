@@ -118,3 +118,9 @@ Powered decks play the public Poolsuite ON AIR feed (`https://s5.radio.co/sc9cb5
 ## Automatic deployment updates
 
 Production builds expose a unique version in `/version.json`. Open rooms check every 30 seconds and when returning to a tab or reconnecting to the internet, then refresh once a new deployment is available. Reload waits for open dialogs, furniture editing/placement and unsent chat text to finish. The player’s existing session is resumed, and a short-lived per-tab snapshot restores camera, music volume/mute and voice connection/microphone/local mute settings. Browser audio permissions can still require a click to resume playback. Local Vite development keeps its normal hot updates. People on versions from before this feature need one manual refresh first.
+
+## Jacuzzi and rear parking deck
+
+A five-by-five hot tub terrace extends the right-hand edge, opposite the dance floor. It has a three-by-three water area, a walkable tiled surround, original Lido water/ladder sprites, built-in benches, and animated bubble jets. Players can enter the water; their avatars lower below the surface and are clipped at the waterline. Furniture cannot be placed in the water. A five-by-three timber deck behind it accepts the Porsche in all four orientations. Existing main room and dance floor tile coordinates are preserved.
+
+DJ decks now use the supplied grid-corrected 2:1 animation pack, with preserved aspect ratio, 200ms frames and tabletop alignment. The off state uses the supplied parked-tonearm stills, rather than freezing a playing frame.

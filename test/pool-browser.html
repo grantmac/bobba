@@ -1,0 +1,6 @@
+<!doctype html><meta charset="utf-8"><title>Lido pool extension</title><style>body{background:#121212;color:white;font:14px Verdana;padding:20px}canvas{image-rendering:pixelated;width:1248px;height:684px}</style><h1>Jacuzzi and parking deck</h1><p>Original Lido water and ladder · bubbling jets · wooden parking deck</p><canvas></canvas>
+<script type="module">
+import {createPool,createWoodDeck,loadPoolAssets} from '/src/pool.js';
+const pool=createPool(5,await loadPoolAssets()),canvas=document.querySelector('canvas');canvas.width=416;canvas.height=228;const ctx=canvas.getContext('2d'),deck=createWoodDeck(5,3);
+function draw(now){pool.draw(Math.floor(now/220)%6);ctx.clearRect(0,0,416,228);ctx.drawImage(deck,160,0);ctx.drawImage(pool.canvas,0,48);requestAnimationFrame(draw);}requestAnimationFrame(draw);
+</script>

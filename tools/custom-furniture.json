@@ -51,18 +51,18 @@
     "width": 2,
     "depth": 1,
     "surfaceHeight": 0,
-    "icon": "custom_dj_decks_stable_icon.png",
+    "icon": "custom_dj_decks_grid_icon.png",
     "parts": [
       {
-        "file": "custom_dj-decks-stable-000.png",
+        "file": "custom_dj-decks-grid-000.png",
         "layer": "a",
         "direction": 2,
         "reg": {
           "x": 32,
-          "y": 32
+          "y": 22
         },
         "width": 96,
-        "height": 64,
+        "height": 54,
         "z": 0,
         "alphaPrepared": true,
         "frames": [
@@ -84,18 +84,19 @@
             "width": 724,
             "height": 724
           }
-        ]
+        ],
+        "offFile": "custom_dj-decks-off-000.png"
       },
       {
-        "file": "custom_dj-decks-stable-090.png",
+        "file": "custom_dj-decks-grid-090.png",
         "layer": "a",
         "direction": 4,
         "reg": {
           "x": 0,
-          "y": 32
+          "y": 22
         },
         "width": 96,
-        "height": 64,
+        "height": 54,
         "z": 0,
         "alphaPrepared": true,
         "frames": [
@@ -117,18 +118,19 @@
             "width": 724,
             "height": 724
           }
-        ]
+        ],
+        "offFile": "custom_dj-decks-off-090.png"
       },
       {
-        "file": "custom_dj-decks-stable-180.png",
+        "file": "custom_dj-decks-grid-180.png",
         "layer": "a",
         "direction": 6,
         "reg": {
           "x": 32,
-          "y": 32
+          "y": 22
         },
         "width": 96,
-        "height": 64,
+        "height": 54,
         "z": 0,
         "alphaPrepared": true,
         "frames": [
@@ -150,18 +152,19 @@
             "width": 724,
             "height": 724
           }
-        ]
+        ],
+        "offFile": "custom_dj-decks-off-180.png"
       },
       {
-        "file": "custom_dj-decks-stable-270.png",
+        "file": "custom_dj-decks-grid-270.png",
         "layer": "a",
         "direction": 0,
         "reg": {
           "x": 0,
-          "y": 32
+          "y": 22
         },
         "width": 96,
-        "height": 64,
+        "height": 54,
         "z": 0,
         "alphaPrepared": true,
         "frames": [
@@ -183,7 +186,8 @@
             "width": 724,
             "height": 724
           }
-        ]
+        ],
+        "offFile": "custom_dj-decks-off-270.png"
       }
     ],
     "views": [

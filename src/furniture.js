@@ -14,10 +14,15 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     if(loading.has(def.id))return loading.get(def.id);
     const promise=(async()=>{
     const parts=await Promise.all(def.parts.map(part=>new Promise((resolve,reject)=>{
-      const image=new Image();image.onload=()=>{
+      const image=new Image();image.onload=async()=>{
         try{
           const cells=part.frames?spriteSheetFrames(image,part.frames):null;
-          resolve({...part,cells,canvas:cells?.[0]??prepareImage(image,{matte:!part.alphaPrepared})});
+          let offCanvas;
+          if(part.offFile){
+            const off=new Image();await new Promise((resolve,reject)=>{off.onload=resolve;off.onerror=()=>reject(new Error(`Could not load ${part.offFile}`));off.src=ROOT+part.offFile;});
+            [offCanvas]=spriteSheetFrames(off,[{x:0,y:0,width:off.width,height:off.height}]);
+          }
+          resolve({...part,cells,offCanvas,canvas:cells?.[0]??prepareImage(image,{matte:!part.alphaPrepared})});
         }catch(error){reject(error);}
       };image.onerror=()=>reject(new Error(`Could not load ${part.file}`));image.src=ROOT+part.file;
     })));
@@ -42,7 +47,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
       // Original chair/sofa layers straddle the seated avatar's depth.
       const slices=def.category==='Seating'?layers.filter(p=>p.width>1&&p.height>1).map(p=>({...paint([p]),orderShift:p.z/100})):null;
       const frame={...full,density,left:(view.mirror?64-right:left)-32,top:top+16};
-      if(def.frameDuration)frame.off={...frame,...paint(layers,0)};
+      if(def.frameDuration)frame.off={...frame,...paint(layers.map(p=>p.offCanvas?{...p,cells:null,canvas:p.offCanvas}:p),0)};
       if(def.id==='custom_macintosh'||def.frameDuration){
         let lastPhase=-1;
         frame.animate=now=>{
