@@ -603,6 +603,21 @@ describe('agents building pieces',()=>{
     for(let i=0;i<60;i++)await t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId,{name:`Piece ${i}`})});
     expect((await t.query(api.agents.status,{agentToken})).assets).toHaveLength(61);
   });
+  it('lets a builder place and save more than two hundred pieces in one space, and pick them all up',async()=>{
+    const {agentToken,storageId}=await attach();
+    const built=await t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId,{category:'Wall',wallWidth:32,parts:[{storageId,direction:4,width:48,height:60,reg:{x:-8,y:46}}],views:[{direction:4,source:4,mirror:false}]})});
+    const place=()=>t.mutation(api.agents.place,{agentToken,assetId:built.id,x:23,z:0,rotation:4,u:.5,height:60});
+    for(let i=0;i<201;i++)await place();
+    expect((await t.query(api.agents.status,{agentToken})).placed).toHaveLength(201);
+    const items=[...await everywhere(),{...(await everywhere())[0],id:'from-browser'}];
+    await t.mutation(api.room.setFurniture,{token,items,knowsAssets:true});
+    expect(await everywhere()).toHaveLength(202);
+    // Picking up a large collection must not introduce an inventory limit either.
+    const inventory=items.map(({u,height,...item})=>({...item,x:null,z:null}));
+    await t.mutation(api.room.setFurniture,{token,items:inventory,knowsAssets:true});
+    expect((await t.query(api.agents.status,{agentToken})).placed).toHaveLength(0);
+    expect(await t.query(api.room.inventory,{token})).toHaveLength(202);
+  });
   it('reports connection only after authenticated agent contact, and clears it on revoke',async()=>{
     await guest();
     const {agentToken}=await t.mutation(api.agents.createKey,{token});

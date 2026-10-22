@@ -1,0 +1,70 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Chat positioning verification</title>
+<link rel="stylesheet" href="/src/style.css">
+<style>body{background:#333;color:#eee}#checks{padding:16px;font:12px/1.6 Verdana,sans-serif}#checks button{margin:8px;padding:8px;color:#222}#head{position:absolute;width:6px;height:6px;background:#e6b879;transform:translate(-50%,0)}</style>
+<div id="checks"><p id="result">Checking chat positioning…</p><button id="pan">Pan and zoom demo</button><button id="message">Add message</button></div><div id="head"></div>
+<script type="module">
+import {createChat} from '/src/chat.js';
+const assert=(ok,message)=>{if(!ok)throw Error(message);},near=(a,b)=>Math.abs(a-b)<.1;
+const layout={originX:innerWidth/2,originY:innerHeight/2,centerY:0,scale:1};
+const speaker={name:'Preview',color:'#6b8c64',x:0,y:96};let selected=null;
+const chat=createChat({getLayout:()=>layout,getSpeaker:()=>speaker,onSelectSpeaker:value=>selected=value});
+// Background previews may pause animation frames; still run layout assertions there.
+const rect=element=>element.getBoundingClientRect(),frame=()=>new Promise(resolve=>{
+  const timer=setTimeout(resolve,50);requestAnimationFrame(()=>{clearTimeout(timer);resolve();});
+});
+const bubble=()=>document.querySelector('.chat-bubble');
+async function settle(){
+  await frame();
+  // Finish transitions deterministically even when the preview is in a background tab.
+  for(const element of document.querySelectorAll('.chat-bubble'))for(const animation of element.getAnimations())animation.finish();
+  await frame();
+}
+function assertStack(){
+  const boxes=[...document.querySelectorAll('.chat-bubble')].map(rect);
+  for(let i=1;i<boxes.length;i++)assert(boxes[i-1].bottom<=boxes[i].top-1.9,'Messages must not overlap, including speakers at different depths');
+}
+function update(){chat.update(performance.now());const head=document.querySelector('#head');head.style.left=`${layout.originX+speaker.x*layout.scale}px`;head.style.top=`${layout.originY+(speaker.y-layout.centerY-96)*layout.scale}px`;}
+try{
+  chat.say('Anchored to the room');update();await frame();
+  let before=rect(bubble());layout.originY+=37.5;update();
+  let after=rect(bubble());assert(near(after.y-before.y,37.5),'Vertical-only panning must move the bubble immediately');
+  before=after;layout.originX+=20.5;layout.originY-=13.5;update();after=rect(bubble());
+  assert(near(after.x-before.x,20.5)&&near(after.y-before.y,-13.5),'Diagonal panning must track both axes without easing');
+  const width=after.width,height=after.height;layout.centerY=24;layout.scale=1.5;update();after=rect(bubble());
+  assert(near(after.bottom,layout.originY-36),'Zoom and room centre must update the head anchor');
+  assert(near(after.width,width)&&near(after.height,height),'Zoom must preserve readable bubble size');
+  const old=bubble();chat.say('Messages still rise smoothly');await frame();await frame();
+  before=rect(old);layout.originY+=25.5;layout.originX-=15.5;update();after=rect(old);
+  assert(near(after.x-before.x,-15.5)&&near(after.y-before.y,25.5),'Panning during a message scroll must remain immediate');
+  const latest=[...document.querySelectorAll('.chat-bubble')].at(-1);latest.click();assert(selected===speaker,'Speaker selection must still work');
+  for(let i=0;i<9;i++)chat.say(`Message ${i}`);
+  assert(document.querySelectorAll('.chat-bubble').length===7,'Only seven messages should remain');
+  for(let i=1;i<=7;i++)chat.update(performance.now()+i*5000);
+  assert(!bubble(),'Idle scrolling must eventually clear messages');
+  const long='Ha, “bla bla” — the classic admin greeting. 😊 Anything on your mind, Grant? '.repeat(4);
+  chat.say(long);await settle();
+  assert(rect(bubble()).height>height,'Long messages must wrap onto multiple lines');
+  assert(rect(bubble()).width<=320,'Long messages must have a readable maximum width');
+  assert(bubble().textContent===speaker.name+': '+long.trim(),'Wrapped messages must preserve all text');
+  chat.say('A reply from further back','Say',{...speaker,name:'Lobby',y:speaker.y-21/layout.scale});await settle();assertStack();
+  chat.say(long,'Say',{...speaker,name:'Nearby',y:speaker.y+50});await settle();assertStack();
+  layout.scale=2;update();await settle();assertStack();
+  for(let i=0;i<7;i++)chat.say(long);await settle();assertStack();
+  assert(document.querySelectorAll('.chat-bubble').length===7,'Tall bubbles must not expire just because of their height');
+  for(let i=1;i<=7;i++)chat.update(performance.now()+i*5000);
+  assert(!bubble(),'Wrapped messages must expire after seven idle scrolls');
+  chat.say('x'.repeat(400),'Say',{...speaker,name:'N'.repeat(80),x:-innerWidth});await settle();
+  assert(rect(bubble()).left>=5.9&&bubble().scrollWidth<=bubble().clientWidth,'Long words and names must wrap inside the left edge');
+  for(let i=1;i<=7;i++)chat.update(performance.now()+i*5000);
+  chat.say(long,'Say',{...speaker,x:innerWidth});await settle();
+  assert(rect(bubble()).right<=innerWidth-5.9,'Wide messages must stay inside the right edge');
+  for(let i=1;i<=7;i++)chat.update(performance.now()+i*5000);
+  chat.typing('preview','Preview',true,100,150);assert(document.querySelector('.typing-bubble'),'Typing indicator missing');chat.removeTyping('preview');assert(!document.querySelector('.typing-bubble'),'Typing indicator not cleared');
+  document.querySelector('#result').textContent='PASS: pan, zoom, selection, wrapping, mixed-depth stacking, tall-message limit, expiry, long words, viewport edges and typing.';
+}catch(error){document.querySelector('#result').textContent='FAIL: '+error.message;throw error;}
+chat.say('bla bla','Say',{...speaker,name:'Grant',color:'#6b8c64'});
+chat.say('Ha, “bla bla” — the classic admin greeting. 😊 Anything on your mind, Grant?','Say',{...speaker,name:'Lobby',color:'#6484b8',y:speaker.y-10});
+chat.say('Just making this little room feel like home.','Say',{...speaker,name:'Grant',color:'#6b8c64'});update();
+document.querySelector('#message').onclick=()=>chat.say('Another message above the same point');
+document.querySelector('#pan').onclick=()=>{const start=performance.now(),x=layout.originX,y=layout.originY,scale=layout.scale;function animate(now){const t=Math.min(1,(now-start)/2400);layout.originX=x+Math.sin(t*Math.PI*2)*70;layout.originY=y+Math.sin(t*Math.PI*4)*45;layout.scale=scale+Math.sin(t*Math.PI*2)*.25;update();if(t<1)requestAnimationFrame(animate);}requestAnimationFrame(animate);};
+</script>

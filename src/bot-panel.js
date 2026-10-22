@@ -2,7 +2,7 @@ import {makeDraggable} from './draggable.js';
 import './bot-panel.css';
 
 export function createBotPanel({api,admin=false,mount=document.querySelector('.bar-icons')}){
-  const toggle=document.createElement('button');toggle.type='button';toggle.className='bar-icon resident-bot-toggle';toggle.textContent='Bot';toggle.title='Room bot';toggle.setAttribute('aria-label','Room bot');toggle.setAttribute('aria-expanded','false');mount?.append(toggle);
+  const toggle=document.createElement('button');toggle.type='button';toggle.className='bar-icon resident-bot-toggle';toggle.textContent='Bot';toggle.title='Room bot';toggle.setAttribute('aria-label','Room bot');toggle.setAttribute('aria-expanded','false');if(admin)mount?.append(toggle);
   const panel=document.createElement('section');panel.className='voice-panel resident-bot-panel';panel.hidden=true;panel.tabIndex=-1;panel.setAttribute('role','dialog');panel.setAttribute('aria-label','Room bot');
   panel.innerHTML=`<header><h1>Room bot</h1><button type="button" class="appearance-close" aria-label="Close room bot">×</button></header>
     <div class="resident-bot-body"><p class="bot-summary" role="status">Connecting…</p>

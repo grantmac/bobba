@@ -5,9 +5,11 @@ export function createMultiplayer(){
   const url=import.meta.env.VITE_CONVEX_URL;
   if(!url)throw new Error('The room server is not configured.');
   const client=new ConvexClient(url,{logger:false});
-  window.addEventListener('hashchange',()=>{if(new URLSearchParams(location.hash.slice(1)).has('grant'))location.reload();});
+  window.addEventListener('hashchange',()=>{const hash=new URLSearchParams(location.hash.slice(1));if(hash.has('grant')||hash.has('pair'))location.reload();});
   const fragment=new URLSearchParams(location.hash.slice(1));let entryCode=fragment.get('grant')||'';
-  if(entryCode)history.replaceState(null,'',location.pathname+location.search);
+  const pairingStorage='habbo-room-pairing';let pairingCode=fragment.get('pair')||'';
+  try{if(pairingCode)sessionStorage.setItem(pairingStorage,pairingCode);else pairingCode=sessionStorage.getItem(pairingStorage)||'';}catch{}
+  if(entryCode||fragment.has('pair'))history.replaceState(null,'',location.pathname+location.search);
   let token='',me=null,state=null,room=null,inventory=null,unsubscribe=null,unsubscribeRoom=null,unsubscribePong=null,heartbeat=null,offset=0;
   // Per-zone subscriptions, keyed by zone id; `pinned` zones stay while a picture needs them.
   const zones=new Map(),pinned=new Set(),loaded=new Map(),looks=new Map();let wanted=null,lastZones=[];
@@ -216,6 +218,12 @@ export function createMultiplayer(){
     assets:{
       list:()=>client.query(api.assets.list,{}).catch(error=>{throw new Error(errorMessage(error));}),
       watch:(onList,onError)=>client.onUpdate(api.assets.list,{},onList,error=>onError(errorMessage(error))),
+    },
+    pairing:{
+      get code(){return pairingCode;},
+      clear(){pairingCode='';try{sessionStorage.removeItem(pairingStorage);}catch{}},
+      watch:(onValue,onError)=>client.onUpdate(api.agentPairing.inspect,{token,code:pairingCode},onValue,error=>onError(errorMessage(error))),
+      decide:approve=>client.mutation(api.agentPairing.decide,{token,code:pairingCode,approve}).catch(error=>{throw new Error(errorMessage(error));}),
     },
     agents:{
       key:label=>client.mutation(api.agents.createKey,{token,label}).catch(error=>{throw new Error(errorMessage(error));}),

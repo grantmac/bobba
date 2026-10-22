@@ -8,6 +8,7 @@ import { createFurniture } from './furniture.js';
 import { createInfoStand } from './info-stand.js';
 import { createChat } from './chat.js';
 import { createMultiplayer, samplePlayer } from './multiplayer.js';
+import {openAgentEntry} from './agent-entry.js';
 import {createRoomKey} from './room-key.js';
 import {createAwayPoster} from './away-poster.js';
 import {createAgentLink} from './agent-link.js';
@@ -15,6 +16,7 @@ import {createStickies} from './stickies.js';
 import {installTouchNavigation} from './touch-navigation.js';
 import {createVoice} from './voice.js';
 import {createBotPanel} from './bot-panel.js';
+import {robotFrames} from './robot-avatar.js';
 import {roomLayout,tileDrop,walkingDrop,tileAtPoint,isPoolWater,pitSeat,backWallTiles,onWalkway,STEP_DOWN,DANCE_ROWS,zonesIn,zoneBounds,zoneAt,MAIN_ZONE} from '../shared/room-layout.js';
 import {floorSampler,createSpaceFloor,createMetalWalkway,picturePixels,pictureSampler,wallSegment} from './spaces.js';
 import {renderPicture,startSnapshots} from './snapshot.js';
@@ -735,10 +737,10 @@ function updatePeers(players){
     }
     peer.data=data;
     // Movement updates carry no appearance: it is fetched once per version and kept.
-    const key=data.look?JSON.stringify(data.look):`v${data.lookVersion}`;
+    const key=data.kind==='bot'?'lobby-robot':data.look?JSON.stringify(data.look):`v${data.lookVersion}`;
     if(peer.lookKey!==key){
       peer.lookKey=key;const version=++peer.version;
-      (data.look?Promise.resolve(data.look):network.look(data.id,data.lookVersion)).then(look=>appearance.frames(look)).then(frames=>{
+      (data.kind==='bot'?robotFrames():(data.look?Promise.resolve(data.look):network.look(data.id,data.lookVersion)).then(look=>appearance.frames(look))).then(frames=>{
         if(version!==peer.version)return;
         peer.atlas?.dispose();peer.atlas=makeAtlas(frames);peer.frameKey='';peer.mesh.visible=true;
         peer.carryTextures?.dispose();peer.carryTextures=null;peer.carryLoading=null;
@@ -938,7 +940,7 @@ try{
     if(network.adminEntry){const saved=await network.entryAppearance();if(saved)setAppearance(await appearance.useLook(saved));}
     // The room has rendered before the welcome dialog and room are revealed in one task.
     await nextPaint();liftVeil();
-    await appearance.enter({admin:network.adminEntry,onCheckName:name=>network.checkName(name),agents:network.agents,onEnter:(name,look,options)=>network.join(name,look,options),onReturn:async()=>await characterKey.open('return')?network.me:null});
+    await appearance.enter({admin:network.adminEntry,pairing:!!network.pairing.code,onCheckName:name=>network.checkName(name),agents:network.agents,onEnter:(name,look,options)=>network.join(name,look,options),onReturn:async()=>await characterKey.open('return')?network.me:null});
     stopPreview();
   }
   const admin=network.me.role==='admin';
@@ -1013,4 +1015,5 @@ try{
     window.addEventListener('pagehide',event=>{if(!event.persisted)updater.stop();});
   }
   container.focus({preventScroll:true});
+  openAgentEntry(network);
 }catch(error){liftVeil();const notice=document.querySelector('#load-error');notice.textContent=error.message||'The room could not be opened. Please reload to try again.';notice.hidden=false;console.error(error);}

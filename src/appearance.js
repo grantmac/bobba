@@ -1,4 +1,4 @@
-import {createAgentPrompt} from './agent-link.js';
+import {createAgentSetup} from './agent-link.js';
 import {makeDraggable} from './draggable.js';
 import {randomAppearance} from './random-appearance.js';
 import {appearanceChoices,appearanceGender,changeAppearanceGender} from './appearance-options.js';
@@ -129,14 +129,14 @@ export async function createAppearance({prepareImage, onApply, onOpen, onRoomKey
     <ol class="entry-progress" hidden><li>Name</li><li>Character</li><li>Agent</li></ol>
     <section class="entry-intro" hidden><h2>Welcome! Make yourself at home.</h2><p>Choose a name for your character, then pick your look.</p></section>
     <button type="button" class="entry-return" hidden>Use my room key</button>
-    <section class="entry-agent" hidden><h2 class="entry-agent-title">Connect your agent</h2><p class="entry-agent-description">Use an agent to create a space and style it with your own furniture.</p><div class="entry-agent-setup"><button type="button" class="entry-connect agent-copy-prompt">Copy Agent Prompt</button><p class="agent-copy-status" role="status" aria-live="polite"></p><textarea class="agent-prompt" aria-label="Agent setup prompt" readonly spellcheck="false" hidden></textarea><p class="agent-attached" role="status" aria-live="polite" data-connected="false">Not connected</p></div><p class="entry-agent-note">You can also do this later from the catalogue.</p></section>
+    <section class="entry-agent" hidden></section>
     <div class="entry-name" hidden><label for="entry-name">Your name</label><input id="entry-name" autocomplete="nickname" minlength="2" maxlength="20" placeholder="What should we call you?" aria-describedby="entry-name-help entry-name-error"><p class="entry-note" id="entry-name-help"></p><p class="entry-name-error" id="entry-name-error" role="alert"></p></div>
     <div class="appearance-body">
       <div class="appearance-character"><div class="preview-stage"><canvas id="appearance-preview" width="96" height="112" aria-label="Character preview"></canvas></div><div class="turn-controls"><button type="button" aria-label="Turn preview left">◀</button><button type="button" aria-label="Turn preview right">▶</button></div></div>
       <div class="appearance-choices"><div class="appearance-gender" role="group" aria-label="Character style"><button type="button" data-gender="M">Man</button><button type="button" data-gender="F">Woman</button></div><nav aria-label="Appearance categories"></nav><h2 id="choice-title">Choose your hair</h2><div class="item-grid" aria-label="Styles"></div><div class="style-pages"><button type="button" aria-label="Previous styles">◀</button><span></span><button type="button" aria-label="Next styles">▶</button></div><h2>Colour <button type="button" class="color-channel" hidden>Primary</button></h2><div class="color-grid" aria-label="Colours"></div></div>
     </div>
     <p class="appearance-status" role="status" aria-live="polite"></p>
-    <button type="button" class="character-room-key" hidden>Your room key</button>
+    <button type="button" class="character-room-key" aria-labelledby="character-save-label" aria-describedby="character-save-help" hidden><span id="character-save-label">Save your character</span><span id="character-save-help">Keep your name, look and belongings for next time.</span></button>
     <footer><button type="button" class="appearance-cancel">Cancel</button><button type="button" class="appearance-apply">Apply</button></footer>`;
   dialog.tabIndex=-1;document.body.append(dialog);makeDraggable(dialog,dialog.querySelector('header'));
   const preview=dialog.querySelector('#appearance-preview'), status=dialog.querySelector('.appearance-status');
@@ -210,7 +210,7 @@ export async function createAppearance({prepareImage, onApply, onOpen, onRoomKey
     });
     dialog.querySelector('.entry-intro').hidden=step!==1;
     returnButton.hidden=step!==1||!entry.onReturn||entry.admin;
-    roomKeyButton.hidden=true;
+    roomKeyButton.hidden=step!==3||!onRoomKey;
     dialog.querySelector('.entry-name').hidden=step!==1;
     dialog.querySelector('.appearance-body').hidden=step!==2;
     dialog.querySelector('.entry-agent').hidden=step!==3;
@@ -219,12 +219,9 @@ export async function createAppearance({prepareImage, onApply, onOpen, onRoomKey
     dialog.querySelector('.appearance-cancel').textContent='Back';
     apply.textContent=step===3?'Enter room':'Continue';
     if(step===3){
-      agentSetup=createAgentPrompt({network:{agents:entry.agents},root:dialog.querySelector('.entry-agent-setup'),onAttached:list=>{
+      agentSetup=createAgentSetup({network:{agents:entry.agents},root:dialog.querySelector('.entry-agent'),enterRoom:true,onAttached:list=>{
         const connected=list.some(agent=>agent.connectedAt!=null);
         dialog.dataset.agentConnected=String(connected);
-        dialog.querySelector('.entry-agent-title').textContent=connected?"You're connected!":'Connect your agent';
-        dialog.querySelector('.entry-agent-description').textContent=connected?'Enter the room to explore and bring your ideas to life with your agent.':'Use an agent to create a space and style it with your own furniture.';
-        dialog.querySelector('.entry-agent-note').textContent=connected?'Your agent will explain what you can create. Head into the room when you’re ready.':'You can also do this later from the catalogue.';
         apply.textContent=connected?'Enter the room':'Enter room';
       }});
       agentSetup.start();
@@ -271,7 +268,7 @@ export async function createAppearance({prepareImage, onApply, onOpen, onRoomKey
       await onApply(rendered,next,{entry:!!entry});current=next;
       preferredGender=gender;
       let saved=true;try{localStorage.setItem(KEY,JSON.stringify(current));localStorage.setItem(KEY+'-gender',gender);}catch{saved=false;}
-      if(entry){showEntryStep(3);return;}
+      if(entry){if(entry.pairing)finishEntry();else showEntryStep(3);return;}
       version++;dialog.close();document.querySelector('#scene').focus({preventScroll:true});
     }catch(error){if(entry){showEntryStep(1);nameError.textContent=error.message;nameInput.setAttribute('aria-invalid','true');}else status.textContent=error.message;}
     finally{busy=false;dialog.querySelectorAll('button').forEach(b=>b.disabled=false);}
@@ -279,9 +276,9 @@ export async function createAppearance({prepareImage, onApply, onOpen, onRoomKey
   const initial=await frames(current);
   return {initial,open,isOpen:()=>dialog.open,chatColor:()=>current.top.color,frames,previewFrame:render,
     async useLook(look){if(!validate(look))throw new Error('Invalid saved appearance.');current=normalize(look);const result=await frames(current);return result;},
-    enter({name='',admin=false,onEnter,onCheckName,agents,onReturn}){
+    enter({name='',admin=false,onEnter,onCheckName,agents,onReturn,pairing=false}){
       return new Promise(resolve=>{
-        entry={onEnter,onCheckName,agents,admin,resolve,onReturn};draft=admin?copy(current):randomAppearance(catalog);gender=appearanceGender(catalog,draft,preferredGender);genderDrafts={};category='hair';page=0;previewDirection=2;
+        entry={onEnter,onCheckName,agents,admin,resolve,onReturn,pairing};draft=admin?copy(current):randomAppearance(catalog);gender=appearanceGender(catalog,draft,preferredGender);genderDrafts={};category='hair';page=0;previewDirection=2;
         nameInput.value=admin?'Grant':name;nameInput.readOnly=admin;
         dialog.querySelector('.entry-note').textContent=admin?'Choose your look and enter as the room owner.':'2–20 characters, starting with a letter. Names already in use are unavailable.';
         dialog.querySelector('.entry-progress').hidden=false;dialog.querySelector('.appearance-close').hidden=true;dialog.querySelector('.appearance-cancel').hidden=true;

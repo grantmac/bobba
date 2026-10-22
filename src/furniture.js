@@ -263,7 +263,6 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
   }
   function begin(item){
     if(!editable||saving)return;
-    if(items.length>=200&&!items.some(i=>i.id===item.id)){panel.querySelector('.furniture-description').textContent='Furniture limit reached (200 items).';return;}
     stopWalking();selected=null;pending={...item};panel.hidden=true;
     if(!isPlaced(pending)&&!isWallItem(definitions.get(pending.type))){
       const avatar=getAvatar(),candidates=[];

@@ -20,7 +20,7 @@ export async function agentFor(ctx,agentToken){
   const digest=await hash(agentToken);
   const link=await ctx.db.query('agentLinks').withIndex('by_token',q=>q.eq('tokenHash',digest)).unique();
   if(!link)fail('This agent is not attached. Attach it with a pairing code from the room.');
-  if(link.connectedAt===undefined&&link.expiresAt!==undefined&&link.expiresAt<=Date.now())fail('This agent connection expired. Open a new connection from Codex.');
+  if(link.connectedAt===undefined&&link.expiresAt!==undefined&&link.expiresAt<=Date.now())fail('This agent connection expired. Open a new connection from your agent.');
   const player=await ctx.db.get(link.playerId);
   if(!player)fail('The player this agent belonged to has left. Attach it again.');
   if((player.blockedUntil??0)>Date.now())fail('This player is temporarily removed from the room.');
