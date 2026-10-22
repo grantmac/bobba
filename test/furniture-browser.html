@@ -32,4 +32,28 @@ document.querySelector('#run').onclick=()=>{try{
  results.textContent='PASS: tabletop placement persists; visitor furniture popup hidden; chairs and recovered benches sit; rug clicks reach floor; admin controls retained; 49 built assets with 48 per page.';
 }catch(error){results.textContent='FAIL: '+error.message;throw error;}};
 results.textContent='Ready';
+const loadingButton=document.createElement('button');loadingButton.textContent='Run loading check';document.body.append(loadingButton);
+loadingButton.onclick=async()=>{
+ const NativeImage=window.Image;let redraws=0;const drawn=new Set();
+ try{
+  const definitions=['fast','slow'].map(speed=>({...duck,id:`asset_loading_${speed}`,parts:duck.parts.map(part=>({...part,file:part.file+`?loading-check=${speed}`}))}));
+  const loadingFurniture=await createFurniture({prepareImage,initialAssets:definitions,initialItems:[],
+   makeVisual(canvas){const mesh={canvas,material:{map:{}}};drawn.add(mesh);return mesh;},disposeVisual(mesh){drawn.delete(mesh);},positionVisual(){},markTiles(){redraws++;},
+   worldPoint:(x,z)=>({x,y:z}),isTile:()=>true,getAvatar:()=>({x:0,z:0}),stopWalking(){},onChanged(){},onSit(){},focusRoom(){}
+  });
+  // Restore many copies at once, with one definition finishing before the other.
+  // This is the cold, signed-in subscription path, after the lobby preview has loaded.
+  window.Image=class extends NativeImage{
+   set onload(handler){super.onload=(...args)=>setTimeout(()=>handler.apply(this,args),this.src.includes('loading-check=slow')?150:0);}
+  };
+  redraws=0;
+  loadingFurniture.receive(definitions.flatMap((def,index)=>Array.from({length:20},(_,i)=>({id:`${index}-${i}`,type:def.id,rotation:2,x:i,z:index}))));
+  await loadingFurniture.whenReady();
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert(drawn.size===40,`Expected all 40 copies to render, got ${drawn.size}`);
+  assert(redraws<=4,`Loading 2 furniture types triggered ${redraws} redraws; expected at most 4`);
+  results.textContent=`PASS: all 40 restored pieces rendered in ${redraws} redraws.`;
+ }catch(error){results.textContent='FAIL: '+error.message;console.error(error);}
+ finally{window.Image=NativeImage;}
+};
 </script>

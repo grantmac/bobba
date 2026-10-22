@@ -193,6 +193,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
   // Meshes persist across redraws, keyed by item and slice; only pieces whose frame
   // changed, appeared or vanished are created or disposed.
   const meshes=new Map();
+  const redrawLoads=new WeakSet();
   function redraw(){
     programs.sync(items.filter(visible),definitions);
     const kept=new Set();visuals=[];
@@ -200,7 +201,15 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     for(const item of viewItems){
       if(!visible(item))continue;
       const frame=frameFor(item);
-      if(!frame){loadDefinition(definitions.get(item.type)).then(redraw).catch(error=>{panel.querySelector('.furniture-description').textContent=error.message;});continue;}
+      if(!frame){
+        const load=loadDefinition(definitions.get(item.type));
+        // Copies share a load: subscribing per piece multiplies redraws while other types load.
+        if(!redrawLoads.has(load)){
+          redrawLoads.add(load);
+          load.then(redraw).catch(error=>{panel.querySelector('.furniture-description').textContent=error.message;});
+        }
+        continue;
+      }
       (frame.slices??[frame]).forEach((slice,index)=>{
         const key=`${item.id}:${index}`;let entry=meshes.get(key);
         if(entry&&entry.canvas!==slice.canvas){disposeVisual(entry.mesh);entry=null;}
