@@ -123,30 +123,29 @@ describe('Man/Woman appearance switch',()=>{
 
 import {createRoomRadio,POOLSUITE_STREAM} from '../src/room-radio.js';
 describe('shared deck radio',()=>{
-  const decks=[{type:'custom_dj_decks',x:1,z:1}];
   function setup(play=async()=>{}){
     const audio={src:'',volume:1,paused:false,readyState:4,plays:0,pauses:0,play(){this.plays++;return play();},pause(){this.pauses++;},load(){},removeAttribute(){this.src='';},addEventListener(){}};
     let state;const radio=createRoomRadio({audio,onState:value=>state=value});return {audio,radio,state:()=>state};
   }
-  it('waits for room entry, shares one stream across decks and stops when all are off or removed',async()=>{
-    const {audio,radio,state}=setup();radio.receive(decks,false);expect(audio.plays).toBe(0);
-    radio.receive(decks,true);await radio.unlock();await Promise.resolve();expect(audio.src).toBe(POOLSUITE_STREAM);expect(state().playing).toBe(true);
-    radio.receive([...decks,...decks],true);expect(audio.plays).toBe(1);
-    radio.receive([{...decks[0],on:false}],true);expect(audio.src).toBe('');expect(state().active).toBe(false);
-    radio.receive(decks,true);await Promise.resolve();radio.receive([{...decks[0],x:null,z:null}],true);expect(audio.src).toBe('');
+  it('waits for room entry, keeps one stream for repeated power signals and stops when power ends',async()=>{
+    const {audio,radio,state}=setup();radio.receive(true,false);expect(audio.plays).toBe(0);
+    radio.receive(true,true);await radio.unlock();await Promise.resolve();expect(audio.src).toBe(POOLSUITE_STREAM);expect(state().playing).toBe(true);
+    radio.receive(true,true);expect(audio.plays).toBe(1);
+    radio.receive(false,true);expect(audio.src).toBe('');expect(state().active).toBe(false);
+    radio.receive(true,true);await Promise.resolve();radio.receive(false,true);expect(audio.src).toBe('');
   });
   it('retries blocked playback on a gesture and keeps local mute across power changes',async()=>{
     let blocked=true;const {audio,radio,state}=setup(async()=>{if(blocked)throw Error('autoplay');});
-    radio.receive(decks,true);await Promise.resolve();expect(state().playing).toBe(false);
+    radio.receive(true,true);await Promise.resolve();expect(state().playing).toBe(false);
     blocked=false;await radio.unlock();expect(state().playing).toBe(true);
-    radio.setMuted(true);radio.receive([],true);radio.receive(decks,true);await radio.unlock();expect(audio.plays).toBe(2);expect(audio.src).toBe('');
+    radio.setMuted(true);radio.receive(false,true);radio.receive(true,true);await radio.unlock();expect(audio.plays).toBe(2);expect(audio.src).toBe('');
     radio.setMuted(false);await Promise.resolve();expect(state().playing).toBe(true);
     radio.setVolume(.12);expect(audio.volume).toBe(.12);
   });
   it('silences zero volume even when iOS ignores volume writes, without overriding explicit mute',async()=>{
     const {audio,radio}=setup();
     Object.defineProperty(audio,'volume',{get:()=>1,set:()=>{}});
-    radio.receive(decks,true);await Promise.resolve();
+    radio.receive(true,true);await Promise.resolve();
     radio.setVolume(0);radio.setMuted(false);
     expect(audio.volume).toBe(1);expect(audio.muted).toBe(true);expect(radio.audible).toBe(false);
     radio.setVolume(.5);expect(audio.muted).toBe(false);expect(radio.audible).toBe(true);
@@ -159,7 +158,7 @@ describe('shared deck radio',()=>{
   });
   it('reports audible playback only while the stream can actually play sound',async()=>{
     const {audio,radio}=setup();expect(radio.audible).toBe(false);
-    radio.receive(decks,true);await Promise.resolve();expect(radio.audible).toBe(true);
+    radio.receive(true,true);await Promise.resolve();expect(radio.audible).toBe(true);
     audio.readyState=2;expect(radio.audible).toBe(false);
     audio.readyState=4;audio.paused=true;expect(radio.audible).toBe(false);
     audio.paused=false;radio.setVolume(0);expect(radio.audible).toBe(false);
@@ -184,7 +183,7 @@ describe('shared deck radio',()=>{
   });
   it('ignores a late play result after the room switches off',async()=>{
     let resolve;const {radio,state,audio}=setup(()=>new Promise(done=>resolve=done));
-    radio.receive(decks,true);radio.receive([],true);resolve();await Promise.resolve();expect(state().playing).toBe(false);expect(audio.src).toBe('');
+    radio.receive(true,true);radio.receive(false,true);resolve();await Promise.resolve();expect(state().playing).toBe(false);expect(audio.src).toBe('');
   });
 });
 

@@ -37,8 +37,8 @@ export function createRoomRadio({audio=new Audio(),onState=()=>{},now=()=>perfor
   return {
     snapshot:()=>({muted,volume:level}),
     restore(state){if(!state)return;muted=state.muted===true;if(Number.isFinite(state.volume))level=Math.max(0,Math.min(1,state.volume));applyVolume();emit();},
-    receive(items,joined){
-      const next=joined&&items.some(item=>item.type==='custom_dj_decks'&&Number.isInteger(item.x)&&Number.isInteger(item.z)&&item.on!==false);
+    receive(musicOn,joined){
+      const next=joined&&musicOn===true;
       if(next===active)return;active=next;if(active)void play();else stop();emit();
     },
     unlock:play,

@@ -1,6 +1,7 @@
 import {beforeEach,afterEach,describe,it,expect,vi} from 'vitest';
 import {getFunctionName} from 'convex/server';
 import {createMultiplayer} from '../src/multiplayer.js';
+import {createRoomRadio} from '../src/room-radio.js';
 
 const fake=vi.hoisted(()=>({}));
 vi.mock('convex/browser',()=>({ConvexClient:class{constructor(){return fake.client;}}}));
@@ -24,6 +25,25 @@ const pulses=()=>fake.client.mutation.mock.calls.filter(([fn])=>getFunctionName(
 const watch=async(options={})=>{network=createMultiplayer();await network.resume();await network.watch({onState:vi.fn(),onError:vi.fn(),...options});};
 
 describe('room network budget',()=>{
+  it('keeps music playing after the deck zone leaves view and still receives its power changes',async()=>{
+    const audio={src:'',volume:1,play:vi.fn(async()=>{}),pause:vi.fn(),load:vi.fn(),removeAttribute(){this.src='';},addEventListener:vi.fn()};
+    const radio=createRoomRadio({audio}),onFurniture=vi.fn();
+    await watch({onSignals:({musicOn})=>radio.receive(musicOn,true),onFurniture});
+    const calls=name=>fake.client.onUpdate.mock.calls.filter(([fn])=>getFunctionName(fn)===name);
+    const signals=calls('room:signals')[0][2];
+    calls('room:zoneFurniture')[0][2]([{id:'decks',type:'custom_dj_decks',x:1,z:1}]);
+    signals({musicOn:true});await vi.advanceTimersByTimeAsync(0);
+    calls('room:me')[0][2]({id:'me',zone:'far-away'});
+    network.setZones(['far-away']);
+    calls('room:zoneFurniture').at(-1)[2]([]);
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(network.zones).toEqual(['far-away']);
+    expect([...onFurniture.mock.lastCall[0].zones.values()].flat()).toEqual([]);
+    expect(audio.play).toHaveBeenCalledTimes(1);expect(audio.pause).not.toHaveBeenCalled();
+    expect(calls('room:signals')).toHaveLength(1);
+    signals({musicOn:false});expect(audio.pause).toHaveBeenCalledTimes(1);
+    expect(audio.src).toBe('');radio.close();
+  });
   it('keeps one world chat subscription as camera zones change, retaining distant messages',async()=>{
     const onState=vi.fn();await watch({onState});
     const calls=name=>fake.client.onUpdate.mock.calls.filter(([fn])=>getFunctionName(fn)===name);
