@@ -5,7 +5,7 @@ export function createSpaceNavigator({onTeleport,onClose=()=>{}}){
   const dialog=document.createElement('dialog');
   dialog.className='appearance-dialog agent-dialog spaces-dialog';
   dialog.setAttribute('aria-labelledby','spaces-title');
-  dialog.innerHTML='<header><h1 id="spaces-title">Spaces</h1><button type="button" class="appearance-close" aria-label="Close spaces">×</button></header><div class="agent-body"><p class="spaces-intro">Choose a space to teleport there.</p><ul class="spaces-list" aria-label="Destinations"></ul><p class="spaces-status" role="status" aria-live="polite"></p></div>';
+  dialog.innerHTML='<header><h1 id="spaces-title">Teleport</h1><button type="button" class="appearance-close" aria-label="Close teleport">×</button></header><div class="agent-body"><p class="spaces-intro">Choose a space to teleport there.</p><ul class="spaces-list" aria-label="Destinations"></ul><p class="spaces-status" role="status" aria-live="polite"></p></div>';
   const list=dialog.querySelector('.spaces-list'),status=dialog.querySelector('.spaces-status');
   let spaces=[],busy=false;
   function render(){

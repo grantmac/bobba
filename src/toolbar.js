@@ -79,7 +79,7 @@ export function createToolbar({onRoomEdit,onFurniture,onChat,onTyping,onAppearan
   const furniture=document.createElement('button');furniture.type='button';furniture.className='bar-icon';
   furniture.title='Furniture';furniture.setAttribute('aria-label','Furniture');furniture.onclick=()=>onFurniture();
   furniture.innerHTML='<img src="/assets/bar/catalogue.png" alt="">';icons.append(furniture);
-  const spaces=document.createElement('button');spaces.type='button';spaces.className='bar-icon spaces-toggle';spaces.disabled=true;spaces.title='Teleport to a space';spaces.setAttribute('aria-label','Spaces');spaces.setAttribute('aria-haspopup','dialog');
+  const spaces=document.createElement('button');spaces.type='button';spaces.className='bar-icon spaces-toggle';spaces.disabled=true;spaces.title='Teleport';spaces.setAttribute('aria-label','Teleport');spaces.setAttribute('aria-haspopup','dialog');
   spaces.innerHTML='<img src="/assets/bar/teleport.png" width="32" height="40" alt="">';
   const navigator=onTeleport?createSpaceNavigator({onTeleport,onClose:()=>focusTrigger(spaces)}):null;
   spaces.onclick=()=>{setToolsOpen(false);setMusicOpen(false);setActionsOpen(false);setOpen(false);navigator.open();};
@@ -89,7 +89,7 @@ export function createToolbar({onRoomEdit,onFurniture,onChat,onTyping,onAppearan
   const shareDialog=createShare({onClose:()=>focusTrigger(share)});
   share.onclick=()=>{setToolsOpen(false);setMusicOpen(false);setActionsOpen(false);setOpen(false);shareDialog.open();};
   icons.append(share);
-  for(const [button,label] of [[musicToggle,'Music'],[actionsToggle,'Actions'],[appearance,'My look'],[room,'Edit room'],[furniture,'Furniture'],[spaces,'Spaces'],[share,'Share']]){
+  for(const [button,label] of [[musicToggle,'Music'],[actionsToggle,'Actions'],[appearance,'My look'],[room,'Edit room'],[furniture,'Furniture'],[spaces,'Teleport'],[share,'Share']]){
     const text=document.createElement('span');text.className='toolbar-icon-label';text.textContent=label;button.append(text);
   }
   icons.addEventListener('click',event=>{if(event.target.closest('.bar-icon'))setToolsOpen(false);});
