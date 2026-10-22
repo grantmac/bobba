@@ -1,4 +1,4 @@
-import {createAgentPrompt} from './agent-link.js';
+import {createAgentSetup} from './agent-link.js';
 import {makeDraggable} from './draggable.js';
 import {randomAppearance} from './random-appearance.js';
 import {appearanceChoices,appearanceGender,changeAppearanceGender} from './appearance-options.js';
@@ -129,7 +129,7 @@ export async function createAppearance({prepareImage, onApply, onOpen, onRoomKey
     <ol class="entry-progress" hidden><li>Name</li><li>Character</li><li>Agent</li></ol>
     <section class="entry-intro" hidden><h2>Welcome! Make yourself at home.</h2><p>Choose a name for your character, then pick your look.</p></section>
     <button type="button" class="entry-return" hidden>Use my room key</button>
-    <section class="entry-agent" hidden><h2 class="entry-agent-title">Connect your agent</h2><p class="entry-agent-description">Use an agent to create a space and style it with your own furniture.</p><div class="entry-agent-setup"><button type="button" class="entry-connect agent-copy-prompt">Copy Agent Prompt</button><p class="agent-copy-status" role="status" aria-live="polite"></p><textarea class="agent-prompt" aria-label="Agent setup prompt" readonly spellcheck="false" hidden></textarea><p class="agent-attached" role="status" aria-live="polite" data-connected="false">Not connected</p></div><p class="entry-agent-note">You can also do this later from the catalogue.</p></section>
+    <section class="entry-agent" hidden></section>
     <div class="entry-name" hidden><label for="entry-name">Your name</label><input id="entry-name" autocomplete="nickname" minlength="2" maxlength="20" placeholder="What should we call you?" aria-describedby="entry-name-help entry-name-error"><p class="entry-note" id="entry-name-help"></p><p class="entry-name-error" id="entry-name-error" role="alert"></p></div>
     <div class="appearance-body">
       <div class="appearance-character"><div class="preview-stage"><canvas id="appearance-preview" width="96" height="112" aria-label="Character preview"></canvas></div><div class="turn-controls"><button type="button" aria-label="Turn preview left">◀</button><button type="button" aria-label="Turn preview right">▶</button></div></div>
@@ -219,12 +219,9 @@ export async function createAppearance({prepareImage, onApply, onOpen, onRoomKey
     dialog.querySelector('.appearance-cancel').textContent='Back';
     apply.textContent=step===3?'Enter room':'Continue';
     if(step===3){
-      agentSetup=createAgentPrompt({network:{agents:entry.agents},root:dialog.querySelector('.entry-agent-setup'),onAttached:list=>{
+      agentSetup=createAgentSetup({network:{agents:entry.agents},root:dialog.querySelector('.entry-agent'),enterRoom:true,onAttached:list=>{
         const connected=list.some(agent=>agent.connectedAt!=null);
         dialog.dataset.agentConnected=String(connected);
-        dialog.querySelector('.entry-agent-title').textContent=connected?"You're connected!":'Connect your agent';
-        dialog.querySelector('.entry-agent-description').textContent=connected?'Enter the room to explore and bring your ideas to life with your agent.':'Use an agent to create a space and style it with your own furniture.';
-        dialog.querySelector('.entry-agent-note').textContent=connected?'Your agent will explain what you can create. Head into the room when you’re ready.':'You can also do this later from the catalogue.';
         apply.textContent=connected?'Enter the room':'Enter room';
       }});
       agentSetup.start();

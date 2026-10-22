@@ -13,16 +13,20 @@ document.querySelector('#run').onclick=async()=>{try{
  agent.open();
  const copy=dialog.querySelector('.agent-copy-prompt'),prompt=dialog.querySelector('.agent-prompt');
  assert(copy,'Missing single copy-prompt action');assert(prompt.hidden,'Key shown before it was requested');
+ assert(dialog.querySelector('.entry-agent-title').textContent==='Connect your agent','Catalogue must use the entry connection panel');
  copy.click();await tick();
+ assert(prompt.hidden&&getComputedStyle(prompt).display==='none','Successful copy must keep the prompt hidden');
  assert(dialog.querySelector('.agent-attached').textContent==='Not connected','Copying a key must not claim connection');
  attachedUpdate([{label:'Agent prompt',connectedAt:123}]);assert(dialog.querySelector('.agent-attached').textContent==='Agent connected','Real contact must update connection status');
+ assert(dialog.querySelector('.entry-agent-title').textContent==="You're connected!",'Connected heading missing');
+ assert(getComputedStyle(copy).display==='none','Connected panel must hide the copy action');
  assert(keys===1,'Copy must create one key');assert(copied===prompt.value,'Clipboard differs from displayed prompt');
  assert(copied.includes('https://chat.grantm.ac/api/mcp'),'Prompt must use the hosted MCP endpoint');
  assert(copied.includes('Authorization: Bearer preview-agent-key-not-valid'),'Prompt is missing authentication');
  assert(copied.includes("After status succeeds, tell me you're connected"),"Prompt must ask for a connection confirmation");
- assert(copied.includes("click Enter room")&&copied.includes("Ask what I'd like to create first"),"Prompt must explain the next step and ask what to create");
+ assert(!copied.includes('click Enter room')&&copied.includes('I am already in the room')&&copied.includes("Ask what I'd like to create first"),'Catalogue prompt must know the player is already in the room');
  assert(copied.includes('style its floor and walls')&&copied.includes('turn pictures or ideas into furniture'),'Prompt must explain supported capabilities');
-
+ attachedUpdate([]);assert(getComputedStyle(copy).display!=='none','Disconnecting must restore the copy action');
  copy.click();await tick();assert(keys===1,'Copying again must reuse the same key');
  blocked=true;copy.click();await tick();assert(dialog.querySelector('[role=status]').textContent.includes('Copy the selected prompt'),'Manual copy fallback missing');
  assert(prompt.selectionStart===0&&prompt.selectionEnd===prompt.value.length,'Manual prompt was not selected');
@@ -34,6 +38,7 @@ document.querySelector('#run').onclick=async()=>{try{
  const setup=createAgentPrompt({network,root:inline});setup.start();inline.querySelector('button').click();await tick();
  assert(inline.querySelector('.agent-copy-status').textContent.startsWith('Prompt copied.'),'Inline copied view missing');
  assert(inline.querySelector('.agent-prompt').hidden,'Inline prompt must stay hidden after successful copy');
+ assert(copied.includes('click Enter room'),'Onboarding prompt must still explain how to enter the room');
  attachedUpdate([{label:'Agent prompt',connectedAt:null}]);assert(inline.querySelector('.agent-attached').textContent==='Not connected','Unused key must not show connected');
  attachedUpdate([{label:'Agent prompt',connectedAt:123}]);assert(inline.querySelector('.agent-attached').dataset.connected==='true','Inline indicator must update on agent contact');
  setup.stop();assert(inline.querySelector('.agent-prompt').value==='','Leaving inline setup must clear the key');
