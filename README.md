@@ -26,6 +26,17 @@ The private Grant entry link is kept in `ADMIN-ENTRY.md` (Git-ignored and exclud
 
 Room and furniture state comes only from Convex. The browser remembers appearance preferences and a session token, not an alternative room. Closing the last tab sends a departure signal; a 45-second heartbeat timeout handles crashes or lost connections.
 
+## Zones
+
+The world is a set of zones: the lobby (main room, dance terrace, pool, deck, games lounge and walkway) and every added space. A zone is the unit of everything that costs something per player: presence, chat, voice, furniture storage and drawing. `shared/room-layout.js` names them (`zoneAt`, `zoneTiles`, `zoneBounds`, `zonesIn`), and `ZONE_CAP` bounds how many players a zone holds at once, the lobby included, so being in the world costs what one zone costs, not what the world costs.
+
+- Players carry the zone they stand in (`players.zone`, set by `move` from the destination tile). `presence({zone})`, `chatFeed({token, zone})` and `zoneFurniture({token, zone})` each read one zone's index range, so a move or a message in one space never wakes another's subscribers. Movement updates carry no appearance: `lookVersion` says when to fetch `look({id})` once.
+- Furniture is one row per piece in the `furniture` table, keyed by zone (or `inventory` while picked up). Saves arrive as `editFurniture({changes})`, the pieces that changed (each whole, or `{id, removed: true}`); `convex/lib/furnitureStore.js` checks every zone the changes touch as a complete list, so a piece never straddles two spaces and collisions are exact. The older whole-list `setFurniture` stays for tabs from before zones and only touches the zones its list mentions. The lobby switches (dance floor, last fridge) live in `signals`, apart from the map (`roomMap`: shape, spaces, notes), so neither a drink nor a placed chair re-sends the map to everyone.
+- The client (`src/multiplayer.js` `setZones`) subscribes to the zones the camera can see plus the player's own, drops the rest a moment after they leave view, and draws each space's floor, walkway stretch and back-wall stretch only while it is in view (`src/main.js` `syncSpaces`), with pictures loaded per space. The camera fits the lobby and pans along the chain; the lobby is the drawing origin, so adding a space never shifts what is already drawn. Voice is one LiveKit room per zone (`habbo-room` for the lobby, `habbo-room:<space id>` otherwise) and moves with the player. `room_picture` frames the lobby or one space and makes sure that zone is subscribed and drawn before rendering.
+- Deploying this onto a room from before zones: `join` and the other map mutations schedule `internal.migrate.furniture` when the map still carries a `furniture` array; it moves the pieces into the table, copies the switches into `signals` and zones every player. It can also be run by hand with `npx convex run migrate:furniture`, and is safe to run again. Convex module paths cannot contain hyphens.
+
+What is still world-wide: the map document itself (every client holds the list of spaces; it changes rarely), the walkway and `room_map`'s list of space names, and `setOptions` (Grant reshaping the lobby re-checks every piece). The spaces still chain in one row along the back wall; a two-dimensional arrangement is a layout decision on top of this, not a storage one.
+
 ## Appearance catalogue
 
 The picker now follows the original `figuredata.xml` selectable sets, part mappings, hidden layers, colour channels and palettes:

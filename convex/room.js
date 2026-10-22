@@ -6,7 +6,7 @@ import {POSTERS,STICKY_COLORS,STICKY_LIMIT,STICKY_TEXT_LIMIT,validWallPosition,v
 import {seatFor,isWallItem,canHang} from '../shared/furniture-model.js';
 import {openVisit,closeVisits,closeStaleVisits} from './lib/visits.js';
 import {definitionsFor} from './lib/assets.js';
-import {loadZones,zoneItems,inventoryItems,itemDoc,applyChanges,changesFromList,allItems,replaceAll,ZONE_CHANGE_LIMIT} from './lib/furniture-store.js';
+import {loadZones,zoneItems,inventoryItems,itemDoc,applyChanges,changesFromList,allItems,replaceAll,ZONE_CHANGE_LIMIT} from './lib/furnitureStore.js';
 const SESSION_AGE=30*24*60*60*1000,ADMIN_AGE=12*60*60*1000;
 // A guest name frees up this long after its holder was last seen; Grant is reserved for good.
 const NAME_REUSE_AFTER=4*60*60*1000;

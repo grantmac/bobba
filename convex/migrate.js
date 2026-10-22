@@ -1,7 +1,7 @@
 // One-off moves for a deployment from before zones. Each is safe to run again.
 import {internalMutation} from './_generated/server.js';
 import {layoutFor,zoneAt,MAIN_ZONE} from './lib/rules.js';
-import {replaceAll} from './lib/furniture-store.js';
+import {replaceAll} from './lib/furnitureStore.js';
 // The furniture array on the map becomes one row per piece, zoned by where it stands; the
 // lobby's switches move to `signals`; every player gets the zone they are standing in.
 export const furniture=internalMutation({args:{},handler:async ctx=>{

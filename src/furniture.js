@@ -134,13 +134,21 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     change(()=>{items=pickupWithContents(items,id,true);selected=null;});
     focusRoom();
   };
+  // What a save sends: the pieces that differ from before, each whole, and {id, removed: true}
+  // for the ones that are gone. The server checks only the zones those pieces touch.
+  function changesBetween(before,after){
+    const was=new Map(before.map(item=>[item.id,JSON.stringify(item)])),changes=[];
+    for(const item of after){if(was.get(item.id)!==JSON.stringify(item))changes.push(structuredClone(item));was.delete(item.id);}
+    for(const id of was.keys())changes.push({id,removed:true});
+    return changes;
+  }
   async function change(mutate,record=true){
     if(!editable||saving||!networkSave)return;
     stopWalking();const previous=structuredClone(items),oldHistory=[...history];if(record){history.push(previous);history=history.slice(-10);}mutate();onChanged();render();
     if(networkSave){
       saving=true;render();
       let message='';
-      try{await networkSave(structuredClone(items));}catch(error){items=previous;history=oldHistory;message=error.message;}
+      try{await networkSave(changesBetween(previous,items));}catch(error){items=previous;history=oldHistory;message=error.message;}
       finally{saving=false;render();if(message)panel.querySelector('.furniture-description').textContent=message;}
     }
   }

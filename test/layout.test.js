@@ -47,3 +47,26 @@ test('added spaces chain onto the right of the lounge along the back wall',()=>{
   assert.equal(backWallTiles(layout).length,plain.lounge.width+7);
   assert.ok(backWallTiles(layout).every(([,z])=>z===0));
 });
+
+test('zones: the lobby is one zone and every space another, found without scanning tiles',async()=>{
+  const {zoneAt,zoneTiles,zoneTileSet,zoneBounds,zonesIn,MAIN_ZONE}=await import('../shared/room-layout.js');
+  const spaces=[{id:'a',width:8,depth:8},{id:'b',width:4,depth:8}],layout=roomLayout(main,spaces);
+  const [a,b]=layout.spaces;
+  assert.equal(zoneAt(layout,3,3),MAIN_ZONE);
+  assert.equal(zoneAt(layout,a.x+2,3),'a');
+  assert.equal(zoneAt(layout,b.x,0),'b');
+  // The walkway under the spaces belongs to the lobby, so it never counts against a space's cap.
+  assert.equal(zoneAt(layout,a.x+2,layout.walkway.z),MAIN_ZONE);
+  assert.equal(zoneTiles(layout,'a').length,64);
+  assert.equal(zoneTiles(layout,'b').length,32);
+  assert.equal(zoneTiles(layout,MAIN_ZONE).length+64+32,layout.tiles.length);
+  assert.equal(zoneTileSet(layout,['a','b','a']).size,96);
+  assert.deepEqual(zoneBounds(layout,'b'),{x:b.x,z:0,width:4,depth:8});
+  assert.deepEqual(zoneBounds(layout,MAIN_ZONE),{x:0,z:0,width:layout.baseWidth,depth:layout.depth});
+  assert.deepEqual(zonesIn(layout,{x:a.x+1,z:1,width:2,depth:2}),['a']);
+  assert.deepEqual(zonesIn(layout,{x:a.x+6,z:0,width:4,depth:8}).sort(),['a','b']);
+  assert.deepEqual(zonesIn(layout,zoneBounds(layout,MAIN_ZONE)),[MAIN_ZONE]);
+  // The same shape and spaces give the same layout object back; a change gives a new one.
+  assert.equal(roomLayout(main,spaces),layout);
+  assert.notEqual(roomLayout(main,[...spaces]),layout);
+});

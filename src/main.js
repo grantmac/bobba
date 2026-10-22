@@ -13,7 +13,7 @@ import {createAgentLink} from './agent-link.js';
 import {createStickies} from './stickies.js';
 import {installTouchNavigation} from './touch-navigation.js';
 import {createVoice} from './voice.js';
-import {roomLayout,tileDrop,walkingDrop,tileAtPoint,isPoolWater,pitSeat,backWallTiles,onWalkway,STEP_DOWN,DANCE_ROWS} from '../shared/room-layout.js';
+import {roomLayout,tileDrop,walkingDrop,tileAtPoint,isPoolWater,pitSeat,backWallTiles,onWalkway,STEP_DOWN,DANCE_ROWS,zonesIn,zoneBounds,MAIN_ZONE} from '../shared/room-layout.js';
 import {floorSampler,createSpaceFloor,createMetalWalkway,picturePixels,pictureSampler,wallSegment} from './spaces.js';
 import {renderPicture,startSnapshots} from './snapshot.js';
 import {createDanceFloor} from './dance-floor.js';
@@ -195,7 +195,10 @@ const spacePictures=new Map(),spacePictureLoads=new Map();
 function loadSpacePictures(spaces){
   return Promise.all((spaces??[]).flatMap(s=>[s.floorImageUrl,s.wallImageUrl]).filter(Boolean).map(url=>{
     // A slow picture never holds the room up: after eight seconds the rebuild goes ahead without it.
-    if(!spacePictureLoads.has(url))spacePictureLoads.set(url,new Promise(resolve=>{const image=new Image();image.crossOrigin='anonymous';image.onload=()=>{spacePictures.set(url,image);resolve();};image.onerror=()=>resolve();image.src=url;setTimeout(resolve,8000);}));
+    if(!spacePictureLoads.has(url)){
+      const load=new Promise(resolve=>{const image=new Image();image.crossOrigin='anonymous';image.onload=()=>{spacePictures.set(url,image);resolve();};image.onerror=()=>resolve();image.src=url;setTimeout(resolve,8000);});
+      load.settled=false;load.then(()=>{load.settled=true;});spacePictureLoads.set(url,load);
+    }
     return spacePictureLoads.get(url);
   }));
 }
@@ -215,8 +218,10 @@ function buildRoom(options){
   layout=roomLayout(roomShape.tiles,roomSpaces);mainTiles=new Set(roomShape.tiles.map(([x,z])=>`${x},${z}`));
   walkable=new Set(layout.tiles.map(([x,z])=>`${x},${z}`));
   roomWidth=layout.width;roomDepth=layout.depth;
-  roomCenterX=(layout.extentWidth-roomDepth)*16;CENTER_Y=((layout.extentWidth+roomDepth)*16-116)/2;
+  // The lobby is the origin: adding a space beyond it never shifts what is already drawn.
+  roomCenterX=(layout.baseWidth-roomDepth)*16;CENTER_Y=((layout.baseWidth+roomDepth)*16-116)/2;
   roomGroup.traverse(object=>{object.geometry?.dispose();if(object.material){object.material.map?.dispose();object.material.dispose();}});roomGroup.clear();drawTarget=roomGroup;deckSign=null;
+  for(const id of [...spaceVisuals.keys()])disposeSpace(id);
   const wall=WALLS[options.wall],floor=FLOORS[options.floor];
   const dark='#'+options.wallColor.slice(1).match(/../g).map(v=>Math.max(0,parseInt(v,16)-16).toString(16).padStart(2,'0')).join('');
   const left=surface(`left_wallpart_${wall.type}_a_0_0_0.png`,wall.palette,dark,[[0,16],[32,0],[32,116],[0,132]]);
@@ -272,36 +277,17 @@ function buildRoom(options){
     mesh.scale.setScalar(1/2);mesh.material.map.minFilter=THREE.LinearFilter;mesh.material.map.magFilter=THREE.LinearFilter;
     place(mesh,pitOrigin.x+sofa.left,pitOrigin.y+sofa.top,sofa.width,sofa.height);
   }
-  // Player-added spaces chain on past the lounge: each gets its own floor finish from the room's
-  // floor textures, with the owner's picture laid over it if they uploaded one, and the back wall
-  // carries on behind them to an end cap on the last one.
-  for(const space of layout.spaces){
-    const finish=FLOORS[space.floor]??FLOORS.carpet,image=surface(`flat_floor_${finish.type}_a_0_0_0.png`,finish.palette,space.floorColor,[[65,0],[130,32],[65,65],[0,32]]);
-    const origin=iso(space.x,space.z),picture=spacePictures.get(space.floorImageUrl),cover=space.floorFit==='cover';
-    const pixels=picture&&picturePixels(picture,cover?space.width*64:64,cover?space.depth*64:64);
-    sprite(createSpaceFloor(space.width,space.depth,pictureSampler(floorSampler(image,finish.type===2),pixels,space.floorFit,space.width,space.depth)),origin.x-space.depth*32,origin.y,12);
-  }
-  // Steel walkway along the front of the lounge and spaces, over their front faces at floor level.
+  // The lounge's share of the walkway; each space draws its own stretch when it comes into view.
   if(layout.walkway){
-    const way=layout.walkway,origin=iso(way.x,way.z);
-    sprite(createMetalWalkway(way.width,way.depth),origin.x-way.depth*32,origin.y,12.5);
+    const way=layout.walkway,origin=iso(layout.lounge.x,way.z);
+    sprite(createMetalWalkway(layout.lounge.width,way.depth),origin.x-way.depth*32,origin.y,12.5);
   }
-  // Each space's stretch of the back wall takes that space's wallpaper, colour and picture; the
-  // lounge's stretch stays in the room's own.
-  const backWall=backWallTiles(layout),spaceAt=x=>layout.spaces.find(s=>x>=s.x&&x<s.x+s.width);
+  // The lounge's stretch of the back wall, in the room's own wallpaper; the spaces' stretches are
+  // drawn with each space. The end cap closes the wall here only while there are no spaces.
+  const backWall=backWallTiles(layout);
   for(const [x,z] of backWall){
-    const p=iso(x,z),space=spaceAt(x);
-    let face=right,color=options.wallColor;
-    if(space){
-      color=space.wallColor??options.wallColor;
-      const paper=WALLS[space.wall]??wall,picture=spacePictures.get(space.wallImageUrl);
-      face=surface(`right_wallpart_${paper.type}_a_0_2_0.png`,paper.palette,color,[[0,0],[32,16],[32,133],[0,117]]);
-      if(picture)face=wallSegment(face,picture,space.wallFit,x-space.x,space.width);
-    }
-    // Segments overlap left to right, but all stay below the ceiling lines (82) and hung pieces (95), however far the spaces reach.
-    sprite(face,p.x,p.y-116,50+x/10);
-    polygon([[p.x,p.y-115],[p.x+7,p.y-118],[p.x+39,p.y-102],[p.x+32,p.y-99]],color,82,true);
-    if(x===layout.extentWidth-1)polygon([[p.x+32,p.y-99],[p.x+39,p.y-102],[p.x+39,p.y+14],[p.x+32,p.y+18]],color,81,true);
+    if(x>=layout.lounge.x+layout.lounge.width)continue;
+    backWallSegment(x,z,right,options.wallColor,!layout.spaces.length&&x===layout.extentWidth-1);
   }
   // The main floor's exposed front edge becomes the riser of the lower terrace.
   // The dance floor's open edges get a slate riser with a pale lip, so the terrace reads as a
@@ -354,6 +340,81 @@ function buildRoom(options){
   container.dataset.shape=options.shape;container.dataset.danceStart=String(layout.danceStart);furniture?.roomChanged();stickies?.redraw();resize();
 }
 
+// One back-wall segment: the face, its ceiling line, and the end cap on the last tile.
+// Segments overlap left to right, but all stay below the ceiling lines (82) and hung pieces (95), however far the spaces reach.
+function backWallSegment(x,z,face,color,endCap){
+  const p=iso(x,z);
+  sprite(face,p.x,p.y-116,50+x/10);
+  polygon([[p.x,p.y-115],[p.x+7,p.y-118],[p.x+39,p.y-102],[p.x+32,p.y-99]],color,82,true);
+  if(endCap)polygon([[p.x+32,p.y-99],[p.x+39,p.y-102],[p.x+39,p.y+14],[p.x+32,p.y+18]],color,81,true);
+}
+// Player-added spaces are drawn one at a time, only while the camera can see them, and dropped
+// again when it moves on: the world can hold any number without every tab holding every floor.
+// Each space's key covers everything its drawing depends on, so a restyle redraws just that one.
+const spaceVisuals=new Map();
+const spaceKey=(space,last)=>JSON.stringify([space.x,space.z,space.width,space.depth,space.floor,space.floorColor,space.wall,space.wallColor,space.floorImageUrl,space.floorFit,space.wallImageUrl,space.wallFit,last,roomOptions.wall,roomOptions.wallColor]);
+function disposeSpace(id){
+  const entry=spaceVisuals.get(id);if(!entry)return;
+  entry.group.traverse(object=>{object.geometry?.dispose();if(object.material){object.material.map?.dispose();object.material.dispose();}});
+  scene.remove(entry.group);spaceVisuals.delete(id);
+}
+function buildSpace(space,last){
+  const group=new THREE.Group();scene.add(group);const previous=drawTarget;drawTarget=group;
+  // Its floor finish from the room's floor textures, with the owner's picture laid over it if they uploaded one.
+  const finish=FLOORS[space.floor]??FLOORS.carpet,image=surface(`flat_floor_${finish.type}_a_0_0_0.png`,finish.palette,space.floorColor,[[65,0],[130,32],[65,65],[0,32]]);
+  const origin=iso(space.x,space.z),picture=spacePictures.get(space.floorImageUrl),cover=space.floorFit==='cover';
+  const pixels=picture&&picturePixels(picture,cover?space.width*64:64,cover?space.depth*64:64);
+  sprite(createSpaceFloor(space.width,space.depth,pictureSampler(floorSampler(image,finish.type===2),pixels,space.floorFit,space.width,space.depth)),origin.x-space.depth*32,origin.y,12+space.x/1e5);
+  // Its stretch of the steel walkway along the front.
+  if(layout.walkway){const way=layout.walkway,o=iso(space.x,way.z);sprite(createMetalWalkway(space.width,way.depth),o.x-way.depth*32,o.y,12.5+space.x/1e5);}
+  // Its stretch of the back wall takes its wallpaper, colour and picture; the last space carries the end cap.
+  const wall=WALLS[roomOptions.wall],color=space.wallColor??roomOptions.wallColor,paper=WALLS[space.wall]??wall,wallPicture=spacePictures.get(space.wallImageUrl);
+  const base=surface(`right_wallpart_${paper.type}_a_0_2_0.png`,paper.palette,color,[[0,0],[32,16],[32,133],[0,117]]);
+  for(let x=space.x;x<space.x+space.width;x++){
+    const face=wallPicture?wallSegment(base,wallPicture,space.wallFit,x-space.x,space.width):base;
+    backWallSegment(x,0,face,color,last&&x===layout.extentWidth-1);
+  }
+  drawTarget=previous;
+  return group;
+}
+// Keep exactly the visible spaces drawn, each at its current style. A space whose pictures are
+// still loading is drawn once they arrive (or fail), never holding the others up.
+let visibleZoneIds=new Set([MAIN_ZONE]);
+function syncSpaces(){
+  if(!layout)return;
+  const wanted=new Map();
+  layout.spaces.forEach((space,i)=>{if(visibleZoneIds.has(space.id))wanted.set(space.id,{space,last:i===layout.spaces.length-1});});
+  for(const id of [...spaceVisuals.keys()])if(!wanted.has(id))disposeSpace(id);
+  for(const [id,{space,last}] of wanted){
+    const key=spaceKey(space,last),entry=spaceVisuals.get(id);
+    if(entry?.key===key)continue;
+    if(!picturesReady(space)){loadSpacePictures([space]).then(()=>{if(visibleZoneIds.has(id))syncSpaces();});if(entry)continue;}
+    disposeSpace(id);spaceVisuals.set(id,{key,group:buildSpace(space,last)});
+  }
+}
+const picturesReady=space=>[space.floorImageUrl,space.wallImageUrl].filter(Boolean).every(url=>spacePictures.has(url)||spacePictureLoads.get(url)?.settled);
+// The zones the camera can see, with a margin so a pan reveals drawn floors rather than gaps.
+function visibleZones(){
+  if(!layout)return [MAIN_ZONE];
+  const margin=160,left=camera.left-margin,right=camera.right+margin,top=camera.top+margin,bottom=camera.bottom-margin;
+  const sees=b=>{
+    const corners=[iso(b.x,b.z),iso(b.x+b.width,b.z),iso(b.x,b.z+b.depth),iso(b.x+b.width,b.z+b.depth)];
+    const x0=Math.min(...corners.map(c=>c.x)),x1=Math.max(...corners.map(c=>c.x)),y0=Math.min(...corners.map(c=>c.y))-130,y1=Math.max(...corners.map(c=>c.y))+40;
+    return x1>=left&&x0<=right&&CENTER_Y-y0>=bottom&&CENTER_Y-y1<=top;
+  };
+  const ids=[];
+  if(sees(zoneBounds(layout,MAIN_ZONE)))ids.push(MAIN_ZONE);
+  for(const space of layout.spaces)if(sees(space))ids.push(space.id);
+  return ids;
+}
+let lastZoneKey='';
+function updateVisibleZones(){
+  const ids=visibleZones(),mine=network?.me?.zone;
+  if(mine&&!ids.includes(mine))ids.push(mine);
+  const key=ids.join('|');if(key===lastZoneKey)return;lastZoneKey=key;
+  visibleZoneIds=new Set(ids);
+  syncSpaces();network?.setZones?.(ids);
+}
 let avatarAtlas=null,appearance;
 // One texture per player: every pose frame packed into a grid and selected by UV offset,
 // instead of a separate GPU texture per frame.
@@ -397,12 +458,20 @@ function overCharacter(event) {
 // A seat by id: a furniture seat, or 'pit' for the sunken sofa's ring tile the player stands on.
 // A picture for an agent (src/snapshot.js): the whole room, or one block of tiles with the wall
 // behind it, at two pixels per room pixel (less for a very wide room), as a PNG.
-function takePicture(region){
-  const r=region??{x:0,z:0,width:layout.extentWidth,depth:layout.depth};
-  const top=iso(r.x,r.z),right=iso(r.x+r.width,r.z),left=iso(r.x,r.z+r.depth),bottom=iso(r.x+r.width,r.z+r.depth),margin=12;
-  const bounds={left:left.x-margin,right:right.x+margin,top:CENTER_Y-top.y+124,bottom:CENTER_Y-bottom.y-28-margin};
-  const scale=Math.max(1,Math.min(2,1600/(bounds.right-bounds.left)));
-  return new Promise((resolve,reject)=>renderPicture(renderer,scene,bounds,scale).toBlob(blob=>blob?resolve(blob):reject(new Error('Could not encode the picture.')),'image/png'));
+async function takePicture(region){
+  const r=region??zoneBounds(layout,MAIN_ZONE);
+  // Whatever the region covers must be in this tab, drawn and furnished, even if the camera is elsewhere.
+  const zones=zonesIn(layout,r),release=await network.ensureZones(zones);
+  try{
+    await loadSpacePictures(layout.spaces.filter(s=>zones.includes(s.id)));
+    for(const id of zones)visibleZoneIds.add(id);syncSpaces();
+    const top=iso(r.x,r.z),right=iso(r.x+r.width,r.z),left=iso(r.x,r.z+r.depth),bottom=iso(r.x+r.width,r.z+r.depth),margin=12;
+    const bounds={left:left.x-margin,right:right.x+margin,top:CENTER_Y-top.y+124,bottom:CENTER_Y-bottom.y-28-margin};
+    const scale=Math.max(1,Math.min(2,1600/(bounds.right-bounds.left)));
+    // One frame so furniture that just arrived is positioned before the read-back.
+    await new Promise(resolve=>requestAnimationFrame(resolve));
+    return await new Promise((resolve,reject)=>renderPicture(renderer,scene,bounds,scale).toBlob(blob=>blob?resolve(blob):reject(new Error('Could not encode the picture.')),'image/png'));
+  }finally{release();lastZoneKey='';updateVisibleZones();}
 }
 function seatInfo(id,point){
   if(id!=='pit')return furniture?.seat(id,point)??null;
@@ -454,11 +523,10 @@ function screenCell(event){
 // The space whose stretch of back wall is under a room point, if any: the wall face of tile (x,0)
 // is the parallelogram 32 wide and 117 tall whose top edge drops 16 px across it.
 function spaceWallAt(point){
-  for(const space of layout?.spaces??[])for(let x=space.x;x<space.x+space.width;x++){
-    const p=iso(x,0),u=(point.x-p.x)/32,height=p.y+u*16-point.y;
-    if(u>=0&&u<1&&height>=0&&height<=117)return space;
-  }
-  return null;
+  if(!layout)return null;
+  const x=Math.floor((point.x+roomCenterX)/32),p=iso(x,0),u=(point.x-p.x)/32,height=p.y+u*16-point.y;
+  if(!(u>=0&&u<1&&height>=0&&height<=117))return null;
+  return layout.spaces.find(space=>x>=space.x&&x<space.x+space.width)??null;
 }
 function screenPoint(event){
   const r=container.getBoundingClientRect();
@@ -587,9 +655,10 @@ function resize(){
   const w=container.clientWidth,h=container.clientHeight;
   const reserved=editingRoom&&w>1000?550:0;
   const mobile=matchMedia('(pointer: coarse)').matches||w<=640;
-  const boundsWidth=layout?.extentWidth??roomWidth;
+  // The default view fits the lobby; the spaces beyond it are reached by panning.
+  const fitWidth=layout?.baseWidth??roomWidth,boundsWidth=layout?.extentWidth??roomWidth;
   // Phones start at native pixel size and pan around the room rather than shrinking it to fit.
-  const fit=Math.max(mobile?1:0,Math.min(1.5,(w-reserved)/((boundsWidth+roomDepth)*32+(mobile?80:90)),h/((boundsWidth+roomDepth)*16+(mobile?130:160))));
+  const fit=Math.max(mobile?1:0,Math.min(1.5,(w-reserved)/((fitWidth+roomDepth)*32+(mobile?80:90)),h/((fitWidth+roomDepth)*16+(mobile?130:160))));
   const pixelRatio=Math.min(window.devicePixelRatio,3);lastFit=fit;
   renderer.setPixelRatio(pixelRatio);
   // Every zoom level is a whole number of device pixels per room pixel, so nearest-neighbour
@@ -599,14 +668,17 @@ function resize(){
   // Only the untouched default view rounds down; any chosen zoom rounds to its nearest step.
   const steps=zoom===1?Math.floor(physicalScale+1e-6):Math.round(physicalScale);
   displayScale=Math.max(1,steps)/pixelRatio;
-  panX=Math.max(-((boundsWidth+roomDepth)*32*displayScale+w)/2+60,Math.min(((boundsWidth+roomDepth)*32*displayScale+w)/2-60,panX));
-  panY=Math.max(-((boundsWidth+roomDepth)*16*displayScale+h)/2+60,Math.min(((boundsWidth+roomDepth)*16*displayScale+h)/2-60,panY));
+  // Panning may run to the far end of the last space, however far the chain reaches.
+  const spread=(boundsWidth-fitWidth)*32*displayScale;
+  panX=Math.max(-((fitWidth+roomDepth)*32*displayScale+w)/2+60-spread,Math.min(((fitWidth+roomDepth)*32*displayScale+w)/2-60,panX));
+  panY=Math.max(-((boundsWidth+roomDepth)*16*displayScale+h)/2+60,Math.min(((fitWidth+roomDepth)*16*displayScale+h)/2-60,panY));
   viewOffsetX=Math.round((w/2+panX-reserved/2)*pixelRatio)/pixelRatio-w/2;
   viewOffsetY=Math.round((h/2+panY-CENTER_Y*displayScale)*pixelRatio)/pixelRatio-h/2+CENTER_Y*displayScale;
   camera.left=(-w/2-viewOffsetX)/displayScale;camera.right=(w/2-viewOffsetX)/displayScale;
   camera.top=(h/2+viewOffsetY)/displayScale;camera.bottom=(-h/2+viewOffsetY)/displayScale;camera.updateProjectionMatrix();
   renderer.setSize(w,h);
   const rect=container.getBoundingClientRect();view.halfW=w/2;view.halfH=h/2;view.top=rect.top;view.left=rect.left;
+  updateVisibleZones();
 }
 function updateViewport(){
   const viewport=window.visualViewport;
@@ -657,10 +729,11 @@ function updatePeers(players){
       peer={mesh,label,atlas:null,carryTextures:null,carryLoading:null,version:0,lookKey:''};peers.set(data.id,peer);
     }
     peer.data=data;
-    const key=JSON.stringify(data.look);
+    // Movement updates carry no appearance: it is fetched once per version and kept.
+    const key=data.look?JSON.stringify(data.look):`v${data.lookVersion}`;
     if(peer.lookKey!==key){
       peer.lookKey=key;const version=++peer.version;
-      appearance.frames(data.look).then(frames=>{
+      (data.look?Promise.resolve(data.look):network.look(data.id,data.lookVersion)).then(look=>appearance.frames(look)).then(frames=>{
         if(version!==peer.version)return;
         peer.atlas?.dispose();peer.atlas=makeAtlas(frames);peer.frameKey='';peer.mesh.visible=true;
         peer.carryTextures?.dispose();peer.carryTextures=null;peer.carryLoading=null;
@@ -732,7 +805,7 @@ function animate(now){
   if(blimp&&blimpMesh&&layout){
     // The blimp crosses behind the room, high above the walls.
     if(blimp.draw(now,reducedMotion.matches))blimpMesh.material.map.needsUpdate=true;
-    const span=(layout.extentWidth+roomDepth)*32,spot=reducedMotion.matches?{x:span/4,y:-340+span/8}:blimp.position(network?.now()??Date.now(),span);
+    const span=(layout.baseWidth+roomDepth)*32,spot=reducedMotion.matches?{x:span/4,y:-340+span/8}:blimp.position(network?.now()??Date.now(),span);
     blimpMesh.visible=!!spot;
     if(spot)place(blimpMesh,Math.round(spot.x-roomCenterX),Math.round(spot.y),blimp.width,blimp.height);
   }
@@ -774,7 +847,8 @@ try{
     furniture?.roomChanged(committed);ensureFreeTile();
     editingRoom=false;resize();container.focus({preventScroll:true});
   }});
-  roomSpaces=initialRoom.room.spaces??[];await loadSpacePictures(roomSpaces);buildRoom(roomEditor.initial);
+  // Spaces draw themselves as the camera reaches them; nothing waits on their pictures.
+  roomSpaces=initialRoom.room.spaces??[];buildRoom(roomEditor.initial);
   // Restore the camera from an update snapshot before anything is drawn, so nothing jumps.
   const earlyView=peekUpdateSession()?.view;
   if(earlyView&&[earlyView.zoom,earlyView.panX,earlyView.panY].every(Number.isFinite)){zoom=earlyView.zoom;panX=earlyView.panX;panY=earlyView.panY;viewRestored=true;resize();}
@@ -832,13 +906,12 @@ try{
     let stopPreview;
     await new Promise((resolve,reject)=>{
       let roomKey='',furnitureKey='';
+      // Before joining, the lobby alone is live: its map, switches, furniture and people.
       stopPreview=network.preview(state=>{
         receiveDanceFloor(state.room.danceFloorOn);receiveFridge(state.room.fridge);
-        const rk=JSON.stringify([state.room.options,state.room.spaces??[]]),fk=state.room.revision;
-        // Furniture lands only after the room it belongs to is built: a resized space moves what hangs on the spaces after it.
-        const applyFurniture=()=>{if(fk!==furnitureKey){furnitureKey=fk;furniture.receive(state.room.furniture);positionAwayPoster();positionDeckSign();}};
-        if(rk!==roomKey){roomKey=rk;const spaces=state.room.spaces??[],options=state.room.options;loadSpacePictures(spaces).then(()=>{if(roomKey!==rk)return;roomSpaces=spaces;roomEditor.receive(options);applyFurniture();});}
-        else applyFurniture();
+        const rk=JSON.stringify([state.room.options,state.room.spaces??[]]),fk=JSON.stringify(state.room.furniture);
+        if(rk!==roomKey){roomKey=rk;roomSpaces=state.room.spaces??[];roomEditor.receive(state.room.options);}
+        if(fk!==furnitureKey){furnitureKey=fk;furniture.receive(state.room.furniture);positionAwayPoster();positionDeckSign();}
         receiveStickies(state.room.stickies);
         updatePeers(state.players);resolve();
       },message=>reject(new Error(message)));
@@ -858,29 +931,31 @@ try{
   viewRestored=viewRestored||!!previousUpdate?.view;
   network.whiteboard.all().then(all=>{whiteboard.load(all);network.whiteboard.watch(all.serial,update=>whiteboard.receive(update));}).catch(error=>toolbar.status(error.message));
   stickies.connect(admin);
-  furniture.connect({admin,me:network.me.id,onSave:items=>network.furniture(items),onPower:(id,on)=>network.deckPower(id,on),onError:message=>toolbar.status(message)});
-  if(import.meta.env.DEV)window.__room={get centerY(){return CENTER_Y;},iso,get visuals(){return furniture.debugVisuals();},get avatar(){return {order:avatar.renderOrder,x:position.x,z:position.z};},get peers(){return [...peers.values()].map(p=>({name:p.data.name,order:p.mesh.renderOrder,seat:p.data.seatId?.slice(0,6)??null}));}};
+  furniture.connect({admin,me:network.me.id,onSave:changes=>network.furniture(changes),onPower:(id,on)=>network.deckPower(id,on),onError:message=>toolbar.status(message)});
+  if(import.meta.env.DEV)window.__room={get centerY(){return CENTER_Y;},iso,get zones(){return {subscribed:network.zones,visible:[...visibleZoneIds],drawn:[...spaceVisuals.keys()]};},get visuals(){return furniture.debugVisuals();},get avatar(){return {order:avatar.renderOrder,x:position.x,z:position.z};},get peers(){return [...peers.values()].map(p=>({name:p.data.name,order:p.mesh.renderOrder,seat:p.data.seatId?.slice(0,6)??null}));}};
   network.assets.watch(list=>furniture.setAssets(list),message=>toolbar.status(message));
   startSnapshots({captures:network.captures,capture:takePicture,onStatus:message=>toolbar.status(message)});
   toolbar.setAdmin(admin);
-  let roomKey='',furnitureKey='',ownLook=JSON.stringify(network.me.look),lookVersion=0;
+  let roomKey='',ownLook=JSON.stringify(network.me.look),lookVersion=0,ownZone=network.me.zone;
   const seenMessages=new Set();
   await new Promise((resolve,reject)=>{
     let first=true;
-    // Room contents (furniture, options, stickies) come on their own subscription so player
-    // movement updates no longer carry the whole room.
-    const onRoom=room=>{
-      receiveDanceFloor(room.danceFloorOn);receiveFridge(room.fridge);
-      // The server bumps room.revision on every furniture, power and options change, so that one number stands in for the whole list.
-      const nextRoom=JSON.stringify([room.options,room.spaces??[]]),nextFurniture=room.revision;
-      // Furniture lands only after the room it belongs to is built: a resized space moves what hangs on the spaces after it.
-      const applyFurniture=()=>{if(nextFurniture!==furnitureKey){furnitureKey=nextFurniture;furniture.receive(room.furniture);positionAwayPoster();positionDeckSign();radio.receive(room.furniture,true);}};
-      if(nextRoom!==roomKey){roomKey=nextRoom;const spaces=room.spaces??[],options=room.options;loadSpacePictures(spaces).then(()=>{if(roomKey!==nextRoom)return;roomSpaces=spaces;roomEditor.receive(options);applyFurniture();});}
-      else applyFurniture();
-      receiveStickies(room.stickies);
+    // The map (shape, spaces, notes), the lobby switches and the furniture of the zones in view
+    // each arrive on their own subscription, so movement never carries any of them.
+    const onMap=map=>{
+      const nextRoom=JSON.stringify([map.options,map.spaces??[]]);
+      if(nextRoom!==roomKey){roomKey=nextRoom;roomSpaces=map.spaces??[];roomEditor.receive(map.options);}
+      receiveStickies(map.stickies);
     };
-    network.watch(state=>{
+    const onSignals=({danceFloorOn,fridge})=>{receiveDanceFloor(danceFloorOn);receiveFridge(fridge);};
+    const onFurniture=({zones,inventory})=>{
+      const items=[...[...zones.values()].flat(),...inventory];
+      furniture.receive(items);positionAwayPoster();positionDeckSign();radio.receive(items,true);
+    };
+    network.watch({onState:state=>{
       selfPlayer=state.me;updatePeers(state.players);
+      // Crossing into another zone moves the voice call with the player and keeps that zone in view.
+      if(state.me.zone!==ownZone){ownZone=state.me.zone;voice.rezone();lastZoneKey='';updateVisibleZones();}
       const nextLook=JSON.stringify(state.me.look);
       if(nextLook!==ownLook){ownLook=nextLook;const version=++lookVersion;appearance.useLook(state.me.look).then(frames=>{if(version===lookVersion)setAppearance(frames);}).catch(error=>toolbar.status(error.message));}
       for(const message of state.messages){
@@ -895,7 +970,8 @@ try{
       // Two frames later the restored avatar and furniture have been drawn at least once.
       requestAnimationFrame(()=>requestAnimationFrame(liftVeil));
       if(first){first=false;resolve();}
-    },message=>{voice.leave();radio.close();toolbar.setVoiceEnabled(false);toolbar.status(message);if(first)reject(new Error(message));},onRoom,state=>pong?.receive(state));
+    },onError:message=>{voice.leave();radio.close();toolbar.setVoiceEnabled(false);toolbar.status(message);if(first)reject(new Error(message));},onMap,onSignals,onFurniture,onPong:state=>pong?.receive(state)});
+    lastZoneKey='';updateVisibleZones();
   });
   // Everyone hears the room: connect listen-only unless a pre-reload snapshot says they had left.
   if(previousUpdate?.voice)void voice.restore(previousUpdate.voice);else void voice.listen();

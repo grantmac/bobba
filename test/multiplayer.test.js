@@ -6,7 +6,7 @@ import {heartbeat as heartbeatFunction} from '../convex/room.js';
 import {DEFAULT_ROOM,validateLook} from '../convex/lib/rules.js';
 import appearanceCatalog from '../public/assets/appearance/catalog.json';
 import {furniture} from '../convex/lib/catalog.js';
-import {docItem} from '../convex/lib/furniture-store.js';
+import {docItem} from '../convex/lib/furnitureStore.js';
 const modules=import.meta.glob('../convex/**/*.js');
 const look={hair:{model:'1',color:'#624631'},skin:{model:'1',color:'#e8b18a'},top:{model:'1',color:'#6b8c64'},bottom:{model:'1',color:'#55677e'},shoes:{model:'1',color:'#42454c'}};
 const token='a'.repeat(64),adminToken='b'.repeat(64),otherToken='c'.repeat(64),secret='test-entry-only';

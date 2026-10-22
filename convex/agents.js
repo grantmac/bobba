@@ -5,7 +5,7 @@ import {v} from 'convex/values';
 import {fail,layoutFor,validateSpace,validateSpaceStyle,isPlaced,cells,atTime,playerTiles,zonePlayers,zonesPlayers,MAIN_ZONE} from './lib/rules.js';
 import {backWallTiles} from '../shared/room-layout.js';
 import {ASSET_CATEGORIES,ASSET_LIMIT_PER_PLAYER,assetType,assetCatalogueEntry,definitionsFor} from './lib/assets.js';
-import {loadZones,zoneItems,ownedItems,itemDoc,applyChanges,shiftItems} from './lib/furniture-store.js';
+import {loadZones,zoneItems,ownedItems,itemDoc,applyChanges,shiftItems} from './lib/furnitureStore.js';
 import {floorColors} from './lib/catalog.js';
 import {playerFor} from './room.js';
 import {isWallItem} from '../shared/furniture-model.js';

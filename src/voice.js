@@ -70,6 +70,13 @@ export function createVoice({credentials,onState=()=>{},onSpeaking=()=>{},loadSD
     if(old)void old.disconnect().catch(()=>{});
   }
   function leave(){enabled=false;cancelRetry();disconnect();message='';update();}
+  // The player crossed into another zone: each zone is its own call, so come back on the new one
+  // with the same microphone choice.
+  function rezone(){
+    if(!enabled)return;
+    wantMic=!!room?.localParticipant?.isMicrophoneEnabled||wantMic;
+    cancelRetry();disconnect();retryCount=0;message='';update();void connect();
+  }
   // Try again after a growing pause; a hidden tab waits until it is visible instead.
   function scheduleRetry(){
     if(!enabled||retryPending)return;retryPending=true;
@@ -148,7 +155,7 @@ export function createVoice({credentials,onState=()=>{},onSpeaking=()=>{},loadSD
   button('audio').onclick=async()=>{try{await room?.startAudio();message='';}catch{message='Sound could not start. Please try again.';}update();};
   window.addEventListener('pagehide',leave);
   update();
-  return {open(){panel.hidden=!panel.hidden;},leave,
+  return {open(){panel.hidden=!panel.hidden;},leave,rezone,
     // Everyone in the room is on the call from the moment they are in; the mic stays opt-in.
     listen(){enabled=true;retryCount=0;return connect();},
     get busy(){return phase==='connecting'||phase==='reconnecting'||micBusy;},

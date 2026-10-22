@@ -39,7 +39,7 @@ const TOOLS=[
   {name:'set_seat',description:'Fix where an avatar sits on one of the player\'s built seats (kind seat) and how high, without rebuilding it: the tile within the footprint and the seat top\'s height in pixels, so a figure sits on a stool top rather than beside or inside it. clear: true returns the piece to seating on every tile at chair height. Open rooms pick it up at once.',
     inputSchema:object({asset_id:{type:'string',description:'From my_assets or submit_asset'},...seatOptions,clear:{type:'boolean'}},['asset_id'])},
   {name:'delete_asset',description:'Delete a piece the player built, removing any placed copies.',inputSchema:object({asset_id:{type:'string'}},['asset_id'])},
-  {name:'room_map',description:'The room floor: areas with their tiles (and whether each is free), wall segments for wall pieces (x, z, side, rotation), and placed furniture.',inputSchema:object({})},
+  {name:'room_map',description:'The room floor: the lobby areas with their tiles (and whether each is free), every space by name and position, and, for the lobby and the player\'s own spaces (the only places the agent can build), their tiles, wall segments for wall pieces (x, z, side, rotation) and placed furniture.',inputSchema:object({})},
   {name:'room_picture',description:'See the room as players see it: a PNG rendered just now by a tab that has the room open (the player usually does; if nobody does, it says so and the player should open the site). focus "mine" frames the player\'s own space, "space" frames space_id, "room" shows everything. Call it after placing, moving or restyling to check the result and describe it to the player.',
     inputSchema:object({focus:{type:'string',enum:['mine','space','room'],default:'mine'},space_id:{type:'string',description:'With focus "space": the space to frame, from room_map'}})},
   {name:'place',description:'Place one of the player\'s pieces on a free tile (x, z from room_map). Wall pieces take the wall tile plus rotation 2 (left wall) or 4 (right wall), with u (0.25-0.75 along the tile) and height (26-88 px up the wall).',
@@ -116,7 +116,7 @@ const HANDLERS={
   async place({asset_id,...rest},{token}){return {...await call('mutation',api.agents.place,{agentToken:token,assetId:asset_id,...rest}),then:'Call room_picture to see it in place.'};},
   // Waits for an open room tab to render and upload the picture (convex/captures.js), then returns it as image content.
   async room_picture({focus='mine',space_id},{token,origin}){
-    let region=null,label='the whole room';
+    let region=null,label='the lobby';
     if(focus!=='room'){
       const map=await call('query',api.agents.map,{agentToken:token}),space=focus==='space'?map.spaces.find(s=>s.id===space_id):map.spaces.find(s=>s.mine);
       if(!space)throw new Error(focus==='space'?'No space with that id.':'The player has no space yet: use focus "room", or add one.');
