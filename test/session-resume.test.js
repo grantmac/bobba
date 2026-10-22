@@ -21,11 +21,14 @@ describe('restoring a remembered session',()=>{
   it.each([false,true])('opens the agent’s character regardless of a remembered session (%s)',async remembered=>{
     if(!remembered)storage.clear();
     const code='c'.repeat(64),nextToken='d'.repeat(64),replaceState=vi.fn();
+    const pending=new Map([['habbo-room-pairing','e'.repeat(64)]]);
+    vi.stubGlobal('sessionStorage',{getItem:k=>pending.get(k)??null,removeItem:k=>pending.delete(k)});
     vi.stubGlobal('history',{replaceState});
     vi.stubGlobal('location',{hash:`#enter=${code}`,origin:'https://chat.grantm.ac',pathname:'/',search:''});
     client.mutation.mockResolvedValue({token:nextToken,player});
     const network=createMultiplayer();
     expect(replaceState).toHaveBeenCalledWith(null,'','/');
+    expect(network.pairing.code).toBe('');expect(pending.size).toBe(0);
     expect(await network.resume()).toEqual(player);
     expect(client.mutation).toHaveBeenCalledWith(api.agentLogin.consume,{code,origin:'https://chat.grantm.ac'});
     expect(storage.get(key)).toBe(nextToken);expect(network.me).toEqual(player);
