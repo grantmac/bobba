@@ -1,0 +1,60 @@
+<!doctype html><meta charset="utf-8"><title>Furniture programs verification</title>
+<style>body{font:16px system-ui;background:#222;color:#eee;padding:30px}li{margin:12px}iframe{display:none}</style>
+<h1>Furniture programs</h1><p id="result">Running…</p><ol id="checks"></ol><canvas id="preview" width="480" height="180"></canvas>
+<script type="module">
+import {createProgramSandbox} from '/src/asset-program-runtime.js';
+import {spinningChairProgram} from '/shared/program-examples.js';
+import {createFurniture} from '/src/furniture.js';
+import {prepareImage} from '/src/sprite-image.js';
+const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+const assert=(value,message)=>{if(!value)throw Error(message);};
+const check=message=>{const li=document.createElement('li');li.textContent='PASS: '+message;document.querySelector('#checks').append(li);};
+const world={item:{id:'chair',type:'asset_demo',x:0,z:0,direction:2,on:true},occupants:[{id:'person',direction:2}],state:{n:0},revision:0,serial:0,events:[],time:250,reducedMotion:false,isHost:true};
+function start(source){
+ const frames=[],errors=[],saved=[];
+ const runtime=createProgramSandbox({program:{source},views:[0,2,4,6],onVisual:v=>frames.push(v),onError:e=>errors.push(e),onSave:async(state,revision)=>{saved.push(state);return {revision:revision+1};}});
+ return {runtime,frames,errors,saved};
+}
+async function until(fn,label){for(let i=0;i<100;i++){if(fn())return;await wait(50);}throw Error('Timed out: '+label);}
+try{
+ const chair=start(spinningChairProgram);chair.runtime.update(world);
+ await until(()=>chair.frames.length||chair.errors.length,'dynamic import');assert(!chair.errors.length,chair.errors[0]);
+ assert(chair.frames.at(-1).direction===4&&chair.frames.at(-1).carryOccupants,'chair did not carry occupant');
+ chair.runtime.update({...world,time:500});await until(()=>chair.frames.at(-1)?.direction===6,'spinning');
+ chair.runtime.update({...world,item:{...world.item,on:false},time:750});await until(()=>chair.frames.at(-1)?.animation===false,'power');
+ assert(chair.frames.at(-1).direction===2,'power did not stop rotation');
+ chair.runtime.update({...world,occupants:[],time:1000});await wait(100);assert(chair.frames.at(-1).direction===2,'empty chair spins');
+ chair.runtime.update({...world,reducedMotion:true,time:1250});await wait(100);assert(chair.frames.at(-1).direction===2,'reduced motion ignored');
+ check('Live module import, occupied spin, carried avatar direction, power off, stand, reduced motion');chair.runtime.dispose();
+ const state=start(`export default function(api){let count=0;api.on('tick',()=>api.setVisual({offsetX:++count}));api.on('interact',async()=>{if(api.isHost)await api.saveState({n:api.state.n+1});});}`);
+ state.runtime.update(world);await until(()=>state.frames.length||state.errors.length,'state init');assert(!state.errors.length,state.errors[0]);
+ state.runtime.update({...world,time:500,serial:1,events:[{serial:1,at:500,playerId:'person'}]});await until(()=>state.saved.length,'save');await until(()=>state.frames.length===2,'second frame');
+ assert(state.frames[1].offsetX===2,'module reloaded between ticks');assert(state.saved[0].n===1,'state was not saved');
+ check('Module closure survives updates; interaction saves per-instance state');state.runtime.dispose();
+ const isolated=start(`export default async function(api){let blocked=false;try{await fetch('https://example.com')}catch{blocked=true}api.setVisual({offsetX:blocked&&typeof document==='undefined'&&typeof localStorage==='undefined'?7:0});}`);
+ isolated.runtime.update(world);await until(()=>isolated.frames.length||isolated.errors.length,'isolation');assert(!isolated.errors.length,isolated.errors[0]);assert(isolated.frames[0].offsetX===7,'network or origin storage available');check('Program cannot fetch or access document/localStorage');isolated.runtime.dispose();
+ const broken=start('export default function(){');broken.runtime.update(world);await until(()=>broken.errors.length,'syntax error');check('Syntax errors stop only the broken instance');
+ const loop=start('export default function(){while(true){}}');loop.runtime.update(world);await until(()=>loop.errors.length,'infinite loop');check('Infinite loop terminated while room remains responsive');
+ await wait(100);assert(document.querySelectorAll('iframe').length===0,'runtime iframe leaked');check('Workers and frames cleaned up');
+ const catalogue=await (await fetch('/assets/furniture/catalog.json')).json();
+ const def={...catalogue.find(d=>d.id==='chair_norja'),id:'asset_demo',name:'Spinning chair',owner:'person',switchable:true,program:{apiVersion:1,revision:1,source:spinningChairProgram,initialState:{}}};
+ let items=[{id:'chair',type:def.id,x:0,z:0,rotation:2,owner:'person'},{id:'empty',type:def.id,x:3,z:0,rotation:2,owner:'person'}],people=[{id:'person',seatId:'chair',moving:false,direction:2}];
+ const meshes=[],canvas=document.querySelector('#preview'),ctx=canvas.getContext('2d');
+ const furniture=await createFurniture({initialItems:items,initialAssets:[def],prepareImage,worldPoint:(x,z)=>({x:(x-z)*32,y:(x+z)*16}),isTile:()=>true,getAvatar:()=>({x:9,z:9}),stopWalking(){},onChanged(){},onSit(){},focusRoom(){},markTiles(){},programPlayers:()=>people,programMe:()=>null,
+   makeVisual(canvas){const mesh={canvas,material:{map:{}}};meshes.push(mesh);return mesh;},disposeVisual(mesh){meshes.splice(meshes.indexOf(mesh),1);},positionVisual(mesh,x,y,w,h,order){Object.assign(mesh,{x,y,w,h,renderOrder:order});}});
+ furniture.receivePrograms([]);
+ await until(()=>{furniture.animate(250);return furniture.seat('chair')?.programDirection===4;},'renderer chair spin');
+ assert(furniture.seat('empty').programDirection===2,'empty copy followed occupied copy');
+ ctx.fillStyle='#aaa98f';ctx.fillRect(0,0,480,180);for(const mesh of meshes)ctx.drawImage(mesh.canvas,mesh.x*2+100,mesh.y*2+75,mesh.w*2,mesh.h*2);
+ check('Real furniture renderer rotates occupied chair and avatar independently of empty copy');
+ items=items.map(i=>i.id==='chair'?{...i,on:false}:i);furniture.receive(items);
+ await until(()=>{furniture.animate(500);return furniture.seat('chair')?.programDirection===2;},'renderer power off');
+ furniture.setAssets([{...def,program:{...def.program,revision:2,source:'export default function(api){api.setVisual({direction:0,carryOccupants:true,offsetX:12})}'}}]);
+ await until(()=>{furniture.animate(750);return furniture.seat('chair')?.programDirection===0;},'renderer hot replacement');
+ assert(furniture.seat('chair').offsetX===12,'occupant did not follow offset');
+ check('Hot replacement changes existing copies without reloading sprites or room');
+ furniture.receive(items.map(i=>({...i,x:null,z:null})));await wait(100);assert(document.querySelectorAll('iframe').length===0,'pickup leaked workers');
+ check('Picking up actual furniture disposes its programs');furniture.disposePrograms();
+ document.querySelector('#result').textContent='PASS: all furniture program checks';
+}catch(error){document.querySelector('#result').textContent='FAIL: '+error.message;console.error(error);}
+</script>

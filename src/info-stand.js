@@ -14,7 +14,7 @@ export async function createInfoStand(prepareImage){
   const clearPortrait=()=>{lastImage=null;portrait.getContext('2d').clearRect(0,0,96,112);};
   return {
     get selected(){return selected;},
-    select(player){selected=player.id;showing++;name.textContent=player.name;by.textContent='';panel.hidden=false;},
+    select(player){selected=player.id;showing++;name.textContent=player.name;by.textContent=player.kind==='bot'?'Room bot · reads typed chat':'';panel.hidden=false;},
     // A built piece: name on the bar, builder underneath, catalogue icon on the plate (pixel-scaled to fit).
     inspect({name:title,by:builder,icon}){
       selected=null;const token=++showing;name.textContent=title;by.textContent=builder?`Built by ${builder}`:'';panel.hidden=false;clearPortrait();

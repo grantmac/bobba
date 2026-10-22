@@ -103,7 +103,27 @@ and `switchable: true` if players should be able to click it off and on
 (off freezes it on its first frame). Its builder clicks it to select it and
 uses the Power button instead.
 
-## 6. Seeing the room
+## 6. Furniture that runs code
+
+When the player wants custom behaviour, attach a JavaScript program to the
+asset. Call `program_api` first for the complete API and spinning-chair example.
+Use `get_program` before editing existing code, then `set_program` with
+`asset_id`, a self-contained ES module as `source`, optional `initial_state`,
+and `expected_revision` from `get_program`. The default export receives the
+furniture API. This supports arbitrary logic using ticks, clicks, power,
+seating events, visual direction/offset/opacity/animation, occupant carry,
+and per-copy shared state. It cannot fetch remote code or access the game DOM.
+
+Programs load live without a room reload and stay alive between events. Each
+placed copy has its own state. Editing resets copies to the new defaults;
+`source: null` removes the program. Power is available on programmed pieces;
+clicks and the Use button dispatch interactions. For a spinning chair use a
+1×1 seat with four views and `carryOccupants: true`. Use synchronized time for
+animation, and only save shared state when `api.isHost`; await saves, catch
+errors, and do not save more than once per second. Verify the behaviour in the
+room; `room_picture` can check appearance but cannot prove motion from one frame.
+
+## 7. Seeing the room
 
 You cannot see the game directly, but `room_picture` returns a PNG of it as
 players see it, rendered just now by a browser tab that has the room open
@@ -114,7 +134,7 @@ picture when the user asks how it looks. If it reports that no tab answered,
 ask the user to open https://chat.grantm.ac and try again; never claim to
 have checked when you have not.
 
-## 7. Adding floor
+## 8. Adding floor
 
 A player's pieces can only be placed inside a space they own (floor pieces
 on its tiles, wall pieces on its stretch of the back wall), so a player with

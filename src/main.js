@@ -8,11 +8,13 @@ import { createFurniture } from './furniture.js';
 import { createInfoStand } from './info-stand.js';
 import { createChat } from './chat.js';
 import { createMultiplayer, samplePlayer } from './multiplayer.js';
+import {createRoomKey} from './room-key.js';
 import {createAwayPoster} from './away-poster.js';
 import {createAgentLink} from './agent-link.js';
 import {createStickies} from './stickies.js';
 import {installTouchNavigation} from './touch-navigation.js';
 import {createVoice} from './voice.js';
+import {createBotPanel} from './bot-panel.js';
 import {roomLayout,tileDrop,walkingDrop,tileAtPoint,isPoolWater,pitSeat,backWallTiles,onWalkway,STEP_DOWN,DANCE_ROWS} from '../shared/room-layout.js';
 import {floorSampler,createSpaceFloor,createMetalWalkway,picturePixels,pictureSampler,wallSegment} from './spaces.js';
 import {renderPicture,startSnapshots} from './snapshot.js';
@@ -109,7 +111,7 @@ function centreViewOnAvatar(){
 }
 const iso = (x, z) => ({ x: (x-z)*32-roomCenterX, y: (x+z)*16 });
 const valid = (x, z) => walkable.has(`${x},${z}`);
-let furniture,network,toolbar,selfPlayer,infoStand,stickies,voice;
+let furniture,network,toolbar,selfPlayer,infoStand,stickies,voice,botPanel;
 let grantOnline=false,awayPoster,deckSign=null,deckSignImages=null,leftWallSet=new Set(),rightWallSet=new Set();
 let danceFloorOn=true,danceControls,discoBall,discoMesh,radio;
 let fridgeSeen=0,stickiesKey='';
@@ -427,7 +429,7 @@ function peerAt(event){
     return point.x>=p.x-26&&point.x<=p.x+26&&point.y>=p.y-90&&point.y<=p.y+10;
   });
 }
-function selectPeer(peer){furniture.close();infoStand.select(peer.data);container.focus({preventScroll:true});}
+function selectPeer(peer){furniture.close();infoStand.select(peer.data);if(peer.data.kind==='bot')botPanel?.open();else container.focus({preventScroll:true});}
 
 const position={x:3.5,z:4.5};
 let path=[],direction=2,walkTime=0,avatar,lastFrame='',hoverCell=null,target=null,down=null,ready=false,seated=null,seatTarget=null;
@@ -682,6 +684,7 @@ function positionCharacter(mesh,point,seat){
   return p;
 }
 function characterFrame(player,point,time,seat){
+  if(seat?.programDirection!==undefined)point={...point,direction:seat.programDirection};
   if(point.moving)return `${point.direction}:${Math.floor(time/1000*9)%4}`;
   const age=time-(player.actionStarted??0);
   if(player.action==='wave'&&age<3000)return `${point.direction}:${seat?'sit-wave':'wave'}:${Math.floor(age/180)%2}`;
@@ -749,11 +752,13 @@ function animate(now){
 }
 requestAnimationFrame(animate);
 try{
-  toolbar=createToolbar({admin:false,onTyping:typing=>{if(ready){localTyping=typing;void network.typing(typing).catch(()=>{});}},onAppearance:()=>{if(ready)appearance.open();},onVoice:()=>{if(ready)voice.open();},onRoomEdit:()=>{if(ready&&network.me?.role==='admin')roomEditor.open();},onFurniture:()=>{if(ready)furniture.open();},onChat:(body,mode)=>{if(ready)return network.chat(body,mode);},onGesture:action=>{if(ready)network.gesture(action).catch(error=>toolbar.status(error.message));}});
+  toolbar=createToolbar({admin:false,onMusicMute:muted=>radio?.setMuted(muted),onMusicVolume:volume=>{radio?.setVolume(volume);radio?.setMuted(false);},onTyping:typing=>{if(ready){localTyping=typing;void network.typing(typing).catch(()=>{});}},onAppearance:()=>{if(ready)appearance.open();},onVoice:()=>{if(ready)voice.open();},onRoomEdit:()=>{if(ready&&network.me?.role==='admin')roomEditor.open();},onFurniture:()=>{if(ready)furniture.open();},onChat:(body,mode)=>{if(ready)return network.chat(body,mode);},onGesture:action=>{if(ready)network.gesture(action).catch(error=>toolbar.status(error.message));}});
   network=createMultiplayer();
+  const characterKey=createRoomKey({identity:network.identity});
   danceControls=createDanceFloorControls({onChange:on=>network.danceFloor(on),onError:message=>toolbar.status(message)});
   voice=createVoice({credentials:tab=>network.voiceCredentials(tab),onState:state=>toolbar.setVoiceState(state),onSpeaking:speaking=>radio?.duck(speaking)});
-  radio=createRoomRadio();
+  radio=createRoomRadio({onState:state=>toolbar.setMusicState(state)});
+  toolbar.setMusicState(radio.snapshot());
   for(const event of ['pointerdown','keydown'])document.addEventListener(event,()=>{if(ready)void radio.unlock();});
   window.addEventListener('pagehide',()=>radio.close());
   const [catalogResponse,paletteResponse,initialRoom]=await Promise.all([fetch('/assets/room-options/catalog.json'),fetch('/assets/room-options/source-palette.json'),network.loadPreview()]);
@@ -793,7 +798,7 @@ try{
   discoBall=await createDiscoBall();discoMesh=sprite(discoBall.canvas,0,0,900);
   discoMesh.scale.setScalar(1/3);discoMesh.material.map.minFilter=THREE.LinearFilter;
   infoStand=await createInfoStand(prepareImage);
-  appearance=await createAppearance({prepareImage,onApply:async(frames,look,context)=>{if(!context.entry)await network.appearance(look);setAppearance(frames);},onOpen:()=>{stopWalking();furniture?.close();}});
+  appearance=await createAppearance({prepareImage,onApply:async(frames,look,context)=>{if(!context.entry)await network.appearance(look);setAppearance(frames);},onOpen:()=>{stopWalking();furniture?.close();},onRoomKey:()=>characterKey.open()});
   setAppearance(appearance.initial);
   stickies=await createStickies({network,prepareImage,worldPoint:groundPoint,getTiles:()=>new Set([...layout.mainTiles,...layout.danceTiles].map(cell=>cell.join(','))),
     makeVisual:canvas=>sprite(canvas,0,0,95),
@@ -806,6 +811,9 @@ try{
   const agentLink=createAgentLink({network,focusRoom:()=>container.focus({preventScroll:true})});
   const initialAssets=await network.assets.list();
   furniture=await createFurniture({initialItems:initialRoom.room.furniture,initialAssets,onAttachAgent:()=>agentLink.open(),
+    programPlayers:()=>[...(selfPlayer?[selfPlayer]:[]),...[...peers.values()].map(peer=>peer.data)].map(player=>({...player,...samplePlayer(player,network.now())})),
+    programMe:()=>network.me?.id??null,onProgramSave:(itemId,version,revision,state)=>network.programs.save(itemId,version,revision,state),onProgramUse:itemId=>network.programs.interact(itemId),
+    programNow:()=>network.now(),programReducedMotion:()=>reducedMotion.matches,
     prepareImage,worldPoint:iso,isTile:(x,z)=>valid(x,z)&&!isPoolWater(layout,x,z)&&!onWalkway(layout,x,z),floorHeight,getAvatar:()=>position,stopWalking,onChanged:()=>{ensureFreeTile();positionAwayPoster();positionDeckSign();},onSit:sitOn,onUse:useItem,
     // Clicking a player-built piece names it and its builder on the info stand; stock pieces clear it.
     onInspect:(item,def)=>{if(def?.ownerName)infoStand.inspect({name:def.name,by:def.ownerName,icon:def.icon});else infoStand.hide();},
@@ -851,10 +859,11 @@ try{
     if(network.adminEntry){const saved=await network.entryAppearance();if(saved)setAppearance(await appearance.useLook(saved));}
     // The room has rendered before the welcome dialog and room are revealed in one task.
     await nextPaint();liftVeil();
-    await appearance.enter({admin:network.adminEntry,onCheckName:name=>network.checkName(name),agents:network.agents,onEnter:(name,look,options)=>network.join(name,look,options)});
+    await appearance.enter({admin:network.adminEntry,onCheckName:name=>network.checkName(name),agents:network.agents,onEnter:(name,look,options)=>network.join(name,look,options),onReturn:async()=>await characterKey.open('return')?network.me:null});
     stopPreview();
   }
   const admin=network.me.role==='admin';
+  botPanel=createBotPanel({api:network.bot,admin});
   const previousUpdate=takeUpdateSession(network.me.id);
   if(previousUpdate){
     radio.restore(previousUpdate.music);
@@ -867,6 +876,9 @@ try{
   furniture.connect({admin,me:network.me.id,onSave:items=>network.furniture(items),onPower:(id,on)=>network.deckPower(id,on),onError:message=>toolbar.status(message)});
   if(import.meta.env.DEV)window.__room={get centerY(){return CENTER_Y;},iso,get visuals(){return furniture.debugVisuals();},get avatar(){return {order:avatar.renderOrder,x:position.x,z:position.z};},get peers(){return [...peers.values()].map(p=>({name:p.data.name,order:p.mesh.renderOrder,seat:p.data.seatId?.slice(0,6)??null}));}};
   network.assets.watch(list=>furniture.setAssets(list),message=>toolbar.status(message));
+  network.programs.watch(list=>furniture.receivePrograms(list),message=>toolbar.status(message));
+  window.addEventListener('pagehide',()=>furniture.disposePrograms());
+  window.addEventListener('pageshow',event=>{if(event.persisted)furniture.redraw();});
   startSnapshots({captures:network.captures,capture:takePicture,onStatus:message=>toolbar.status(message)});
   toolbar.setAdmin(admin);
   let roomKey='',furnitureKey='',ownLook=JSON.stringify(network.me.look),lookVersion=0;
@@ -906,7 +918,7 @@ try{
       const recentIds=new Set(state.messages.map(m=>m.id));for(const id of seenMessages)if(!recentIds.has(id))seenMessages.delete(id);
       avatar.visible=true;ready=true;toolbar.setVoiceEnabled(true);toolbar.setAppearanceEnabled(true);centreViewOnAvatar();
       playerPrepared=true;finishInitialLoad();
-    },message=>{voice.leave();radio.close();toolbar.setVoiceEnabled(false);toolbar.status(message);if(first)reject(new Error(message));},onRoom,state=>pong?.receive(state));
+    },message=>{ready=false;voice.leave();radio.close();toolbar.setVoiceEnabled(false);toolbar.setAppearanceEnabled(false);toolbar.status(message);if(message.includes('removed from the room')){network.close();const notice=document.querySelector('#load-error');notice.textContent=message;notice.hidden=false;}if(first)reject(new Error(message));},onRoom,state=>pong?.receive(state));
   });
   // Both subscriptions and the restored avatar have rendered before returning visitors see it.
   await nextPaint();liftVeil();

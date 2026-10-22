@@ -13,8 +13,12 @@ export const connect=action({args:{token:v.string(),tab:v.optional(v.string())},
   const identity=tab?`${playerId}#${tab}`:playerId;
   const url=process.env.LIVEKIT_URL,key=process.env.LIVEKIT_API_KEY,secret=process.env.LIVEKIT_API_SECRET;
   if(!url||!key||!secret)throw new ConvexError('Voice chat is not ready yet. Please try again later.');
+  await ctx.runMutation(internal.room.registerVoice,{token,identity});
   const access=new AccessToken(key,secret,{identity,ttl:'12h'});
   access.addGrant({room:'habbo-room',roomJoin:true,canSubscribe:true,canPublish:true,
     canPublishSources:[TrackSource.MICROPHONE],canPublishData:false,canUpdateOwnMetadata:false});
-  return {url,token:await access.toJwt()};
+  const signed=await access.toJwt();
+  // Recheck after signing to close the race with a moderation action.
+  await ctx.runQuery(internal.room.voiceIdentity,{token});
+  return {url,token:signed};
 }});

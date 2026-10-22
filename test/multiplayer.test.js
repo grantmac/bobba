@@ -334,7 +334,7 @@ describe('room access and persistence',()=>{
       await expect(t.mutation(api.room.join,{token:otherToken,name:'Grant',look})).rejects.toThrow('reserved');
       const fresh=structuredClone(look);fresh.top.color='#b34c43';
       const taken=await t.mutation(api.room.join,{token:otherToken,name:'visitor',look:fresh});
-      expect(taken.name).toBe('Visitor');expect(taken.look).toEqual(fresh);
+      expect(taken.name).toBe('visitor');expect(taken.look).toEqual(fresh);
       expect((await t.query(api.room.me,{token:otherToken})).look).toEqual(fresh);
       await expect(t.query(api.room.state,{token})).rejects.toThrow('session');
     }finally{clock.mockRestore();}

@@ -6,11 +6,12 @@ import {anyApi} from 'convex/server';
 import {sheetPrompt,surfacePrompt,stripPrompt} from '../shared/agent-prompts.js';
 import {prepareSurface,surfaceSize,SURFACE_COLORS} from '../shared/surface-build.js';
 import {KINDS,CONVENTIONS} from '../shared/sprite-conventions.js';
+import {programReference} from '../shared/program-examples.js';
 import {readImage,splitSheet,splitStrip,prepareAsset,seatSpec,FRAME_MAX} from '../shared/sprite-build.js';
 import {SPACE_LIMIT,SPACES_PER_PLAYER,SPACE_SIZE,SPACE_MIN_WIDTH,SPACE_MAX_WIDTH,SPACE_NAME_MAX,SPACE_FLOORS,SPACE_WALLS,SPACE_FITS} from '../shared/spaces.js';
 
 export const maxDuration=60;
-const api=anyApi,SERVER={name:'habbo-room',version:'0.8.0'},PROTOCOLS=['2024-11-05','2025-03-26','2025-06-18'];
+const api=anyApi,SERVER={name:'habbo-room',version:'0.9.0'},PROTOCOLS=['2024-11-05','2025-03-26','2025-06-18'];
 const INSTRUCTIONS=`Builds furniture into the shared Habbo-style room for the player whose agent key you hold. For any picture that is not already a game sprite: design_asset (prompt + reference image URLs) → draw the 2 by 2 sprite sheet with your image tool → upload_url → POST the PNG to it → submit_asset with the storage id. Then place it from room_map when the player says where. The player can also add one block of floor to the room with add_space: it always joins the right-hand end of the back wall, after the latest space, and the room_map shows it with its tiles; style_space then restyles that space's floor and back wall with colours, wallpapers or pictures; any picture starts with design_surface, and is remade at the game's pixel scale on the way in. After any change, room_picture returns a picture of the result rendered by an open room tab. ${CONVENTIONS}`;
 const NO_KEY='No agent key. Send the player\'s key as "Authorization: Bearer <key>": in the room, open Furniture → Build with your agent → Copy agent prompt, then paste the prompt into your agent.';
 const message=error=>typeof error?.data==='string'?error.data:(error?.message||String(error)).replace(/\[(CONVEX|Request ID)[^\]]*\]\s*/g,'').replace(/^Server Error\s*/,'').replace(/^Uncaught (\w*Error): /,'').split('\n')[0];
@@ -36,6 +37,9 @@ const TOOLS=[
   {name:'add_asset',description:`With frames, the picture is a horizontal strip of 2 to ${FRAME_MAX} equal frames of one view and the piece animates (optionally switchable by a click); design_asset with frames writes the prompt for such a strip. Otherwise ONLY for art that is already a finished game sprite: pixel-art, isometric, transparent background, drawn in the room's style (for example a sprite the player made themselves). It is uploaded as-is with a mirrored second view. For photos, logos, concept art or anything else, do NOT use this: call design_asset, generate the four-view sheet with your image tool, then submit_asset. ${CONVENTIONS}`,
     inputSchema:object({name:{type:'string',maxLength:40,description:'Short name shown in the catalogue'},...source,image_base64:{type:'string',description:'Base64 or data URL of a small picture'},kind:KIND,width:{type:'integer',minimum:1,maximum:4,default:1,description:'Footprint width in tiles (left-to-right along the right wall)'},depth:{type:'integer',minimum:1,maximum:4,default:1,description:'Footprint depth in tiles'},facing:{type:'string',enum:['right','left'],default:'right',description:'Which way the pictured front faces: lower-right or lower-left'},...spriteOptions,...seatOptions,...animationOptions},['name'])},
   {name:'my_assets',description:'List the pieces this player has built.',inputSchema:object({})},
+  {name:'program_api',description:'Read the furniture JavaScript API, lifecycle, limits and a complete spinning-chair example before writing an asset program.',inputSchema:object({})},
+  {name:'get_program',description:'Read a built asset’s saved JavaScript source, defaults and revision before editing it.',inputSchema:object({asset_id:{type:'string'}},['asset_id'])},
+  {name:'set_program',description:'Attach or replace a self-contained JavaScript ES module on a built asset. Read program_api first. Every placed copy loads it live without a room reload; new versions reset instance state to initial_state. Use source:null to remove it. Only the builder or Grant can edit.',inputSchema:object({asset_id:{type:'string'},source:{type:['string','null'],maxLength:65536},initial_state:{description:'JSON state defaults for each placed copy; defaults to {}'},expected_revision:{type:'integer',minimum:0,description:'Revision from get_program; rejects stale edits'}},['asset_id','source'])},
   {name:'set_seat',description:'Fix where an avatar sits on one of the player\'s built seats (kind seat) and how high, without rebuilding it: the tile within the footprint and the seat top\'s height in pixels, so a figure sits on a stool top rather than beside or inside it. clear: true returns the piece to seating on every tile at chair height. Open rooms pick it up at once.',
     inputSchema:object({asset_id:{type:'string',description:'From my_assets or submit_asset'},...seatOptions,clear:{type:'boolean'}},['asset_id'])},
   {name:'delete_asset',description:'Delete a piece the player built, removing any placed copies.',inputSchema:object({asset_id:{type:'string'}},['asset_id'])},
@@ -84,6 +88,11 @@ async function register(token,args,views){
   return summary(result);
 }
 const HANDLERS={
+  async program_api(){return programReference;},
+  async get_program({asset_id},{token}){return call('query',api.programs.get,{agentToken:token,assetId:asset_id});},
+  async set_program({asset_id,source,initial_state,expected_revision},{token}){
+    return call('mutation',api.programs.set,{agentToken:token,assetId:asset_id,source,...(initial_state!==undefined?{initialState:initial_state}:{}),...(expected_revision!==undefined?{expectedRevision:expected_revision}:{})});
+  },
   async status(_,{token}){await call('mutation',api.agents.connected,{agentToken:token});return {...await call('query',api.agents.status,{agentToken:token}),conventions:CONVENTIONS};},
   async design_asset(args,{origin}){
     args=defaults(args);

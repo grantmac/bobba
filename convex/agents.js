@@ -7,6 +7,7 @@ import {backWallTiles} from '../shared/room-layout.js';
 import {ASSET_CATEGORIES,ASSET_LIMIT_PER_PLAYER,assetType,assetCatalogueEntry,definitionsFor,assertOwnedChanges} from './lib/assets.js';
 import {floorColors} from './lib/catalog.js';
 import {playerFor} from './room.js';
+import {discardRemovedPrograms} from './lib/programs.js';
 import {isWallItem,pickupWithContents} from '../shared/furniture-model.js';
 import {SPACE_LIMIT,SPACES_PER_PLAYER,SPACE_SIZE,SPACE_MIN_WIDTH,SPACE_MAX_WIDTH,SPACE_FLOORS,SPACE_WALLS,SPACE_FITS,SPACE_IMAGE_MAX} from '../shared/spaces.js';
 // A space's styling as agents see it: pictures as yes/no, the storage ids stay private.
@@ -19,8 +20,10 @@ export async function agentFor(ctx,agentToken){
   const digest=await hash(agentToken);
   const link=await ctx.db.query('agentLinks').withIndex('by_token',q=>q.eq('tokenHash',digest)).unique();
   if(!link)fail('This agent is not attached. Attach it with a pairing code from the room.');
+  if(link.connectedAt===undefined&&link.expiresAt!==undefined&&link.expiresAt<=Date.now())fail('This agent connection expired. Open a new connection from Codex.');
   const player=await ctx.db.get(link.playerId);
   if(!player)fail('The player this agent belonged to has left. Attach it again.');
+  if((player.blockedUntil??0)>Date.now())fail('This player is temporarily removed from the room.');
   return {player,link};
 }
 async function getRoom(ctx){const room=await ctx.db.query('rooms').withIndex('by_key',q=>q.eq('key','main')).unique();room.definitions=await definitionsFor(ctx);return room;}
@@ -53,7 +56,7 @@ export const status=query({args:{agentToken:v.string()},handler:async(ctx,{agent
   const {player}=await agentFor(ctx,agentToken);
   const assets=await ctx.db.query('assets').withIndex('by_owner',q=>q.eq('ownerId',player._id)).collect();
   const room=await getRoom(ctx);
-  return {playerName:player.name,playerId:player._id,assets:assets.map(a=>({id:a._id,type:assetType(a),name:a.name,category:a.category,width:a.width,depth:a.depth,...(a.category==='Seating'?{seat:a.seat??null}:{}),...(a.frameDuration?{animated:true,frameMs:a.frameDuration,switchable:!!a.switchable}:{}),createdAt:a.createdAt})),
+  return {playerName:player.name,playerId:player._id,assets:assets.map(a=>({id:a._id,type:assetType(a),name:a.name,category:a.category,width:a.width,depth:a.depth,...(a.category==='Seating'?{seat:a.seat??null}:{}),...(a.frameDuration?{animated:true,frameMs:a.frameDuration,switchable:!!a.switchable}:{}),programRevision:a.programRevision??0,programmable:!!a.program,createdAt:a.createdAt})),
     placed:room.furniture.filter(i=>i.owner===player._id).map(({id,type,x,z,rotation})=>({id,type,x,z,rotation})),categories:ASSET_CATEGORIES,
     spaces:(room.spaces??[]).filter(s=>s.owner===player._id).map(s=>({id:s.id,name:s.name,width:s.width,depth:s.depth,...spaceStyle(s)})),
     spaceOptions:{perPlayer:SPACES_PER_PLAYER,limit:SPACE_LIMIT,size:`${SPACE_SIZE} by ${SPACE_SIZE} tiles to start; resize_space makes it ${SPACE_MIN_WIDTH} to ${SPACE_MAX_WIDTH} tiles wide`,floors:SPACE_FLOORS,walls:SPACE_WALLS,colors:'any hex colour like #b59232 (floorColors are the room palette)',floorColors,pictures:`PNG, JPEG, WebP or GIF up to ${SPACE_IMAGE_MAX/1024/1024} MB, uploaded through upload_url; fit 'tile' repeats it on every tile or wall segment, 'cover' stretches one copy over the whole floor or wall`}};
@@ -141,6 +144,7 @@ export const deleteAsset=mutation({args:{agentToken:v.string(),id:v.id('assets')
     await ctx.db.patch(room._id,{furniture:items,revision:room.revision+1});
   }
   for(const storageId of new Set([asset.icon,...asset.parts.map(p=>p.storageId)]))await ctx.storage.delete(storageId);
+  for(const row of await ctx.db.query('programInstances').withIndex('by_asset',q=>q.eq('assetId',id)).collect())await ctx.db.delete(row._id);
   await ctx.db.delete(id);
 }});
 // The floor as the agent sees it: which tiles exist, which are taken, and where walls are.
@@ -176,7 +180,9 @@ export const remove=mutation({args:{agentToken:v.string(),itemId:v.string()},han
   // someone else's piece keeps the table in the room until they pick it up.
   const stranded=room.furniture.find(i=>i.supportId===itemId&&i.owner!==player._id);
   if(stranded)fail('Someone else\'s piece is on it; they need to pick it up first.');
-  await ctx.db.patch(room._id,{furniture:pickupWithContents(healOrphans(room.furniture),itemId,true),revision:room.revision+1});
+  const furniture=pickupWithContents(healOrphans(room.furniture),itemId,true);
+  await discardRemovedPrograms(ctx,room.furniture,furniture);
+  await ctx.db.patch(room._id,{furniture,revision:room.revision+1});
 }});
 // Adding floor: a new space always joins the right-hand end of the back wall, after the latest one.
 
