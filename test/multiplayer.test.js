@@ -590,13 +590,28 @@ describe('agents building pieces',()=>{
     if(space)await t.mutation(api.agents.addSpace,{agentToken,name:'Mine'});
     return {player,agentToken,storageId};
   }
-  it('allows eighty placed pieces per builder and rejects the eighty-first',async()=>{
+  it('lets a builder create more than fifty assets',async()=>{
+    const {agentToken,storageId}=await attach();
+    for(let i=0;i<51;i++)await t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId,{name:`Piece ${i}`})});
+    expect((await t.query(api.agents.status,{agentToken})).assets).toHaveLength(51);
+    expect(await t.query(api.assets.list,{})).toHaveLength(51);
+  });
+  it('lets a builder place and save more than eighty pieces and more than two hundred room items',async()=>{
     const {agentToken,storageId}=await attach();
     const built=await t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId,{category:'Wall',wallWidth:32,parts:[{storageId,direction:4,width:48,height:60,reg:{x:-8,y:46}}],views:[{direction:4,source:4,mirror:false}]})});
     const place=()=>t.mutation(api.agents.place,{agentToken,assetId:built.id,x:23,z:0,rotation:4,u:.5,height:60});
-    for(let i=0;i<80;i++)await place();
-    await expect(place()).rejects.toThrow('up to 80 pieces');
-    expect((await t.query(api.agents.status,{agentToken})).placed).toHaveLength(80);
+    for(let i=0;i<201;i++)await place();
+    expect((await t.query(api.agents.status,{agentToken})).placed).toHaveLength(201);
+    const {room}=await t.query(api.room.preview,{});
+    const items=[...room.furniture,{...room.furniture[0],id:'from-browser'}];
+    await t.mutation(api.room.setFurniture,{token,items,revision:room.revision,knowsAssets:true});
+    expect((await t.query(api.room.preview,{})).room.furniture).toHaveLength(202);
+    // Picking up a large collection must not introduce an inventory limit either.
+    const inventory=items.map(({u,height,...item})=>({...item,x:null,z:null}));
+    await t.mutation(api.room.setFurniture,{token,items:inventory,revision:room.revision+1,knowsAssets:true});
+    const saved=(await t.query(api.agents.status,{agentToken})).placed;
+    expect(saved).toHaveLength(202);
+    expect(saved.every(item=>item.x===null&&item.z===null)).toBe(true);
   });
   it('reports connection only after authenticated agent contact, and clears it on revoke',async()=>{
     await guest();

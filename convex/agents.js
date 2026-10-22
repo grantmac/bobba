@@ -4,7 +4,7 @@ import {mutation,query} from './_generated/server.js';
 import {v} from 'convex/values';
 import {fail,layoutFor,validateFurniture,validateSpace,validateSpaceStyle,ownSpaceCheck,healOrphans,isPlaced,cells,blocked,atTime,playerTiles,onlinePlayers} from './lib/rules.js';
 import {backWallTiles} from '../shared/room-layout.js';
-import {ASSET_CATEGORIES,ASSET_LIMIT_PER_PLAYER,assetType,assetCatalogueEntry,definitionsFor,assertOwnedChanges} from './lib/assets.js';
+import {ASSET_CATEGORIES,assetType,assetCatalogueEntry,definitionsFor,assertOwnedChanges} from './lib/assets.js';
 import {floorColors} from './lib/catalog.js';
 import {playerFor} from './room.js';
 import {discardRemovedPrograms} from './lib/programs.js';
@@ -128,8 +128,6 @@ export const createAsset=mutation({args:{agentToken:v.string(),name:v.string(),c
   if(new Set(spec.views.map(vw=>vw.direction)).size!==spec.views.length)fail('Views must have distinct directions.');
   if(spec.category==='Wall'&&(!whole(spec.wallWidth)||spec.wallWidth<8||spec.wallWidth>96))fail('Wall pieces need a wallWidth of 8 to 96 pixels.');
   const surfaceHeight=spec.category==='Tables'?Math.max(8,Math.min(64,spec.surfaceHeight??24)):0;
-  const owned=await ctx.db.query('assets').withIndex('by_owner',q=>q.eq('ownerId',player._id)).collect();
-  if(owned.length>=ASSET_LIMIT_PER_PLAYER)fail(`You can build up to ${ASSET_LIMIT_PER_PLAYER} pieces.`);
   const id=await ctx.db.insert('assets',{ownerId:player._id,ownerName:player.name,name,category:spec.category,width:spec.width,depth:spec.depth,surfaceHeight,spriteDensity:spec.spriteDensity,
     ...(spec.category==='Wall'?{wallWidth:spec.wallWidth}:{}),...(spec.tableOffsetY!==undefined?{tableOffsetY:Math.max(-32,Math.min(32,spec.tableOffsetY))}:{}),...(spec.seat?{seat:validSeat(spec.seat,spec)}:{}),...(animated?{frameDuration:spec.frameDuration,...(spec.switchable?{switchable:true}:{})}:{}),
     icon:spec.icon,parts:spec.parts,views:spec.views,createdAt:Date.now()});

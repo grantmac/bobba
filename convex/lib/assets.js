@@ -4,7 +4,6 @@
 import {furniture} from './catalog.js';
 import {isPlaced} from '../../shared/furniture-model.js';
 export const ASSET_CATEGORIES=['Decor','Tables','Seating','Rugs','Plants','Lighting','Wall'];
-export const ASSET_LIMIT_PER_PLAYER=50,PLACED_LIMIT_PER_PLAYER=80;
 export const assetType=asset=>`asset_${asset._id}`;
 // Where an avatar sits on a built seat: the builder names one tile (offsets within the footprint
 // as placed facing lower-right, rotation 2, where x runs across the depth and z along the width)
@@ -39,7 +38,7 @@ export async function assetCatalogueEntry(ctx,asset){
     views:asset.views};
 }
 // Non-admins may only add, move or remove pieces they own, built from their own assets,
-// up to a cap; anything else in the list must be untouched.
+// and anything else in the list must be untouched.
 // `where` (from rules.ownSpaceCheck) confines a builder's new or moved pieces to their own space.
 export function assertOwnedChanges(previous,next,playerId,definitions,where=null){
   const before=new Map(previous.map(item=>[item.id,item])),after=new Map(next.map(item=>[item.id,item]));
@@ -51,5 +50,4 @@ export function assertOwnedChanges(previous,next,playerId,definitions,where=null
     if(b&&b.on!==undefined&&b.on!==a?.on)throw new Error('Switch a piece on or off by clicking it in the room.');
     if(where&&b&&isPlaced(b)&&!where.within(b))throw new Error(where.hasSpace?'Your pieces can only go in your own space.':'Add a space first: your pieces can only go in your own space.');
   }
-  if(next.filter(item=>item.owner===playerId&&item.x!==null).length>PLACED_LIMIT_PER_PLAYER)throw new Error(`You can place up to ${PLACED_LIMIT_PER_PLAYER} pieces.`);
 }
