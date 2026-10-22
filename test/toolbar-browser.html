@@ -11,6 +11,13 @@ const external=document.createElement('dialog');external.innerHTML='<button>Exte
 const toolbar=createToolbar({admin:true,onGesture:value=>gesture=value,onAppearance(){appearanceCalls++;external.showModal();external.querySelector('button').focus();},onRoomEdit(){roomCalls++;},onFurniture(){furnitureCalls++;},onChat(){},onMusicMute:muted=>{state.muted=muted;toolbar.setMusicState(state);},onMusicVolume:volume=>{state.volume=volume;toolbar.setMusicState(state);}});
 toolbar.setAppearanceEnabled(true);toolbar.setMusicState(state);
 const q=selector=>document.querySelector(selector),click=selector=>q(selector).click(),visible=element=>element.getBoundingClientRect().width>0;
+// Safari can blur a focused control on touch without focusing the tapped button.
+// Check visibility before click(): a hidden button cannot receive a real tap.
+const safariTap=selector=>{
+  const button=q(selector);button.focus();
+  button.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,pointerType:'touch'}));
+  button.blur();assert(visible(button),`Safari blur hid ${selector} before its tap`);button.click();
+};
 const compact=matchMedia('(max-width:640px), (pointer:coarse)').matches;
 const toggle=q('.toolbar-menu-toggle'),icons=q('.bar-icons'),volume=q('#music-volume');
 const openTools=()=>{if(compact)click('.toolbar-menu-toggle');};
@@ -24,7 +31,7 @@ try{
     openTools();assert(toggle.getAttribute('aria-expanded')==='true'&&visible(icons),'Menu did not open');
     for(const button of icons.querySelectorAll('.bar-icon')){const r=button.getBoundingClientRect();assert(r.width>=44&&r.height>=44,'Control target is too small');}
   }
-  click('.music-toggle');assert(!q('.music-controls').hidden,'Music panel did not open');
+  safariTap('.music-toggle');assert(!q('.music-controls').hidden,'Music panel did not open');
   if(compact)assert(!visible(icons)&&document.activeElement===volume,'Music must close the drawer and focus the slider');
   const bounds=q('.music-controls').getBoundingClientRect();assert(bounds.left>=0&&bounds.right<=innerWidth&&bounds.top>=0,'Music panel left the viewport');
   volume.value='35';volume.dispatchEvent(new Event('input'));assert(state.volume===.35&&q('.music-controls output').textContent==='35%','Volume callback or readout failed');
@@ -38,10 +45,17 @@ try{
   openTools();click('.music-toggle');
   volume.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert(q('.music-controls').hidden,'Escape did not close music');
   assert(document.activeElement===(compact?toggle:q('.music-toggle')),'Music did not restore focus');
-  openTools();click('.actions-toggle');assert(!q('.actions-menu').hidden,'Actions did not open');
-  click('[data-gesture="wave"]');assert(gesture==='wave'&&q('.actions-menu').hidden,'Gesture did not dispatch and close');
+  for(const action of ['wave','dance','breakdance']){
+    openTools();safariTap('.actions-toggle');assert(!q('.actions-menu').hidden,'Actions did not open');
+    safariTap(`[data-gesture="${action}"]`);assert(gesture===action&&q('.actions-menu').hidden,'Gesture did not dispatch and close');
+  }
+  openTools();click('.actions-toggle');q('#chat-message').focus();assert(q('.actions-menu').hidden,'Leaving actions focus did not close it');
+  openTools();click('.actions-toggle');document.body.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));assert(q('.actions-menu').hidden,'Outside press did not close actions');
+  openTools();click('.actions-toggle');q('[data-gesture="wave"]').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert(q('.actions-menu').hidden,'Escape did not close actions');
+  assert(document.activeElement===(compact?toggle:q('.actions-toggle')),'Actions did not restore focus');
   assert(!q('.voice-toggle'),'Voice control is still present');
-  for(const [selector,count] of [['.appearance-toggle',()=>appearanceCalls],['[aria-label="Furniture"]',()=>furnitureCalls],['[aria-label="Edit room"]',()=>roomCalls]]){openTools();click(selector);assert(count()===1,'Control callback failed');if(selector==='.appearance-toggle'){assert(external.open&&document.activeElement===external.querySelector('button'),'Appearance lost focus while closing the drawer');external.close();}if(compact)assert(!visible(icons),'Control left the drawer open');}
+  for(const [selector,count] of [['.appearance-toggle',()=>appearanceCalls],['[aria-label="Furniture"]',()=>furnitureCalls],['[aria-label="Edit room"]',()=>roomCalls]]){openTools();safariTap(selector);assert(count()===1,'Control callback failed');if(selector==='.appearance-toggle'){assert(external.open&&document.activeElement===external.querySelector('button'),'Appearance lost focus while closing the drawer');external.close();}if(compact)assert(!visible(icons),'Control left the drawer open');}
+  openTools();safariTap('.share-toggle');assert(q('.share-dialog').open,'Share did not open');click('[aria-label="Close share"]');
   if(compact){
     openTools();document.body.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));assert(!visible(icons),'Outside press did not close menu');
     openTools();icons.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert(!visible(icons)&&document.activeElement===toggle,'Escape did not restore menu focus');

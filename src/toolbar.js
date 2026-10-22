@@ -24,7 +24,9 @@ export function createToolbar({onRoomEdit,onFurniture,onChat,onTyping,onAppearan
   toolsToggle.addEventListener('keydown',event=>{if(event.key==='ArrowDown'){event.preventDefault();setToolsOpen(true);icons.querySelector('.bar-icon:not(:disabled):not([hidden])')?.focus();}});
   bar.addEventListener('keydown',event=>{if(event.key==='Escape'&&bar.classList.contains('toolbar-menu-open')){setToolsOpen(false);toolsToggle.focus();event.stopPropagation();}});
   document.addEventListener('pointerdown',event=>{if(!icons.contains(event.target)&&!toolsToggle.contains(event.target))setToolsOpen(false);});
-  icons.addEventListener('focusout',event=>{if(!icons.contains(event.relatedTarget)&&!toolsToggle.contains(event.relatedTarget))setToolsOpen(false);});
+  // A Safari tap can blur without focusing its button. Let the click run;
+  // outside presses still dismiss the drawer through pointerdown above.
+  icons.addEventListener('focusout',event=>{if(event.relatedTarget&&!icons.contains(event.relatedTarget)&&!toolsToggle.contains(event.relatedTarget))setToolsOpen(false);});
   const music=document.createElement('div');music.className='music-picker';
   music.innerHTML='<button type="button" class="bar-icon music-toggle" title="Music volume" aria-label="Music volume" aria-haspopup="dialog" aria-expanded="false" aria-controls="music-controls"><img src="/assets/bar/music.png" width="32" height="40" alt=""></button><div id="music-controls" class="music-controls" role="dialog" aria-labelledby="music-title" hidden><header><h1 id="music-title">Music</h1><button type="button" class="appearance-close" aria-label="Close music controls">×</button></header><div class="music-body"><label for="music-volume">Volume <output for="music-volume">79%</output></label><input id="music-volume" type="range" min="0" max="100" value="79"><button type="button" class="music-mute" aria-pressed="false">Mute music</button></div></div>';
   const musicToggle=music.querySelector('.music-toggle'),musicPanel=music.querySelector('.music-controls'),musicVolume=music.querySelector('input'),musicMute=music.querySelector('.music-mute');
@@ -61,7 +63,7 @@ export function createToolbar({onRoomEdit,onFurniture,onChat,onTyping,onAppearan
   actionsMenu.querySelectorAll('button').forEach(button=>button.onclick=()=>{setActionsOpen(false);focusTrigger(actionsToggle);onGesture?.(button.dataset.gesture);});
   for(const element of [actions,actionsMenu]){
     element.addEventListener('keydown',event=>{if(event.key==='Escape'){setActionsOpen(false);focusTrigger(actionsToggle);event.stopPropagation();}});
-    element.addEventListener('focusout',event=>{if(!inActions(event.relatedTarget))setActionsOpen(false);});
+    element.addEventListener('focusout',event=>{if(event.relatedTarget&&!inActions(event.relatedTarget))setActionsOpen(false);});
   }
   document.addEventListener('pointerdown',event=>{if(!inActions(event.target))setActionsOpen(false);});
   if(onGesture)icons.append(actions);
