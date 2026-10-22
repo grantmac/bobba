@@ -6,6 +6,7 @@ import {heartbeat as heartbeatFunction} from '../convex/room.js';
 import {DEFAULT_ROOM,validateLook} from '../convex/lib/rules.js';
 import appearanceCatalog from '../public/assets/appearance/catalog.json';
 import {furniture} from '../convex/lib/catalog.js';
+import {docItem} from '../convex/lib/furniture-store.js';
 const modules=import.meta.glob('../convex/**/*.js');
 const look={hair:{model:'1',color:'#624631'},skin:{model:'1',color:'#e8b18a'},top:{model:'1',color:'#6b8c64'},bottom:{model:'1',color:'#55677e'},shoes:{model:'1',color:'#42454c'}};
 const token='a'.repeat(64),adminToken='b'.repeat(64),otherToken='c'.repeat(64),secret='test-entry-only';
@@ -15,6 +16,8 @@ beforeEach(async()=>{t=convexTest(schema,modules);vi.stubEnv('GRANT_ENTRY_HASH',
 afterEach(()=>vi.unstubAllEnvs());
 const guest=()=>t.mutation(api.room.join,{token,name:'Visitor',look});
 const admin=()=>t.mutation(api.room.join,{token:adminToken,name:'Grant',look,entryCode:secret});
+// Every piece in the world, wherever it stands, in the order it was added.
+const everywhere=()=>t.run(async ctx=>(await ctx.db.query('furniture').collect()).map(docItem));
 describe('room access and persistence',()=>{
   it('does not rewrite players or scan visits on an idle heartbeat',async()=>{
     const me=await guest(),connectionId='d'.repeat(64);
@@ -50,7 +53,7 @@ describe('room access and persistence',()=>{
       clock.mockReturnValue(initial.lastSeen+60000);
       expect((await t.query(api.room.presence,{})).players.some(p=>p.id===me.id)).toBe(true);
       await expect(t.mutation(api.room.move,{token:adminToken,x:Math.floor(me.route[0].x),z:Math.floor(me.route[0].z)})).rejects.toThrow('reached');
-      expect(await t.query(internal.room.voiceIdentity,{token})).toBe(me.id);
+      expect(await t.query(internal.room.voiceIdentity,{token})).toEqual({playerId:me.id,zone:'main'});
       clock.mockReturnValue(initial.lastSeen+75001);
       await t.mutation(internal.room.expireConnection,{connectionId,seenAt:renewed.lastSeen});
       expect((await t.query(api.room.presence,{})).players.some(p=>p.id===me.id)).toBe(false);
@@ -517,7 +520,8 @@ describe('sticky notes',()=>{
   it('keeps notes when furniture changes and relocates them when their wall disappears',async()=>{
     await admin();await create();
     await t.mutation(api.room.setFurniture,{token:adminToken,items:[],revision:0});
-    await t.mutation(api.room.setOptions,{token:adminToken,options:{...DEFAULT_ROOM,shape:'model_f'},revision:1});
+    // Furniture edits no longer count on the map's revision; only the map itself does.
+    await t.mutation(api.room.setOptions,{token:adminToken,options:{...DEFAULT_ROOM,shape:'model_f'},revision:0});
     const note=(await t.query(api.room.preview,{})).room.stickies[0];expect(note.id).toBe(id);expect(note.revision).toBe(1);
   });
 });
@@ -617,14 +621,18 @@ describe('agents building pieces',()=>{
     await expect(t.mutation(api.agents.place,{agentToken,assetId:built.id,x:3,z:3})).rejects.toThrow('own space');
     await expect(t.mutation(api.agents.place,{agentToken,assetId:built.id,x:29,z:3})).rejects.toThrow('own space');
     const {itemId}=await t.mutation(api.agents.place,{agentToken,assetId:built.id,x:23,z:3});
-    expect((await t.query(api.room.preview,{})).room.furniture).toEqual([{id:itemId,type:built.type,rotation:2,x:23,z:3,owner:player.id}]);
+    expect(await everywhere()).toEqual([{id:itemId,type:built.type,rotation:2,x:23,z:3,owner:player.id}]);
+    // The lobby preview never carries a space's pieces; the space's own subscription does.
+    expect((await t.query(api.room.preview,{})).room.furniture).toEqual([]);
+    const space=(await t.query(api.agents.map,{agentToken})).spaces[0].id;
+    expect((await t.query(api.room.zoneFurniture,{token,zone:space})).map(i=>i.id)).toEqual([itemId]);
     await expect(t.mutation(api.agents.place,{agentToken,assetId:built.id,x:23,z:3})).rejects.toThrow('free');
     const status=await t.query(api.agents.status,{agentToken});
     expect(status.placed).toHaveLength(1);expect(status.assets[0].name).toBe('Boombox');
     const map=await t.query(api.agents.map,{agentToken});
     expect(map.spaces[0].tiles.find(c=>c.x===23&&c.z===3).free).toBe(false);expect(map.areas.main.tiles.find(c=>c.x===3&&c.z===3).free).toBe(true);expect(map.walls.length).toBeGreaterThan(0);
     await t.mutation(api.agents.remove,{agentToken,itemId});
-    expect((await t.query(api.room.preview,{})).room.furniture).toEqual([]);
+    expect(await everywhere()).toEqual([]);
     await t.mutation(api.agents.deleteAsset,{agentToken,id:built.id});
     expect(await t.query(api.assets.list,{})).toEqual([]);
   });
@@ -640,7 +648,7 @@ describe('agents building pieces',()=>{
     await expect(t.mutation(api.room.setFurniture,{token,items:[{id:'chair',type:'small_chair_armas',rotation:0,x:2,z:2},mine],revision:await revision()})).rejects.toThrow('you built');
     await expect(t.mutation(api.room.setFurniture,{token,items:[{id:'chair',type:'small_chair_armas',rotation:0,x:1,z:1},mine,{id:'theirs',type:'small_chair_armas',rotation:0,x:24,z:4,owner:player.id}],revision:await revision()})).rejects.toThrow('own pieces');
     await t.mutation(api.room.setFurniture,{token,items:[{id:'chair',type:'small_chair_armas',rotation:0,x:1,z:1},{...mine,x:24,z:4}],revision:await revision()});
-    expect((await t.query(api.room.preview,{})).room.furniture.find(i=>i.id==='mine').x).toBe(24);
+    expect((await everywhere()).find(i=>i.id==='mine').x).toBe(24);
     await expect(t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId,{category:'Castle'})})).rejects.toThrow('Category');
     await expect(t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId,{category:'Wall'})})).rejects.toThrow('wallWidth');
     await t.mutation(api.agents.revoke,{token});
@@ -680,12 +688,13 @@ describe('agents building pieces',()=>{
     await t.mutation(api.room.setFurniture,{token:adminToken,items:[stored],revision:1,knowsAssets:true});
     const {itemId}=await t.mutation(api.agents.place,{agentToken,assetId:built.id,x:23,z:3});
     const save=async items=>t.mutation(api.room.setFurniture,{token,items,revision:(await t.query(api.room.roomState,{token})).revision,knowsAssets:true});
-    let room=await t.query(api.room.roomState,{token});
-    expect(room.furniture.map(i=>i.id)).toEqual([itemId]);
-    const piece=room.furniture[0];expect(piece.owner).toBe(player.id);
+    const space=(await t.query(api.agents.map,{agentToken})).spaces[0].id,inSpace=()=>t.query(api.room.zoneFurniture,{token,zone:space});
+    expect((await inSpace()).map(i=>i.id)).toEqual([itemId]);
+    const piece=(await inSpace())[0];expect(piece.owner).toBe(player.id);
     await save([{...piece,x:24,z:4}]);
-    expect((await t.query(api.room.preview,{})).room.furniture[0]).toMatchObject({id:itemId,x:24,z:4});
+    expect((await inSpace())[0]).toMatchObject({id:itemId,x:24,z:4});
     await save([{...piece,x:null,z:null}]);
+    expect(await t.query(api.room.inventory,{token})).toEqual([{...piece,x:null,z:null}]);
     expect((await t.query(api.room.roomState,{token})).furniture).toEqual([{...piece,x:null,z:null}]);
     expect((await t.query(api.room.state,{token})).room.furniture).toEqual([{...piece,x:null,z:null}]);
     await t.mutation(api.room.join,{token:otherToken,name:'Other builder',look});
@@ -694,7 +703,11 @@ describe('agents building pieces',()=>{
     expect((await t.query(api.room.preview,{})).room.furniture).toEqual([]);
     await save([{...piece,x:25,z:5}]);
     await expect(save([{...piece,x:25,z:5},{...stored,x:2,z:2}])).rejects.toThrow('you built');
+    // A list that never mentions the space leaves the piece there; deleting is an explicit change.
     await save([]);
+    expect((await inSpace()).map(i=>i.id)).toEqual([itemId]);
+    await t.mutation(api.room.editFurniture,{token,changes:[{id:itemId,removed:true}]});
+    expect(await inSpace()).toEqual([]);
     expect((await t.query(api.room.roomState,{token})).furniture).toEqual([]);
     expect((await t.query(api.room.roomState,{token:adminToken})).furniture).toEqual([stored]);
     expect(await t.query(api.assets.list,{})).toHaveLength(1);
@@ -713,10 +726,10 @@ describe('agents building pieces',()=>{
     // Anyone in the room can switch it, and the owner can still move it while it is off.
     await t.mutation(api.room.join,{token:otherToken,name:'Friend',look});
     await t.mutation(api.room.setDeckPower,{token:otherToken,id:itemId,on:false});
-    expect((await t.query(api.room.scene,{})).furniture.find(i=>i.id===itemId).on).toBe(false);
-    const items=(await t.query(api.room.roomState,{token})).furniture;
+    expect((await everywhere()).find(i=>i.id===itemId).on).toBe(false);
+    const items=await everywhere();
     await t.mutation(api.room.setFurniture,{token,items:items.map(i=>i.id===itemId?{...i,x:24,z:4}:i),revision:(await t.query(api.room.roomState,{token})).revision,knowsAssets:true});
-    expect((await t.query(api.room.scene,{})).furniture.find(i=>i.id===itemId)).toMatchObject({x:24,z:4,on:false});
+    expect((await everywhere()).find(i=>i.id===itemId)).toMatchObject({x:24,z:4,on:false});
     // A plain piece has no switch.
     const plain=await t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId,{name:'Box'})});
     const {itemId:box}=await t.mutation(api.agents.place,{agentToken,assetId:plain.id,x:25,z:5});
@@ -728,14 +741,15 @@ describe('agents building pieces',()=>{
     const lamp=await t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId,{name:'Lamp'})});
     const {itemId:desk}=await t.mutation(api.agents.place,{agentToken,assetId:table.id,x:23,z:3});
     const save=async(token_,items)=>t.mutation(api.room.setFurniture,{token:token_,items,revision:(await t.query(api.room.roomState,{token:token_})).revision,knowsAssets:true});
-    const room=()=>t.query(api.room.roomState,{token:adminToken}).then(r=>r.furniture);
+    const room=everywhere;
     const onDesk={id:'lamp',type:lamp.type,rotation:2,x:23,z:3,supportId:desk,owner:player.id};
     await save(token,[...await room(),onDesk]);
     // Removing the desk through the agent takes the lamp back to the inventory rather than stranding it.
     await t.mutation(api.agents.remove,{agentToken,itemId:desk});
     expect((await room()).find(i=>i.id==='lamp')).toEqual({id:'lamp',type:lamp.type,rotation:2,x:null,z:null,owner:player.id});
     // A piece stranded by an older path (its table gone) no longer blocks every save: it heals to the inventory.
-    await t.run(async ctx=>{const r=await ctx.db.query('rooms').withIndex('by_key',q=>q.eq('key','main')).unique();await ctx.db.patch(r._id,{furniture:[{id:'ghost',type:lamp.type,rotation:2,x:24,z:4,supportId:'gone',owner:player.id}]});});
+    const space=(await t.query(api.agents.map,{agentToken})).spaces[0].id;
+    await t.run(async ctx=>{for(const doc of await ctx.db.query('furniture').collect())await ctx.db.delete(doc._id);await ctx.db.insert('furniture',{id:'ghost',zone:space,type:lamp.type,rotation:2,x:24,z:4,supportId:'gone',owner:player.id});});
     const {itemId:again}=await t.mutation(api.agents.place,{agentToken,assetId:lamp.id,x:25,z:5});
     expect((await room()).map(i=>[i.id,i.x,i.supportId??null])).toEqual([['ghost',null,null],[again,25,null]]);
     // Someone else's piece on the table keeps it in the room.
@@ -750,7 +764,15 @@ describe('agents building pieces',()=>{
     const {itemId}=await t.mutation(api.agents.place,{agentToken,assetId:built.id,x:23,z:3});
     const revision=()=>t.query(api.room.roomState,{token:adminToken}).then(r=>r.revision);
     await t.mutation(api.room.setFurniture,{token:adminToken,items:[{id:'chair',type:'small_chair_armas',rotation:0,x:1,z:1}],revision:await revision()});
-    expect((await t.query(api.room.preview,{})).room.furniture.map(i=>i.id).sort()).toEqual(['chair',itemId].sort());
+    expect((await everywhere()).map(i=>i.id).sort()).toEqual(['chair',itemId].sort());
+    // A list that only covers the lobby never touches a space's pieces, whatever the client knows.
+    await t.mutation(api.room.setFurniture,{token:adminToken,items:[{id:'chair',type:'small_chair_armas',rotation:0,x:1,z:1}],revision:await revision(),knowsAssets:true});
+    expect((await everywhere()).map(i=>i.id).sort()).toEqual(['chair',itemId].sort());
+    // In the lobby, a client that knows about built pieces may remove them; one that does not keeps them.
+    const stock={id:'lamp',type:built.type,rotation:2,x:2,z:2};
+    await t.mutation(api.room.setFurniture,{token:adminToken,items:[{id:'chair',type:'small_chair_armas',rotation:0,x:1,z:1},stock],revision:await revision(),knowsAssets:true});
+    await t.mutation(api.room.setFurniture,{token:adminToken,items:[{id:'chair',type:'small_chair_armas',rotation:0,x:1,z:1}],revision:await revision()});
+    expect((await t.query(api.room.preview,{})).room.furniture.map(i=>i.id).sort()).toEqual(['chair','lamp']);
     await t.mutation(api.room.setFurniture,{token:adminToken,items:[{id:'chair',type:'small_chair_armas',rotation:0,x:1,z:1}],revision:await revision(),knowsAssets:true});
     expect((await t.query(api.room.preview,{})).room.furniture.map(i=>i.id)).toEqual(['chair']);
   });
@@ -974,12 +996,12 @@ describe('agents adding spaces',()=>{
     expect(await t.mutation(api.agents.resizeSpace,{agentToken,width:12})).toMatchObject({x:21,width:12,depth:8,moved:1});
     const map=await t.query(api.agents.map,{agentToken});
     expect(map.spaces.map(s=>[s.x,s.width])).toEqual([[21,12],[33,8]]);expect(map.walkway.tiles).toHaveLength(8+12+8);
-    expect((await t.query(api.room.scene,{})).furniture.find(i=>i.id===itemId)).toMatchObject({x:34,z:2});
+    expect((await everywhere()).find(i=>i.id===itemId)).toMatchObject({x:34,z:2});
     expect((await t.query(api.room.me,{token:otherToken})).route.at(-1)).toEqual({x:35.5,z:3.5});
     // A poster hanging on the later space's back wall slides along with it and still hangs there.
     const poster=await t.mutation(api.agents.createAsset,{agentToken:other,name:'Poster',category:'Wall',width:1,depth:1,spriteDensity:3,wallWidth:32,icon:storageId,parts:[{storageId,direction:4,width:48,height:60,reg:{x:-8,y:46}}],views:[{direction:4,source:4,mirror:false}]});
     const {itemId:hung}=await t.mutation(api.agents.place,{agentToken:other,assetId:poster.id,x:35,z:0,rotation:4,u:.5,height:60});
-    expect((await t.query(api.room.scene,{})).furniture.find(i=>i.id===hung)).toMatchObject({x:35,z:0,rotation:4,u:.5,height:60});
+    expect((await everywhere()).find(i=>i.id===hung)).toMatchObject({x:35,z:0,rotation:4,u:.5,height:60});
     // Narrowing needs the dropped columns clear of furniture and people.
     const myBox=await build(agentToken,'Crate'),{itemId:crate}=await t.mutation(api.agents.place,{agentToken,assetId:myBox.id,x:31,z:2});
     await expect(t.mutation(api.agents.resizeSpace,{agentToken,width:8})).rejects.toThrow('Clear the furniture');
@@ -989,9 +1011,9 @@ describe('agents adding spaces',()=>{
     await t.mutation(api.room.move,{token,x:22,z:5});
     expect(await t.mutation(api.agents.resizeSpace,{agentToken,width:8})).toMatchObject({width:8,moved:1});
     expect((await t.query(api.agents.map,{agentToken})).spaces.map(s=>[s.x,s.width])).toEqual([[21,8],[29,8]]);
-    expect((await t.query(api.room.scene,{})).furniture.find(i=>i.id===itemId)).toMatchObject({x:30,z:2});
+    expect((await everywhere()).find(i=>i.id===itemId)).toMatchObject({x:30,z:2});
     expect((await t.query(api.room.me,{token:otherToken})).route.at(-1)).toEqual({x:31.5,z:3.5});
-    expect((await t.query(api.room.scene,{})).furniture.find(i=>i.id===hung)).toMatchObject({x:31,z:0,rotation:4});
+    expect((await everywhere()).find(i=>i.id===hung)).toMatchObject({x:31,z:0,rotation:4});
     // The room still validates with the poster in its new place: another placement goes through.
     await t.mutation(api.agents.place,{agentToken:other,assetId:theirBox.id,x:33,z:3});
   });
@@ -1019,5 +1041,107 @@ describe('agents adding spaces',()=>{
     await t.mutation(api.agents.removeSpace,{agentToken:await key(adminToken,'Grant'),spaceId:mine.spaceId});
     expect((await t.query(api.room.scene,{})).spaces).toEqual([]);
     expect(player.id).toBeTruthy();
+  });
+});
+
+describe('zones',()=>{
+  const png=new Blob([new Uint8Array([137,80,78,71,13,10,26,10])],{type:'image/png'});
+  const friend=()=>t.mutation(api.room.join,{token:otherToken,name:'Friend',look});
+  async function spaceFor(token_,name){
+    const {agentToken}=await t.mutation(api.agents.createKey,{token:token_,label:name});
+    const space=await t.mutation(api.agents.addSpace,{agentToken,name});
+    return {agentToken,...space};
+  }
+  it('scopes presence, chat and voice to the zone a player stands in',async()=>{
+    const me=await guest();const other=await friend();
+    const space=await spaceFor(token,'Mine');
+    expect((await t.query(api.room.presence,{zone:'main'})).players.map(p=>p.id).sort()).toEqual([me.id,other.id].sort());
+    expect((await t.query(api.room.presence,{zone:space.spaceId})).players).toEqual([]);
+    const walk=await t.mutation(api.room.move,{token,x:space.x+2,z:3});
+    expect(walk.zone).toBe(space.spaceId);
+    expect((await t.query(api.room.me,{token})).zone).toBe(space.spaceId);
+    expect((await t.query(api.room.presence,{zone:'main'})).players.map(p=>p.id)).toEqual([other.id]);
+    expect((await t.query(api.room.presence,{zone:space.spaceId})).players.map(p=>p.id)).toEqual([me.id]);
+    // Tabs from before zones ask without a zone and get the lobby, appearances included.
+    expect((await t.query(api.room.presence,{})).players.map(p=>[p.id,!!p.look])).toEqual([[other.id,true]]);
+    await t.mutation(api.room.chat,{token,body:'Over here',mode:'Say'});
+    await t.mutation(api.room.chat,{token:otherToken,body:'In the lobby',mode:'Say'});
+    expect((await t.query(api.room.chatFeed,{token,zone:space.spaceId})).map(m=>m.body)).toEqual(['Over here']);
+    expect((await t.query(api.room.chatFeed,{token,zone:'main'})).map(m=>m.body)).toEqual(['In the lobby']);
+    expect((await t.query(api.room.chatFeed,{token})).map(m=>m.body)).toEqual(['Over here']);
+    expect((await t.query(api.room.chatFeed,{token:otherToken})).map(m=>m.body)).toEqual(['In the lobby']);
+    await t.mutation(api.room.heartbeat,{token,connectionId:'d'.repeat(64)});
+    expect(await t.query(internal.room.voiceIdentity,{token})).toEqual({playerId:me.id,zone:space.spaceId});
+    // Walking back out returns the player to the lobby's crowd.
+    await t.mutation(api.room.move,{token,x:5,z:5});
+    expect((await t.query(api.room.presence,{zone:space.spaceId})).players).toEqual([]);
+    expect((await t.query(api.room.presence,{zone:'main'})).players.map(p=>p.id).sort()).toEqual([me.id,other.id].sort());
+  });
+  it('bounds every zone by the same cap, the lobby included',async()=>{
+    await guest();
+    const space=await spaceFor(token,'Mine');
+    const crowd=zone=>t.run(async ctx=>{const base=await ctx.db.query('players').first();for(let i=0;i<60;i++)await ctx.db.insert('players',{...Object.fromEntries(Object.entries(base).filter(([k])=>!k.startsWith('_'))),name:`Extra ${i}`,nameKey:`extra ${i}`,zone,online:true,lastSeen:Date.now()});});
+    await crowd(space.spaceId);
+    await expect(t.mutation(api.room.move,{token,x:space.x+2,z:3})).rejects.toThrow('full');
+    expect((await t.query(api.room.presence,{zone:space.spaceId})).players.length).toBeLessThanOrEqual(61);
+    await crowd('main');
+    await expect(friend()).rejects.toThrow('full');
+    // Someone already in the lobby can still move about in it.
+    await t.mutation(api.room.move,{token,x:2,z:2});
+  });
+  it('sends movement without appearances, which travel once per version',async()=>{
+    const me=await guest();
+    const seen=(await t.query(api.room.presence,{zone:'main'})).players[0];
+    expect(seen.look).toBeUndefined();expect(seen.lookVersion).toBe(0);
+    expect(await t.query(api.room.look,{id:me.id})).toEqual({look,lookVersion:0});
+    const next={...look,top:{model:'1',color:'#55677e'}};
+    await t.mutation(api.room.appearance,{token,look:next});
+    expect((await t.query(api.room.presence,{zone:'main'})).players[0].lookVersion).toBe(1);
+    expect(await t.query(api.room.look,{id:me.id})).toEqual({look:next,lookVersion:1});
+  });
+  it('keeps the lobby switches apart from the map',async()=>{
+    await guest();
+    const map=await t.query(api.room.roomMap,{token});
+    expect(Object.keys(map).sort()).toEqual(['options','revision','spaces','stickies']);
+    await t.mutation(api.room.setDanceFloor,{token,on:false});
+    expect(await t.query(api.room.signals,{})).toEqual({danceFloorOn:false,fridge:null});
+    expect(await t.query(api.room.roomMap,{token})).toEqual(map);
+    expect((await t.query(api.room.preview,{})).room.danceFloorOn).toBe(false);
+  });
+  it('checks furniture one zone at a time and never lets a piece straddle two spaces',async()=>{
+    await admin();await guest();await friend();
+    const first=await spaceFor(token,'Mine'),second=await spaceFor(otherToken,'Theirs');
+    const edit=changes=>t.mutation(api.room.editFurniture,{token:adminToken,changes});
+    const car={id:'car',type:'custom_porsche',rotation:0,x:first.x+first.width-2,z:2};
+    await expect(edit([car])).rejects.toThrow('straddle two spaces');
+    await edit([{...car,x:first.x+1}]);
+    expect((await t.query(api.room.zoneFurniture,{token,zone:first.spaceId})).map(i=>i.id)).toEqual(['car']);
+    expect(await t.query(api.room.zoneFurniture,{token,zone:second.spaceId})).toEqual([]);
+    expect((await t.query(api.room.preview,{})).room.furniture).toEqual([]);
+    // A chair in the other space may stand on the same local tile: zones are checked apart.
+    await edit([{id:'chair',type:'small_chair_armas',rotation:0,x:second.x+1,z:2}]);
+    await expect(edit([{id:'chair2',type:'small_chair_armas',rotation:0,x:first.x+1,z:2}])).rejects.toThrow('free floor');
+    await expect(edit([{id:'chair',type:'small_chair_armas',rotation:0,x:second.x+1,z:2,extra:1}])).rejects.toThrow('Invalid furniture');
+    await expect(edit([{id:'chair',removed:true,x:1}])).rejects.toThrow('Invalid furniture');
+    await edit([{id:'chair',removed:true}]);
+    expect(await t.query(api.room.zoneFurniture,{token,zone:second.spaceId})).toEqual([]);
+    expect((await t.query(api.room.zoneFurniture,{token,zone:first.spaceId})).map(i=>i.id)).toEqual(['car']);
+  });
+  it('moves a room from before zones into the furniture table once',async()=>{
+    const me=await guest();
+    const space=await spaceFor(token,'Mine');
+    await t.mutation(api.room.move,{token,x:space.x+1,z:1});
+    await t.run(async ctx=>{
+      const room=await ctx.db.query('rooms').withIndex('by_key',q=>q.eq('key','main')).unique();
+      await ctx.db.patch(room._id,{furniture:[{id:'chair',type:'small_chair_armas',rotation:0,x:1,z:1},{id:'box',type:'small_chair_armas',rotation:0,x:space.x+3,z:3,owner:me.id},{id:'held',type:'small_chair_armas',rotation:0,x:null,z:null}],danceFloorOn:false});
+      await ctx.db.patch(me.id,{zone:undefined});
+      for(const s of await ctx.db.query('signals').collect())await ctx.db.delete(s._id);
+    });
+    expect(await t.mutation(internal.migrate.furniture,{})).toEqual({moved:3,players:1});
+    expect((await t.run(ctx=>ctx.db.query('furniture').collect())).map(d=>[d.id,d.zone]).sort()).toEqual([['box',space.spaceId],['chair','main'],['held','inventory']]);
+    expect((await t.run(ctx=>ctx.db.query('rooms').first())).furniture).toBeUndefined();
+    expect(await t.query(api.room.signals,{})).toEqual({danceFloorOn:false,fridge:null});
+    expect((await t.query(api.room.me,{token})).zone).toBe(space.spaceId);
+    expect(await t.mutation(internal.migrate.furniture,{})).toEqual({moved:0,players:0});
   });
 });

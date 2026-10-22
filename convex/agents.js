@@ -2,12 +2,13 @@
 // (api/mcp.js). The player makes a long-lived agent key in the room; only its hash is kept.
 import {mutation,query} from './_generated/server.js';
 import {v} from 'convex/values';
-import {fail,layoutFor,validateFurniture,validateSpace,validateSpaceStyle,ownSpaceCheck,healOrphans,isPlaced,cells,blocked,atTime,playerTiles,onlinePlayers} from './lib/rules.js';
+import {fail,layoutFor,validateSpace,validateSpaceStyle,isPlaced,cells,atTime,playerTiles,zonePlayers,zonesPlayers,MAIN_ZONE} from './lib/rules.js';
 import {backWallTiles} from '../shared/room-layout.js';
-import {ASSET_CATEGORIES,ASSET_LIMIT_PER_PLAYER,assetType,assetCatalogueEntry,definitionsFor,assertOwnedChanges} from './lib/assets.js';
+import {ASSET_CATEGORIES,ASSET_LIMIT_PER_PLAYER,assetType,assetCatalogueEntry,definitionsFor} from './lib/assets.js';
+import {loadZones,zoneItems,ownedItems,itemDoc,applyChanges,shiftItems} from './lib/furniture-store.js';
 import {floorColors} from './lib/catalog.js';
 import {playerFor} from './room.js';
-import {isWallItem,pickupWithContents} from '../shared/furniture-model.js';
+import {isWallItem} from '../shared/furniture-model.js';
 import {SPACE_LIMIT,SPACES_PER_PLAYER,SPACE_SIZE,SPACE_MIN_WIDTH,SPACE_MAX_WIDTH,SPACE_FLOORS,SPACE_WALLS,SPACE_FITS,SPACE_IMAGE_MAX} from '../shared/spaces.js';
 // A space's styling as agents see it: pictures as yes/no, the storage ids stay private.
 const spaceStyle=s=>({floor:s.floor,floorColor:s.floorColor,floorFit:s.floorFit??null,floorImage:!!s.floorImage,wall:s.wall??null,wallColor:s.wallColor??null,wallFit:s.wallFit??null,wallImage:!!s.wallImage});
@@ -23,7 +24,14 @@ export async function agentFor(ctx,agentToken){
   if(!player)fail('The player this agent belonged to has left. Attach it again.');
   return {player,link};
 }
-async function getRoom(ctx){const room=await ctx.db.query('rooms').withIndex('by_key',q=>q.eq('key','main')).unique();room.definitions=await definitionsFor(ctx);return room;}
+// The map; with `zones`, those zones' furniture and the definitions it needs come too.
+async function getRoom(ctx,zones=null){
+  const room=await ctx.db.query('rooms').withIndex('by_key',q=>q.eq('key','main')).unique();
+  if(!room)fail('The room is not ready yet.');
+  if(zones)await loadZones(ctx,room,zones);
+  return room;
+}
+const ownSpaceIds=(room,player)=>(room.spaces??[]).filter(s=>s.owner===player._id).map(s=>s.id);
 
 // Player side: make keys, see attached agents, cut them all off.
 export const attached=query({args:{token:v.string()},handler:async(ctx,{token})=>{
@@ -47,9 +55,9 @@ export const revoke=mutation({args:{token:v.string()},handler:async(ctx,{token})
 export const status=query({args:{agentToken:v.string()},handler:async(ctx,{agentToken})=>{
   const {player}=await agentFor(ctx,agentToken);
   const assets=await ctx.db.query('assets').withIndex('by_owner',q=>q.eq('ownerId',player._id)).collect();
-  const room=await getRoom(ctx);
+  const room=await getRoom(ctx),placed=(await ownedItems(ctx,player._id)).filter(isPlaced);
   return {playerName:player.name,playerId:player._id,assets:assets.map(a=>({id:a._id,type:assetType(a),name:a.name,category:a.category,width:a.width,depth:a.depth,...(a.category==='Seating'?{seat:a.seat??null}:{}),...(a.frameDuration?{animated:true,frameMs:a.frameDuration,switchable:!!a.switchable}:{}),createdAt:a.createdAt})),
-    placed:room.furniture.filter(i=>i.owner===player._id).map(({id,type,x,z,rotation})=>({id,type,x,z,rotation})),categories:ASSET_CATEGORIES,
+    placed:placed.map(({id,type,x,z,rotation})=>({id,type,x,z,rotation})),categories:ASSET_CATEGORIES,
     spaces:(room.spaces??[]).filter(s=>s.owner===player._id).map(s=>({id:s.id,name:s.name,width:s.width,depth:s.depth,...spaceStyle(s)})),
     spaceOptions:{perPlayer:SPACES_PER_PLAYER,limit:SPACE_LIMIT,size:`${SPACE_SIZE} by ${SPACE_SIZE} tiles to start; resize_space makes it ${SPACE_MIN_WIDTH} to ${SPACE_MAX_WIDTH} tiles wide`,floors:SPACE_FLOORS,walls:SPACE_WALLS,colors:'any hex colour like #b59232 (floorColors are the room palette)',floorColors,pictures:`PNG, JPEG, WebP or GIF up to ${SPACE_IMAGE_MAX/1024/1024} MB, uploaded through upload_url; fit 'tile' repeats it on every tile or wall segment, 'cover' stretches one copy over the whole floor or wall`}};
 }});
@@ -130,48 +138,46 @@ export const createAsset=mutation({args:{agentToken:v.string(),name:v.string(),c
 export const deleteAsset=mutation({args:{agentToken:v.string(),id:v.id('assets')},handler:async(ctx,{agentToken,id})=>{
   const {player}=await agentFor(ctx,agentToken),asset=await ctx.db.get(id);
   if(!asset||asset.ownerId!==player._id)fail('That piece is not yours.');
-  const room=await getRoom(ctx),type=assetType(asset);
-  if(room.furniture.some(item=>item.type===type)){
-    const items=room.furniture.filter(item=>item.type!==type);
-    await ctx.db.patch(room._id,{furniture:items,revision:room.revision+1});
-  }
+  // Every copy goes, wherever it stands; a piece that sat on one of them is healed back to its owner's hands when that zone next changes.
+  for(const doc of await ctx.db.query('furniture').withIndex('by_type',q=>q.eq('type',assetType(asset))).collect())await ctx.db.delete(doc._id);
   for(const storageId of new Set([asset.icon,...asset.parts.map(p=>p.storageId)]))await ctx.storage.delete(storageId);
   await ctx.db.delete(id);
 }});
-// The floor as the agent sees it: which tiles exist, which are taken, and where walls are.
+// The floor as the agent sees it: which tiles exist, which are taken, and where walls are. Every
+// space is listed, but tiles, walls and furniture are given for the lobby and the player's own
+// spaces (all of them for Grant), the only places the agent can build.
 export const map=query({args:{agentToken:v.string()},handler:async(ctx,{agentToken})=>{
-  await agentFor(ctx,agentToken);
-  const room=await getRoom(ctx),spaces=room.spaces??[],layout=layoutFor(room.options,spaces);
+  const {player}=await agentFor(ctx,agentToken),admin=player.role==='admin';
+  const map=await getRoom(ctx),spaces=map.spaces??[],layout=layoutFor(map.options,spaces);
+  const detailed=new Set(admin?spaces.map(s=>s.id):ownSpaceIds(map,player)),room=await getRoom(ctx,[MAIN_ZONE,...detailed]);
   const taken=new Set(room.furniture.filter(i=>isPlaced(i)&&!isWallItem(room.definitions[i.type])&&room.definitions[i.type].category!=='Rugs').flatMap(i=>cells(i,room.definitions).map(c=>c.join(','))));
   const areas={main:layout.mainTiles,dance:layout.danceTiles,poolDeck:layout.poolDeckTiles,parking:layout.parkingTiles,lounge:layout.loungeTiles.filter(([x,z])=>!layout.pitTiles.some(([px,pz])=>px===x&&pz===z))};
-  const {player}=await agentFor(ctx,agentToken);
+  const all=layout.tileSet;
+  const wallsOf=tiles=>tiles.flatMap(([x,z])=>[...(all.has(`${x-1},${z}`)?[]:[{x,z,side:'left',rotation:2}]),...(all.has(`${x},${z-1}`)?[]:[{x,z,side:'right',rotation:4}])]);
   return {areas:Object.fromEntries(Object.entries(areas).map(([name,tiles])=>[name,{tiles:tiles.map(([x,z])=>({x,z,free:!taken.has(`${x},${z}`)}))}])),
-    spaces:layout.spaces.map((space,i)=>({id:space.id,name:space.name,owner:space.owner,ownerName:space.ownerName,mine:space.owner===player._id,latest:i===layout.spaces.length-1,x:space.x,z:space.z,width:space.width,depth:space.depth,...spaceStyle(space),tiles:space.tiles.map(([x,z])=>({x,z,free:!taken.has(`${x},${z}`)}))})),
+    spaces:layout.spaces.map((space,i)=>({id:space.id,name:space.name,owner:space.owner,ownerName:space.ownerName,mine:space.owner===player._id,latest:i===layout.spaces.length-1,x:space.x,z:space.z,width:space.width,depth:space.depth,...spaceStyle(space),...(detailed.has(space.id)?{tiles:space.tiles.map(([x,z])=>({x,z,free:!taken.has(`${x},${z}`)}))}:{})})),
     walkway:{tiles:layout.walkwayTiles.map(([x,z])=>({x,z})),note:'A walk-only strip along the front of the lounge and the spaces: players walk here, furniture never goes here.'},
-    walls:[...layout.mainTiles,...layout.danceTiles,...backWallTiles(layout)].flatMap(([x,z])=>{const all=new Set(layout.tiles.map(t=>t.join(',')));return [...(all.has(`${x-1},${z}`)?[]:[{x,z,side:'left',rotation:2}]),...(all.has(`${x},${z-1}`)?[]:[{x,z,side:'right',rotation:4}])];}),
-    furniture:room.furniture.filter(isPlaced).map(({id,type,x,z,rotation,owner})=>({id,type,x,z,rotation,mine:false,owner:owner??null}))};
+    walls:wallsOf([...layout.mainTiles,...layout.danceTiles,...backWallTiles(layout).filter(([x])=>{const s=layout.spaces.find(s=>x>=s.x&&x<s.x+s.width);return !s||detailed.has(s.id);})]),
+    furniture:room.furniture.filter(isPlaced).map(({id,type,x,z,rotation,owner})=>({id,type,x,z,rotation,mine:owner===player._id,owner:owner??null}))};
 }});
 export const place=mutation({args:{agentToken:v.string(),assetId:v.id('assets'),x:v.number(),z:v.number(),rotation:v.optional(v.number()),u:v.optional(v.number()),height:v.optional(v.number())},handler:async(ctx,{agentToken,assetId,x,z,rotation,u,height})=>{
   const {player}=await agentFor(ctx,agentToken),asset=await ctx.db.get(assetId);
   if(!asset||asset.ownerId!==player._id)fail('That piece is not yours.');
-  const room=await getRoom(ctx),type=assetType(asset),def=room.definitions[type];
+  const room=await getRoom(ctx),type=assetType(asset),def=(await definitionsFor(ctx,[{type}]))[type];
   const item={id:crypto.randomUUID(),type,rotation:rotation??def.views[0].direction,x,z,owner:player._id,...(isWallItem(def)?{u:u??.5,height:height??60}:{})};
   if(!def.views.some(vw=>vw.direction===item.rotation))fail(`Rotation must be one of ${def.views.map(vw=>vw.direction).join(', ')}.`);
-  const previous=healOrphans(room.furniture),items=[...previous,item];
-  try{assertOwnedChanges(previous,items,player._id,room.definitions,player.role==='admin'?null:ownSpaceCheck(room.options,room.spaces??[],player._id,room.definitions));}catch(error){fail(error.message);}
-  validateFurniture(items,room.options,room.definitions,room.spaces??[]);
-  await ctx.db.patch(room._id,{furniture:items,revision:room.revision+1});
+  if(!Number.isInteger(x)||!Number.isInteger(z))fail('Furniture must fit in a free floor space.');
+  await applyChanges(ctx,room,player,[item]);
   return {itemId:item.id};
 }});
 export const remove=mutation({args:{agentToken:v.string(),itemId:v.string()},handler:async(ctx,{agentToken,itemId})=>{
-  const {player}=await agentFor(ctx,agentToken),room=await getRoom(ctx);
-  const item=room.furniture.find(i=>i.id===itemId);
-  if(!item||item.owner!==player._id)fail('That piece is not yours.');
+  const {player}=await agentFor(ctx,agentToken),room=await getRoom(ctx),doc=await itemDoc(ctx,itemId);
+  if(!doc||doc.owner!==player._id)fail('That piece is not yours.');
   // Whatever sits on it comes off too: the player's own pieces go back to their inventory, and
   // someone else's piece keeps the table in the room until they pick it up.
-  const stranded=room.furniture.find(i=>i.supportId===itemId&&i.owner!==player._id);
-  if(stranded)fail('Someone else\'s piece is on it; they need to pick it up first.');
-  await ctx.db.patch(room._id,{furniture:pickupWithContents(healOrphans(room.furniture),itemId,true),revision:room.revision+1});
+  const around=isPlaced(doc)?await zoneItems(ctx,doc.zone):[];
+  if(around.some(i=>i.supportId===itemId&&i.owner!==player._id))fail('Someone else\'s piece is on it; they need to pick it up first.');
+  await applyChanges(ctx,room,player,[{id:itemId,removed:true}]);
 }});
 // Adding floor: a new space always joins the right-hand end of the back wall, after the latest one.
 
@@ -207,19 +213,22 @@ export const resizeSpace=mutation({args:{agentToken:v.string(),spaceId:v.optiona
   if(index<0)fail(spaceId?'No space with that id.':mine.length?'Say which space: give its id from room_map.':'Add a space first.');
   if(spaces[index].owner!==player._id&&player.role!=='admin')fail('That space is not yours.');
   if(!Number.isInteger(width)||width<SPACE_MIN_WIDTH||width>SPACE_MAX_WIDTH)fail(`A space is ${SPACE_MIN_WIDTH} to ${SPACE_MAX_WIDTH} tiles wide.`);
-  const before=layoutFor(room.options,spaces).spaces[index],delta=width-before.width,end=before.x+before.width,now=Date.now(),online=await onlinePlayers(ctx,now);
+  const before=layoutFor(room.options,spaces).spaces[index],delta=width-before.width,end=before.x+before.width,now=Date.now();
   if(!delta)return {spaceId:before.id,name:before.name,x:before.x,z:before.z,width,depth:before.depth,moved:0};
+  // Only this space and the ones after it are touched: their furniture, and the players in them.
+  const later=spaces.slice(index+1).map(s=>s.id),online=await zonesPlayers(ctx,[before.id,...later,MAIN_ZONE],now);
   if(delta<0){
+    await loadZones(ctx,room,[before.id]);
     const gone=(x,z)=>x>=before.x+width&&x<end&&z>=before.z&&z<before.z+before.depth;
     if(room.furniture.some(i=>isPlaced(i)&&cells(i,room.definitions).some(([x,z])=>gone(x,z))))fail('Clear the furniture off the columns being removed first.');
     if((room.stickies??[]).some(s=>gone(s.x,s.z)))fail('Take the notes and posters off the wall of the columns being removed first.');
     for(const p of online){const at=atTime(p,now);if(gone(Math.floor(at.x),Math.floor(at.z))||[...playerTiles([p],now)].some(key=>gone(...key.split(',').map(Number))))fail(`${p.name} is standing on the part being removed.`);}
   }
   // Furniture, wall pieces, notes and posters from the end of this space onwards all slide along.
-  const furniture=room.furniture.map(i=>isPlaced(i)&&i.x>=end?{...i,x:i.x+delta}:i),stickies=(room.stickies??[]).map(s=>s.x>=end?{...s,x:s.x+delta}:s);
+  const next=spaces.map((s,i)=>i===index?{...s,width}:s),stickies=(room.stickies??[]).map(s=>s.x>=end?{...s,x:s.x+delta}:s);
+  await shiftItems(ctx,layoutFor(room.options,next),later,i=>i.x>=end,delta);
   for(const p of online)if(p.route.some(pt=>pt.x>=end))await ctx.db.patch(p._id,{route:p.route.map(pt=>pt.x>=end?{...pt,x:pt.x+delta}:pt)});
-  const next=spaces.map((s,i)=>i===index?{...s,width}:s);
-  await ctx.db.patch(room._id,{spaces:next,furniture,stickies,revision:room.revision+1});
+  await ctx.db.patch(room._id,{spaces:next,stickies,revision:room.revision+1});
   const placed=layoutFor(room.options,next).spaces[index];
   return {spaceId:placed.id,name:placed.name,x:placed.x,z:placed.z,width:placed.width,depth:placed.depth,moved:spaces.length-1-index};
 }});
@@ -241,9 +250,9 @@ export const removeSpace=mutation({args:{agentToken:v.string(),spaceId:v.string(
   if(spaces[index].owner!==player._id&&player.role!=='admin')fail('That space is not yours.');
   if(index!==spaces.length-1)fail('Only the latest space can be removed; the ones after it would be left floating.');
   const placed=layoutFor(room.options,spaces).spaces[index],inside=(x,z)=>x>=placed.x&&x<placed.x+placed.width&&z>=placed.z&&z<placed.z+placed.depth;
-  if(placed.tiles.some(([x,z])=>blocked(room,x,z))||room.furniture.some(i=>isPlaced(i)&&inside(i.x,i.z)))fail('Clear the furniture off the space first.');
-  // Anyone standing on it, or walking to it, keeps it: their remaining route counts as theirs.
+  if((await zoneItems(ctx,placed.id)).some(isPlaced))fail('Clear the furniture off the space first.');
+  // Anyone standing on it, or walking to it, keeps it: a walker's zone is already the space.
   const now=Date.now();
-  for(const p of await onlinePlayers(ctx,now)){const at=atTime(p,now);if(inside(Math.floor(at.x),Math.floor(at.z))||[...playerTiles([p],now)].some(key=>inside(...key.split(',').map(Number))))fail(`${p.name} is standing on it.`);}
+  for(const p of await zonesPlayers(ctx,[placed.id,MAIN_ZONE],now)){const at=atTime(p,now);if(inside(Math.floor(at.x),Math.floor(at.z))||[...playerTiles([p],now)].some(key=>inside(...key.split(',').map(Number))))fail(`${p.name} is standing on it.`);}
   await ctx.db.patch(room._id,{spaces:spaces.slice(0,index),revision:room.revision+1});
 }});

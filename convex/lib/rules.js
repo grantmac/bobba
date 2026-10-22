@@ -2,17 +2,33 @@ import {ConvexError} from 'convex/values';
 import {choices as appearanceChoices,colors as appearanceColors} from './appearance.js';
 import {shapes,wallColors,floorColors,furniture} from './catalog.js';
 import {canPlace,isWallItem,canHang,takesFloor} from '../../shared/furniture-model.js';
-import {roomLayout,tileDrop,pitSeat,backWallTiles,onWalkway} from '../../shared/room-layout.js';
+import {roomLayout,tileDrop,pitSeat,backWallTiles,onWalkway,zoneAt,zoneTiles,zoneTileSet,MAIN_ZONE,ZONE_CAP} from '../../shared/room-layout.js';
 import {SPACE_LIMIT,SPACES_PER_PLAYER,SPACE_SIZE,SPACE_NAME_MAX,SPACE_FLOORS,SPACE_WALLS,SPACE_FITS,isHexColor} from '../../shared/spaces.js';
-export {pitSeat};
+export {pitSeat,zoneAt,MAIN_ZONE,ZONE_CAP};
 export const isOnline=(player,now=Date.now())=>!!player&&(player.online??player.lastSeen>now-45000);
-// Explicit presence changes only on entry/exit; legacy rows age out during rollout.
+// Everyone online, world-wide: only for rare admin-wide operations, never a hot path.
 export async function onlinePlayers(ctx,now,limit=50){
   const live=await ctx.db.query('players').withIndex('by_online',q=>q.eq('online',true)).take(limit);
   if(live.length>=limit)return live;
   const legacy=await ctx.db.query('players').withIndex('by_online',q=>q.eq('online',undefined).gt('lastSeen',now-45000)).take(limit-live.length);
   return [...live,...legacy];
 }
+// The players in one zone. `online` is undefined between joining and the first heartbeat, so
+// an arriving player counts while recently seen. Reading one zone's index range means a move
+// elsewhere in the world never wakes this zone's subscribers.
+export async function zonePlayers(ctx,zone,now,limit=ZONE_CAP+1){
+  const live=await ctx.db.query('players').withIndex('by_zone',q=>q.eq('zone',zone).eq('online',true)).take(limit);
+  if(live.length>=limit)return live;
+  const arriving=await ctx.db.query('players').withIndex('by_zone',q=>q.eq('zone',zone).eq('online',undefined).gt('lastSeen',now-45000)).take(limit-live.length);
+  return [...live,...arriving];
+}
+// The players in several zones at once, without duplicates.
+export async function zonesPlayers(ctx,zones,now){
+  const seen=new Map();
+  for(const zone of new Set(zones))for(const p of await zonePlayers(ctx,zone,now))seen.set(p._id,p);
+  return [...seen.values()];
+}
+export const playerZone=player=>player.zone??MAIN_ZONE;
 export const DEFAULT_ROOM={shape:'square',wall:'plain',wallColor:'#dcded4',floor:'wood',floorColor:'#f7de9c',window:true};
 const COLORS=['#624631','#302525','#ad7443','#d5ad60','#eee0b2','#f2eeee','#42454c','#b34c43','#d77998','#d77998','#78578d','#536ea5','#72a6b0','#6b8c64','#9eae6a','#bd8e55','#55677e'];
 const SKIN=['#f5d9bd','#e8b18a','#cf936e','#b87952','#925f42','#704734','#50362a','#f0c8a4'];
@@ -43,7 +59,7 @@ export const layoutFor=(options,spaces=[])=>roomLayout(shapes[options.shape],spa
 export function wallTileSet(options){const layout=layoutFor(options);return new Set([...layout.mainTiles,...layout.danceTiles].map(t=>t.join(',')));}
 // Walls that furniture can hang on: those plus the back wall behind the lounge and any added spaces.
 export function hangingWallTileSet(options,spaces=[]){const layout=layoutFor(options,spaces);return new Set([...layout.mainTiles,...layout.danceTiles,...backWallTiles(layout)].map(t=>t.join(',')));}
-export function tileSet(options,spaces=[]){return new Set(layoutFor(options,spaces).tiles.map(t=>t.join(',')));}
+export function tileSet(options,spaces=[]){return layoutFor(options,spaces).tileSet;}
 export function wallChecker(options,spaces=[]){
   const walls=hangingWallTileSet(options,spaces),tiles=tileSet(options,spaces);
   return (x,z,side)=>walls.has(`${x},${z}`)&&!tiles.has(side==='left'?`${x-1},${z}`:`${x},${z-1}`);
@@ -52,9 +68,18 @@ export function blocked(room,x,z,ignore=null){
   const defs=room.definitions??furniture;
   return room.furniture.some(i=>i.id!==ignore&&isPlaced(i)&&takesFloor(defs[i.type])&&cells(i,defs).some(([a,b])=>a===x&&b===z));
 }
-export function validateFurniture(items,options,defs=furniture,spaces=[]){
-  if(items.length>200)fail('The room can hold up to 200 pieces.');
-  const ids=new Set(),occupied=new Set(),rugs=new Set(),layout=layoutFor(options,spaces),tiles=new Set([...layout.mainTiles,...layout.danceTiles,...layout.poolDeckTiles,...layout.parkingTiles,...layout.spaceTiles].map(cell=>cell.join(','))),hasWall=wallChecker(options,spaces);
+// Where furniture may stand, as 'x,z' keys: the lounge, the pool water and the walkway stay clear.
+// Given a zone, only that zone's share, so a zone's pieces are checked against its own tiles.
+export function placeableTiles(layout,zone=null){
+  const all=zone===null?[...layout.mainTiles,...layout.danceTiles,...layout.poolDeckTiles,...layout.parkingTiles,...layout.spaceTiles]:zone===MAIN_ZONE?[...layout.mainTiles,...layout.danceTiles,...layout.poolDeckTiles,...layout.parkingTiles]:zoneTiles(layout,zone);
+  return new Set(all.map(cell=>cell.join(',')));
+}
+export const ZONE_PIECE_LIMIT=200;
+// `items` is a complete list for one zone (or the whole room when zone is null): collisions and
+// tabletop checks are exact because a piece never straddles two zones.
+export function validateFurniture(items,options,defs=furniture,spaces=[],zone=null){
+  if(items.length>ZONE_PIECE_LIMIT)fail(`${zone===null?'The room':'A space'} can hold up to ${ZONE_PIECE_LIMIT} pieces.`);
+  const ids=new Set(),occupied=new Set(),rugs=new Set(),layout=layoutFor(options,spaces),tiles=placeableTiles(layout,zone),hasWall=wallChecker(options,spaces);
   for(const item of items){
     if(!item||Object.keys(item).some(key=>!['id','type','rotation','x','z','supportId','on','u','height','owner'].includes(key))||!['id','type','rotation','x','z'].every(key=>Object.hasOwn(item,key))||typeof item.id!=='string'||!/^[-a-zA-Z0-9]{1,80}$/.test(item.id)||ids.has(item.id))fail('Invalid furniture.');
     if(item.on!==undefined&&(typeof item.on!=='boolean'||!(item.type==='custom_dj_decks'||defs[item.type]?.switchable)))fail('Invalid furniture power setting.');
@@ -64,8 +89,9 @@ export function validateFurniture(items,options,defs=furniture,spaces=[]){
     if(!isWallItem(def)&&(item.u!==undefined||item.height!==undefined))fail('Invalid furniture: only wall pieces have a wall position.');
     if(item.x===null&&item.z===null){if(item.supportId!==undefined||item.u!==undefined||item.height!==undefined)fail('Inventory items cannot be on a table or wall.');continue;}
     if(!isPlaced(item))fail('Invalid furniture position.');
-    if(isWallItem(def)){if(item.supportId!==undefined||!canHang(item,def,hasWall))fail('Wall pieces must hang on a continuous section of wall.');continue;}
+    if(isWallItem(def)){if(item.supportId!==undefined||!canHang(item,def,hasWall))fail('Wall pieces must hang on a continuous section of wall.');if(zone!==null&&zoneAt(layout,item.x,item.z)!==zone)fail('Wall pieces must hang in the space they belong to.');continue;}
     if(new Set(cells(item,defs).map(([x,z])=>tileDrop(layout,x,z))).size>1)fail('Furniture cannot straddle the step.');
+    if(new Set(cells(item,defs).map(([x,z])=>zoneAt(layout,x,z))).size>1)fail('Furniture cannot straddle two spaces.');
     if(item.supportId!==undefined){if(typeof item.supportId!=='string'||!item.supportId)fail('Invalid furniture support.');continue;}
     const target=def.category==='Rugs'?rugs:occupied;
     for(const cell of cells(item,defs)){const key=cell.join(',');if(onWalkway(layout,...cell))fail('The walkway in front of the spaces stays clear of furniture.');if(!tiles.has(key)||target.has(key))fail('Furniture must fit in a free floor space.');target.add(key);}
@@ -143,17 +169,21 @@ export function playerTiles(players,now,exclude=null){
   }
   return result;
 }
-export function freePosition(room,preferred={x:3.5,z:4.5},occupied=new Set()){
-  const free=layoutFor(room.options,room.spaces??[]).tiles.filter(([x,z])=>!blocked(room,x,z)&&!occupied.has(`${x},${z}`));
+// The nearest free tile to a point, within one zone (the lobby by default): a player never lands
+// somewhere whose furniture was not loaded.
+export function freePosition(room,preferred={x:3.5,z:4.5},occupied=new Set(),zone=MAIN_ZONE){
+  const layout=layoutFor(room.options,room.spaces??[]),candidates=zone===null?layout.tiles:zoneTiles(layout,zone);
+  const free=candidates.filter(([x,z])=>!blocked(room,x,z)&&!occupied.has(`${x},${z}`));
   if(!free.length)fail('There is no free space for another character.');
   free.sort((a,b)=>Math.hypot(a[0]+.5-preferred.x,a[1]+.5-preferred.z)-Math.hypot(b[0]+.5-preferred.x,b[1]+.5-preferred.z));
   return {x:free[0][0]+.5,z:free[0][1]+.5};
 }
 // A route to a seat may cross that piece's own tiles, so a car parked against a
 // wall can still be entered from whichever side is open.
+// The search stays inside the zones whose furniture is loaded (`room.zones`), or the whole room.
 export function findPath(room,start,end,seatId=null,occupied=new Set()){
   const seat=seatId&&room.furniture.find(item=>item.id===seatId),stools=seat&&(room.definitions??furniture)[seat.type].seat?.[seat.rotation]?.cells;
-  const tiles=tileSet(room.options,room.spaces??[]),key=p=>`${p.x},${p.z}`,origin={x:Math.floor(start.x),z:Math.floor(start.z)};
+  const layout=layoutFor(room.options,room.spaces??[]),tiles=room.zones?zoneTileSet(layout,room.zones):layout.tileSet,key=p=>`${p.x},${p.z}`,origin={x:Math.floor(start.x),z:Math.floor(start.z)};
   if(!tiles.has(key(end))||occupied.has(key(end)))return null;
   const queue=[origin],parents=new Map([[key(origin),null]]);
   for(let i=0;i<queue.length&&!parents.has(key(end));i++)for(const [dx,dz] of [[1,0],[-1,0],[0,1],[0,-1]]){

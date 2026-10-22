@@ -21,10 +21,15 @@ export function assetDefinition(asset){
   return {category:asset.category,width:asset.width,depth:asset.depth,views:asset.views,surfaceHeight:asset.surfaceHeight,
     ...(asset.wallWidth!==undefined?{wallWidth:asset.wallWidth}:{}),...(asset.seat?{seat:seatSpots(asset)}:{}),...(asset.switchable?{switchable:true}:{}),owner:asset.ownerId};
 }
-// Static catalogue plus every built piece, for placement checks.
-export async function definitionsFor(ctx){
-  const assets=await ctx.db.query('assets').collect();
-  return {...furniture,...Object.fromEntries(assets.map(asset=>[assetType(asset),assetDefinition(asset)]))};
+// Static catalogue plus the built pieces a set of items actually uses, for placement checks:
+// each `asset_<id>` type is one document read, never a scan of every piece ever built.
+export async function definitionsFor(ctx,items=[]){
+  const defs={...furniture};
+  for(const type of new Set(items.map(item=>item?.type).filter(type=>typeof type==='string'&&type.startsWith('asset_')))){
+    const id=ctx.db.normalizeId('assets',type.slice(6)),asset=id?await ctx.db.get(id):null;
+    if(asset)defs[type]=assetDefinition(asset);
+  }
+  return defs;
 }
 // The client-side catalogue entry, with storage files resolved to URLs.
 export async function assetCatalogueEntry(ctx,asset){
@@ -38,9 +43,10 @@ export async function assetCatalogueEntry(ctx,asset){
     parts:asset.parts.map(p=>({file:files.get(p.storageId),layer:'a',direction:p.direction,reg:p.reg,width:p.width,height:p.height,z:0,ink:8,alphaPrepared:true,...(p.frames?{frames:p.frames,trimFrames:false}:{})})),
     views:asset.views};
 }
-// Non-admins may only add, move or remove pieces they own, built from their own assets,
-// up to a cap; anything else in the list must be untouched.
-// `where` (from rules.ownSpaceCheck) confines a builder's new or moved pieces to their own space.
+// Non-admins may only add, move or remove pieces they own, built from their own assets;
+// anything else in the list must be untouched. `previous` and `next` need only carry the pieces
+// that changed. `where` (from rules.ownSpaceCheck) confines a builder's pieces to their own space.
+// The placed-piece cap is checked by the caller, which knows the player's whole collection.
 export function assertOwnedChanges(previous,next,playerId,definitions,where=null){
   const before=new Map(previous.map(item=>[item.id,item])),after=new Map(next.map(item=>[item.id,item]));
   for(const id of new Set([...before.keys(),...after.keys()])){
@@ -51,5 +57,4 @@ export function assertOwnedChanges(previous,next,playerId,definitions,where=null
     if(b&&b.on!==undefined&&b.on!==a?.on)throw new Error('Switch a piece on or off by clicking it in the room.');
     if(where&&b&&isPlaced(b)&&!where.within(b))throw new Error(where.hasSpace?'Your pieces can only go in your own space.':'Add a space first: your pieces can only go in your own space.');
   }
-  if(next.filter(item=>item.owner===playerId&&item.x!==null).length>PLACED_LIMIT_PER_PLAYER)throw new Error(`You can place up to ${PLACED_LIMIT_PER_PLAYER} pieces.`);
 }

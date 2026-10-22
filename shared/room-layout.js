@@ -3,7 +3,16 @@ export const DANCE_ROWS=10,STEP_DOWN=12;
 
 // Append a lower terrace along the front-left edge without renumbering any
 // existing room tiles, furniture positions, or wall attachments.
+// Layouts are rebuilt only when the shape or the spaces change: a mutation or a frame asks for
+// the same layout many times, and with hundreds of spaces building one is not free.
+const layoutCache=new WeakMap();
 export function roomLayout(mainTiles,spaces=[]){
+  let byShape=layoutCache.get(spaces);
+  if(!byShape){byShape=new WeakMap();layoutCache.set(spaces,byShape);}
+  const cached=byShape.get(mainTiles);if(cached)return cached;
+  const layout=buildLayout(mainTiles,spaces);byShape.set(mainTiles,layout);return layout;
+}
+function buildLayout(mainTiles,spaces){
   const width=Math.max(...mainTiles.map(([x])=>x))+1;
   const danceStart=Math.max(...mainTiles.map(([,z])=>z))+1;
   const danceTiles=Array.from({length:width*DANCE_ROWS},(_,i)=>[i%width,danceStart+Math.floor(i/width)]);
@@ -28,10 +37,52 @@ export function roomLayout(mainTiles,spaces=[]){
   // never cuts off the ones after it. Nothing can be placed on it; it appears with the first space.
   const walkway=placedSpaces.length?{x:lounge.x,z:Math.max(lounge.z+lounge.depth,...placedSpaces.map(space=>space.z+space.depth)),width:lounge.width+spacesWidth,depth:1}:null;
   const walkwayTiles=walkway?Array.from({length:walkway.width},(_,i)=>[walkway.x+i,walkway.z]):[];
-  const extentWidth=width+pool.width+lounge.width+spacesWidth;
+  // The lobby's own width, before any spaces: the camera fits this, and spaces stream in beyond it.
+  const baseWidth=width+pool.width+lounge.width;
+  const extentWidth=baseWidth+spacesWidth;
   const depth=Math.max(danceStart+DANCE_ROWS,pool.z+pool.depth,lounge.z+lounge.depth,...placedSpaces.map(space=>space.z+space.depth),walkway?walkway.z+1:0);
-  return {mainTiles,danceTiles,pool,parking,lounge,pit,pitTiles,poolDeckTiles,parkingTiles,waterTiles,loungeTiles,spaces:placedSpaces,spaceTiles:spaceTilesAll,walkway,walkwayTiles,
-    tiles:[...mainTiles,...danceTiles,...poolDeckTiles,...parkingTiles,...waterTiles,...loungeTiles,...spaceTilesAll,...walkwayTiles],width,extentWidth,depth,danceStart};
+  // The lobby zone is everything that is not an added space; each space is a zone of its own.
+  const mainZoneTiles=[...mainTiles,...danceTiles,...poolDeckTiles,...parkingTiles,...waterTiles,...loungeTiles,...walkwayTiles];
+  const layout={mainTiles,danceTiles,pool,parking,lounge,pit,pitTiles,poolDeckTiles,parkingTiles,waterTiles,loungeTiles,spaces:placedSpaces,spaceTiles:spaceTilesAll,walkway,walkwayTiles,mainZoneTiles,
+    tiles:[...mainZoneTiles,...spaceTilesAll],width,baseWidth,extentWidth,depth,danceStart};
+  layout.tileSet=new Set(layout.tiles.map(t=>t.join(',')));
+  return layout;
+}
+// Zones: the unit of presence, chat, voice, furniture storage and rendering. The lobby (main room,
+// terrace, pool, deck, lounge and walkway) is one zone; every added space is another, by its id.
+export const MAIN_ZONE='main';
+// How many players a zone holds at once: the cost of being in a zone is bounded by this, not by
+// how many people are in the world.
+export const ZONE_CAP=60;
+export function zoneAt(layout,x,z){
+  // Spaces sit in a row along x, so the first whose range holds x is the one (or none).
+  for(const s of layout.spaces)if(x>=s.x&&x<s.x+s.width)return z>=s.z&&z<s.z+s.depth?s.id:MAIN_ZONE;
+  return MAIN_ZONE;
+}
+export const zoneSpace=(layout,zone)=>zone===MAIN_ZONE?null:layout.spaces.find(s=>s.id===zone)??null;
+export function zoneTiles(layout,zone){
+  if(zone===MAIN_ZONE)return layout.mainZoneTiles;
+  return zoneSpace(layout,zone)?.tiles??[];
+}
+// The tiles of several zones as one set of 'x,z' keys, for pathfinding within them.
+export function zoneTileSet(layout,zones){
+  const set=new Set();
+  for(const zone of new Set(zones))for(const t of zoneTiles(layout,zone))set.add(`${t[0]},${t[1]}`);
+  return set;
+}
+// A zone's footprint in tiles, for drawing and for working out what a camera can see.
+export function zoneBounds(layout,zone){
+  if(zone===MAIN_ZONE)return {x:0,z:0,width:layout.baseWidth,depth:layout.depth};
+  const s=zoneSpace(layout,zone);return s?{x:s.x,z:s.z,width:s.width,depth:s.depth}:null;
+}
+// The zones whose tiles meet a block of tiles.
+export function zonesIn(layout,region){
+  const zones=new Set();
+  const x1=region.x+region.width,z1=region.z+region.depth;
+  if(region.x<layout.baseWidth&&region.z<layout.depth)zones.add(MAIN_ZONE);
+  for(const s of layout.spaces)if(s.x<x1&&s.x+s.width>region.x&&s.z<z1&&s.z+s.depth>region.z)zones.add(s.id);
+  if(layout.walkway&&layout.walkway.z<z1&&layout.walkway.z+1>region.z&&layout.walkway.x<x1&&layout.walkway.x+layout.walkway.width>region.x)zones.add(MAIN_ZONE);
+  return [...zones];
 }
 // The back wall runs along z=0 from the lounge to the end of the last space; these tiles carry it.
 export const backWallTiles=layout=>[...layout.loungeTiles,...layout.spaceTiles].filter(([,z])=>z===0);
@@ -55,10 +106,12 @@ export const walkingDrop=(layout,z,x=0)=>{
   return Math.max(dance,pit);
 };
 
+// Each floor level is tried in turn, highest first; a hit counts when the tile exists and sits at
+// that level, so no list of tiles is ever scanned.
 export function tileAtPoint(layout,sx,sy,centerX){
-  for(const [tiles,drop] of [[layout.mainTiles,0],[layout.danceTiles,STEP_DOWN],[layout.poolDeckTiles,0],[layout.parkingTiles,0],[layout.pitTiles,STEP_DOWN],[layout.loungeTiles,0],[layout.waterTiles,7],[layout.spaceTiles,0],[layout.walkwayTiles,0]]){
+  for(const drop of [0,STEP_DOWN,7]){
     const x=Math.floor((sx+centerX)/64+(sy-drop)/32),z=Math.floor((sy-drop)/32-(sx+centerX)/64);
-    if(tiles.some(([tx,tz])=>tx===x&&tz===z))return {x,z};
+    if(layout.tileSet.has(`${x},${z}`)&&tileDrop(layout,x,z)===drop)return {x,z};
   }
   return null;
 }
