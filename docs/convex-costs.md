@@ -25,7 +25,7 @@ The deployed app and local configuration share `perfect-peacock-308`, the cloud 
 | Path | Before | After |
 | --- | --- | --- |
 | Periodic heartbeat | 240 calls per connected tab-hour | 120, plus initial connection and page restores |
-| Connection crash timeout | 45 seconds | 5 minutes to tolerate background delays; clean departures still immediate |
+| Connection crash timeout | 45 seconds | Away after 5 minutes, removed after 15; clean departures still immediate |
 | Pong | Always subscribed; up to 10 paddle writes/second/paddle | Removed from the client: zero Pong subscriptions or gameplay calls |
 | Slow heartbeat request | Further requests can queue | At most one in flight per connection |
 | Session subscription | `session` and `me` both validate the same token | `me` remains; redundant `session` subscription removed |
@@ -36,6 +36,8 @@ The deployed app and local configuration share `perfect-peacock-308`, the cloud 
 | Movement map read | Loads the room twice | Reuses the loaded room before loading zone furniture |
 
 Session expiry and moderation checks remain server-side. Legacy endpoints remain available. New connections advertise the slower cadence only after the backend supports it; legacy expiry jobs use each row's recorded timeout. No data migration is required. Deploy backend before frontend; rolling back the backend alone requires restoring the previous frontend first and handling new connection leases.
+
+Quiet tabs now transition to away before leaving. The same per-connection scheduled job checks the five-minute quiet deadline, then the fifteen-minute removal deadline; it does not add a polling loop. Normal heartbeats still update only the connection row. Player records change only on away/active/departed transitions, and sibling tabs are inspected only during those transitions. The simulated steady-hour regression checks 120 periodic heartbeat writes, at most 15 lease checks, one outstanding follow-up job, and no player writes. These are operation counts for the tested path, not a billing estimate.
 
 `test/network-cost.test.js` exercises the real client scheduling with a mocked transport, including old-backend fallback, slow requests, shutdown, absence of Pong subscriptions and the lifecycle of furniture-program subscriptions. `test/multiplayer.test.js` covers database dependencies, authorization, lease upgrades, mixed old/new connections, idle presence, disconnect, crash expiry and inert legacy Pong handlers. These tests verify request budgets and behavior, not dollar savings or Convex production cache-hit rates.
 

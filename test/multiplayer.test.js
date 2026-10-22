@@ -2,8 +2,8 @@ import {beforeEach,afterEach,describe,it,expect,vi} from 'vitest';
 import {convexTest} from 'convex-test';
 import schema from '../convex/schema.js';
 import {api,internal} from '../convex/_generated/api.js';
-import {heartbeat as heartbeatFunction} from '../convex/room.js';
-import {CONNECTION_TIMEOUT} from '../shared/presence-policy.js';
+import {heartbeat as heartbeatFunction,expireConnection as expireConnectionFunction} from '../convex/room.js';
+import {AWAY_AFTER,CONNECTION_TIMEOUT} from '../shared/presence-policy.js';
 import {pending as pendingCaptures,take as takeCapture} from '../convex/captures.js';
 import {attached as attachedAgents} from '../convex/agents.js';
 import {overview as roomOverview} from '../convex/agents.js';
@@ -219,6 +219,109 @@ describe('room access and persistence',()=>{
     await expect(t.query(api.room.checkName,{name:' visitor '})).rejects.toThrow('already taken');
     await t.run(ctx=>ctx.db.patch(me.id,{lastSeen:Date.now()-4*60*60*1000-1}));
     await t.query(api.room.checkName,{name:'Visitor'});
+  });
+
+  it('marks a quiet player away once and resumes the same visit, position and seat',async()=>{
+    const me=await guest(),connectionId='d'.repeat(64);
+    await t.mutation(api.room.heartbeat,{token,connectionId});
+    await t.run(ctx=>ctx.db.patch(me.id,{seatId:'pit'}));
+    const before=await t.run(ctx=>ctx.db.get(me.id));
+    const visits=await t.run(ctx=>ctx.db.query('visits').collect());
+    const events=await t.run(ctx=>ctx.db.query('botEvents').collect());
+    const lease=await t.run(ctx=>ctx.db.query('connections').first());
+    const clock=vi.spyOn(Date,'now').mockReturnValue(lease.lastSeen+AWAY_AFTER);
+    try{
+      await t.mutation(internal.room.expireConnection,{connectionId,seenAt:lease.lastSeen});
+      expect(await t.run(ctx=>ctx.db.get(me.id))).toEqual({...before,away:true});
+      expect((await t.query(api.room.livePresence,{zone:'main'})).players[0]).toMatchObject({id:me.id,away:true,seatId:'pit'});
+      const quiet=await t.run(ctx=>ctx.db.query('connections').first());
+      expect(quiet.expiryAt).toBe(lease.lastSeen+CONNECTION_TIMEOUT);
+      // A duplicate first-stage job cannot close the visit or schedule more work.
+      const jobs=await t.run(ctx=>ctx.db.system.query('_scheduled_functions').collect());
+      await t.mutation(internal.room.expireConnection,{connectionId,seenAt:lease.lastSeen});
+      expect(await t.run(ctx=>ctx.db.system.query('_scheduled_functions').collect())).toEqual(jobs);
+      clock.mockReturnValue(lease.lastSeen+AWAY_AFTER+60000);
+      await t.mutation(api.room.heartbeat,{token,connectionId});
+      expect(await t.run(ctx=>ctx.db.get(me.id))).toEqual(before);
+      expect(await t.run(ctx=>ctx.db.query('visits').collect())).toEqual(visits);
+      expect(await t.run(ctx=>ctx.db.query('botEvents').collect())).toEqual(events);
+      await t.mutation(internal.room.expireConnection,{connectionId,seenAt:lease.lastSeen});
+      expect((await t.query(api.room.me,{token})).away).toBe(false);
+    }finally{clock.mockRestore();}
+  });
+  it('keeps a player active while another tab is fresh, then away until the last tab closes',async()=>{
+    const me=await guest(),a='d'.repeat(64),b='e'.repeat(64),start=Date.now();
+    const clock=vi.spyOn(Date,'now').mockReturnValue(start);
+    try{
+      await t.mutation(api.room.heartbeat,{token,connectionId:a});
+      clock.mockReturnValue(start+60000);await t.mutation(api.room.heartbeat,{token,connectionId:b});
+      clock.mockReturnValue(start+AWAY_AFTER);
+      await t.mutation(internal.room.expireConnection,{connectionId:a,seenAt:start});
+      expect((await t.query(api.room.me,{token})).away).toBe(false);
+      await t.mutation(internal.room.disconnect,{token,connectionId:b});
+      expect((await t.query(api.room.me,{token})).away).toBe(true);
+      expect((await t.query(api.room.livePresence,{zone:'main'})).players.map(p=>p.id)).toEqual([me.id]);
+      await t.mutation(internal.room.disconnect,{token,connectionId:a});
+      expect((await t.query(api.room.livePresence,{zone:'main'})).players).toEqual([]);
+    }finally{clock.mockRestore();}
+  });
+  it('clears away when a sibling tab returns before its own quiet check runs',async()=>{
+    const me=await guest(),a='d'.repeat(64),b='e'.repeat(64),start=Date.now();
+    const clock=vi.spyOn(Date,'now').mockReturnValue(start);
+    try{
+      await t.mutation(api.room.heartbeat,{token,connectionId:a});
+      await t.mutation(api.room.heartbeat,{token,connectionId:b});
+      clock.mockReturnValue(start+AWAY_AFTER);
+      await t.mutation(internal.room.expireConnection,{connectionId:a,seenAt:start});
+      expect((await t.query(api.room.me,{token})).away).toBe(true);
+      await t.mutation(api.room.heartbeat,{token,connectionId:b});
+      expect((await t.query(api.room.me,{token})).away).toBe(false);
+      await t.mutation(internal.room.expireConnection,{connectionId:b,seenAt:start});
+      expect((await t.query(api.room.livePresence,{zone:'main'})).players).toHaveLength(1);
+    }finally{clock.mockRestore();}
+  });
+  it('removes a quiet player only at the final deadline and does not revive blocked sessions',async()=>{
+    const me=await guest(),connectionId='d'.repeat(64),start=Date.now();
+    const clock=vi.spyOn(Date,'now').mockReturnValue(start);
+    try{
+      await t.mutation(api.room.heartbeat,{token,connectionId});
+      clock.mockReturnValue(start+AWAY_AFTER);
+      await t.mutation(internal.room.expireConnection,{connectionId,seenAt:start});
+      await t.run(async ctx=>{const s=await ctx.db.query('sessions').first();await ctx.db.patch(s._id,{blockedUntil:start+CONNECTION_TIMEOUT+60000});});
+      await expect(t.mutation(api.room.heartbeat,{token,connectionId})).rejects.toThrow('removed from the room');
+      expect((await t.run(ctx=>ctx.db.get(me.id))).away).toBe(true);
+      clock.mockReturnValue(start+CONNECTION_TIMEOUT-1);
+      expect((await t.query(api.room.livePresence,{zone:'main'})).players).toHaveLength(1);
+      clock.mockReturnValue(start+CONNECTION_TIMEOUT);
+      await t.mutation(internal.room.expireConnection,{connectionId,seenAt:start});
+      expect((await t.query(api.room.livePresence,{zone:'main'})).players).toEqual([]);
+      expect((await t.run(ctx=>ctx.db.query('visits').first())).leftAt).not.toBeNull();
+    }finally{clock.mockRestore();}
+  });
+  it('bounds steady presence work to connection writes and at most 15 lease checks per hour',async()=>{
+    const me=await guest(),connectionId='d'.repeat(64),start=Date.now(),queue=[],writes=[];
+    let checks=0;
+    const clock=vi.spyOn(Date,'now').mockReturnValue(start);
+    const run=async(fn,args)=>t.run(ctx=>fn._handler({...ctx,
+      db:new Proxy(ctx.db,{get(db,key){
+        if(key==='patch')return (id,fields)=>{writes.push({id,fields});return db.patch(id,fields);};
+        return typeof db[key]==='function'?db[key].bind(db):db[key];
+      }}),
+      scheduler:{runAfter:async(delay,fn,args)=>{queue.push({at:Date.now()+delay,fn,args});}},
+    },args));
+    try{
+      await run(heartbeatFunction,{token,connectionId});writes.length=0;
+      for(let seconds=30;seconds<=3600;seconds+=30){
+        clock.mockReturnValue(start+seconds*1000);
+        while(queue[0]?.at<=Date.now()){const job=queue.shift();checks++;await run(expireConnectionFunction,job.args);}
+        await run(heartbeatFunction,{token,connectionId});
+      }
+      expect(checks).toBeLessThanOrEqual(15);expect(checks).toBeGreaterThan(0);
+      expect(queue).toHaveLength(1);
+      expect(writes.filter(w=>Object.keys(w.fields).length===1&&'lastSeen' in w.fields)).toHaveLength(120);
+      expect(writes.some(w=>w.id===me.id)).toBe(false);
+      expect(writes).toHaveLength(120+checks);
+    }finally{clock.mockRestore();}
   });
 
   it('does not rewrite players or scan visits on an idle heartbeat',async()=>{
@@ -727,7 +830,7 @@ describe('room access and persistence',()=>{
     const me=await guest(),connectionId='d'.repeat(64);
     await t.mutation(api.room.heartbeat,{token,connectionId});
     const connection=await t.run(ctx=>ctx.db.query('connections').first());
-    const clock=vi.spyOn(Date,'now').mockReturnValue(connection.lastSeen+10*60000);
+    const clock=vi.spyOn(Date,'now').mockReturnValue(connection.lastSeen+CONNECTION_TIMEOUT+1);
     try{
       await t.mutation(internal.room.expireConnection,{connectionId,seenAt:connection.lastSeen});
       expect((await t.query(api.room.livePresence,{zone:'main'})).players).toEqual([]);

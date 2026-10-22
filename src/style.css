@@ -240,6 +240,7 @@ button:disabled{cursor:wait;opacity:.6}
 /* Keyboard target only: pointer clicks go to the room's live hit test, which follows a moving player. */
 .player-target{position:absolute;border:0;margin:0;padding:0;background:transparent;cursor:pointer;z-index:2;appearance:none;pointer-events:none}
 .player-target:focus-visible{outline:1px dotted #fff}
+.player-target[data-away="true"]::after{content:"zZ";position:absolute;right:-10px;top:-14px;padding:2px 4px;color:#fff;background:#39445c;border:1px solid #172033;font:bold 11px/1 monospace;box-shadow:1px 1px 0 #172033}
 .user-info-stand canvas{width:auto;height:auto}
 /* The hand icon's actions menu opens above the toolbar, sharing the speech menu's look. */
 .actions-picker{position:relative;display:flex;align-items:center;height:100%}
