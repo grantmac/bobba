@@ -1,4 +1,4 @@
-const SHEET='/assets/bot/lobby-robot.png';
+const SHEET='/assets/bot/tnarg-robot-v3.png';
 const COLUMNS=[3,0,0,1,1,2,2,3];
 let loading;
 
