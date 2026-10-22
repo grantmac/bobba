@@ -204,8 +204,7 @@ button:disabled{cursor:wait;opacity:.6}
 .furniture-confirm-body strong { display:block;padding-top:4px; }
 .furniture-confirm-body p { clear:both;padding-top:8px; }
 .chat-bubbles { position:fixed;inset:0 0 54px;overflow:hidden;pointer-events:none;z-index:4; }
-.chat-bubble { position:absolute;display:flex;align-items:center;gap:3px;width:max-content;height:19px;max-width:calc(100vw - 12px);padding:0 15px;border:1px solid var(--speaker-color);border-radius:7px;background:#fff;color:#111;box-shadow:inset 0 1px white;font:10px/16px Verdana,sans-serif;white-space:nowrap;pointer-events:auto;transform:translate(-50%,calc(-100% - var(--chat-rise,0px)));transition:transform 120ms linear; }
-.chat-bubble strong { flex-shrink:0; }.chat-bubble span { overflow:hidden;text-overflow:ellipsis; }
+.chat-bubble { position:absolute;display:block;width:max-content;min-height:19px;max-width:min(320px,calc(100vw - 12px));padding:0 15px;border:1px solid var(--speaker-color);border-radius:7px;background:#fff;color:#111;box-shadow:inset 0 1px white;font:10px/16px Verdana,sans-serif;text-align:left;white-space:normal;overflow-wrap:anywhere;pointer-events:auto;transform:translate(-50%,calc(-100% - var(--chat-rise,0px)));transition:transform 120ms linear; }
 .chat-bubble[data-mode=Shout] { font-weight:bold; }.chat-bubble[data-mode=Whisper] { font-style:italic; }
 .furniture-placement { left:auto;top:auto;bottom:74px;right:20px;transform:none;flex-wrap:wrap;width:290px; }
 .furniture-placement span { width:100%;font-weight:bold; }
@@ -406,7 +405,7 @@ background-size:11px 11px,11px 11px,11px 11px,11px 11px,calc(100% - 22px) 12px,c
 .entry-progress li[aria-current]{color:#111;background:#eee;border-color:#111;font-weight:bold;box-shadow:inset 0 1px white}
 .entry-progress li[aria-current]::before{background:#fff;border-color:#777}
 .entry-intro,.entry-agent{padding:12px;background:#eee;border:1px solid #111;border-radius:6px;color:#222;margin-bottom:8px}
-.character-editor.entry-flow .entry-intro h2,.character-editor.entry-flow .entry-agent h2{font:bold 13px/1.4 Verdana,sans-serif;margin:0 0 8px}
+.character-editor.entry-flow .entry-intro h2,.appearance-dialog .entry-agent h2{font:bold 13px/1.4 Verdana,sans-serif;margin:0 0 8px}
 .entry-intro p,.entry-agent p{font:11px/1.6 Verdana,sans-serif;margin:6px 0}
 .character-editor.entry-flow .entry-name{display:block;margin:0 0 8px;padding:12px}
 .entry-flow .entry-name label{display:block;font-size:10px;margin-bottom:7px}
@@ -457,7 +456,8 @@ input:focus,textarea:focus,select:focus{outline:none}
 .room-key-dialog footer{justify-content:flex-end;padding:10px 0 0}
 @media(max-width:560px){.room-key-body{padding:14px}.room-key-passkey,.room-key-recover button,.room-key-dialog footer button{min-height:40px}.entry-return,.character-room-key{min-height:36px}}
 
-.entry-flow[data-agent-connected=true] .entry-agent-setup .agent-copy-prompt,.entry-flow[data-agent-connected=true] .entry-agent-setup .agent-copy-status,.entry-flow[data-agent-connected=true] .entry-agent-setup .agent-prompt{display:none}
+.entry-agent[data-agent-connected=true] .agent-copy-prompt,.entry-agent[data-agent-connected=true] .agent-copy-status,.entry-agent[data-agent-connected=true] .agent-prompt{display:none}
+.entry-agent .agent-prompt[hidden],.agent-dialog .agent-revoke[hidden]{display:none}
 .character-editor.entry-flow[data-agent-connected=true] footer .appearance-apply{background:#d4e7cb}
 
 .room-key-backup{margin-top:16px;padding-top:14px;border-top:1px solid #bbb}
