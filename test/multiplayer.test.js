@@ -3,7 +3,7 @@ import {convexTest} from 'convex-test';
 import schema from '../convex/schema.js';
 import {api,internal} from '../convex/_generated/api.js';
 import {heartbeat as heartbeatFunction} from '../convex/room.js';
-import {DEFAULT_ROOM,validateLook} from '../convex/lib/rules.js';
+import {DEFAULT_ROOM,validateLook,findPath} from '../convex/lib/rules.js';
 import appearanceCatalog from '../public/assets/appearance/catalog.json';
 import {furniture} from '../convex/lib/catalog.js';
 import {docItem} from '../convex/lib/furnitureStore.js';
@@ -415,6 +415,36 @@ describe('room access and persistence',()=>{
     const ride=await t.mutation(api.room.move,{token,x:7,z:1,seatId:'car'});
     expect(ride.route.at(-1)).toEqual({x:7.5,z:1.5});expect([[6.5,1.5],[7.5,0.5],[7.5,2.5]]).toContainEqual([ride.route.at(-2).x,ride.route.at(-2).z]);
     await expect(t.mutation(api.room.move,{token:adminToken,x:6,z:1})).rejects.toThrow('reached');
+  });
+  it.each([null,'wave'])('lets a player leave a car with its cabin exit blocked after %s',async action=>{
+    await admin();const me=await guest();
+    await t.mutation(api.room.setFurniture,{token:adminToken,items:[{id:'car',type:'custom_porsche',rotation:2,x:0,z:0},{id:'chair',type:'small_chair_armas',rotation:0,x:2,z:1}],revision:0});
+    const ride=await t.mutation(api.room.move,{token,x:1,z:1,seatId:'car'});
+    await t.run(ctx=>ctx.db.patch(me.id,{startedAt:ride.startedAt-10000}));
+    if(action)await t.mutation(api.room.gesture,{token,action});
+    const walk=await t.mutation(api.room.move,{token,x:3,z:1});
+    expect(walk.seatId).toBeNull();
+    expect(walk.route[0]).toEqual({x:1.5,z:1.5});expect(walk.route.at(-1)).toEqual({x:3.5,z:1.5});
+    expect(walk.route).not.toContainEqual({x:2.5,z:1.5});
+    expect((await t.query(api.room.me,{token})).seatId).toBeNull();
+  });
+  it('can redirect a walk while still inside furniture without allowing blocked destinations',()=>{
+    const room={options:DEFAULT_ROOM,furniture:[{id:'car',type:'custom_porsche',rotation:2,x:6,z:0}]};
+    const start={x:7.2,z:1.5};
+    const route=findPath(room,start,{x:5,z:1},null,new Set(['8,1']));
+    expect(route?.[0]).toEqual(start);expect(route?.at(-1)).toEqual({x:5.5,z:1.5});
+    expect(findPath(room,start,{x:6,z:1})).toBeNull();
+    expect(findPath(room,start,{x:7,z:1})).toBeNull();
+  });
+  it('keeps other furniture and player reservations blocked when leaving a car',()=>{
+    const room={options:DEFAULT_ROOM,furniture:[{id:'car',type:'custom_porsche',rotation:2,x:6,z:0}]};
+    const start={x:7.5,z:1.5},end={x:5,z:1};
+    // Every possible step from the cabin is reserved.
+    expect(findPath(room,start,end,null,new Set(['6,1','8,1','7,0','7,2']))).toBeNull();
+    room.furniture.push({id:'chair',type:'small_chair_armas',rotation:0,x:5,z:1});
+    expect(findPath(room,start,end)).toBeNull();
+    const route=findPath(room,start,{x:4,z:1});
+    expect(route).not.toBeNull();expect(route).not.toContainEqual({x:5.5,z:1.5});
   });
   it('gives arrivals separate tiles and rejects walking onto another player',async()=>{
     const a=await guest(),b=await admin();expect(a.route[0]).not.toEqual(b.route[0]);

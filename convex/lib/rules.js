@@ -181,16 +181,24 @@ export function freePosition(room,preferred={x:3.5,z:4.5},occupied=new Set(),zon
   return {x:free[0][0]+.5,z:free[0][1]+.5};
 }
 // A route to a seat may cross that piece's own tiles, so a car parked against a
-// wall can still be entered from whichever side is open.
+// wall can still be entered from whichever side is open. A player already inside
+// a piece can cross its tiles to leave, even when redirecting a walk mid-step.
 // The search stays inside the zones whose furniture is loaded (`room.zones`), or the whole room.
 export function findPath(room,start,end,seatId=null,occupied=new Set()){
-  const seat=seatId&&room.furniture.find(item=>item.id===seatId),stools=seat&&(room.definitions??furniture)[seat.type].seat?.[seat.rotation]?.cells;
+  const defs=room.definitions??furniture;
+  const seat=seatId&&room.furniture.find(item=>item.id===seatId),stools=seat&&defs[seat.type].seat?.[seat.rotation]?.cells;
   const layout=layoutFor(room.options,room.spaces??[]),tiles=room.zones?zoneTileSet(layout,room.zones):layout.tileSet,key=p=>`${p.x},${p.z}`,origin={x:Math.floor(start.x),z:Math.floor(start.z)};
-  if(!tiles.has(key(end))||occupied.has(key(end)))return null;
+  if(!tiles.has(key(end))||occupied.has(key(end))||blocked(room,end.x,end.z,seatId))return null;
+  const source=room.furniture.find(item=>isPlaced(item)&&takesFloor(defs[item.type])&&cells(item,defs).some(([x,z])=>x===origin.x&&z===origin.z));
+  // Multi-stool pieces still block their counter. Once outside, the source cannot
+  // be entered again unless it is the requested destination seat.
+  const sourceStools=source&&defs[source.type].seat?.[source.rotation]?.cells;
+  const exitTiles=new Set(source?(sourceStools?sourceStools.map(([x,z])=>[source.x+x,source.z+z]):cells(source,defs)).map(cell=>cell.join(',')):[]);
   const queue=[origin],parents=new Map([[key(origin),null]]);
   for(let i=0;i<queue.length&&!parents.has(key(end));i++)for(const [dx,dz] of [[1,0],[-1,0],[0,1],[0,-1]]){
     const p={x:queue[i].x+dx,z:queue[i].z+dz};
-    const allowed=stools&&!stools.some(([x,z])=>seat.x+x===p.x&&seat.z+z===p.z)?null:seatId;
+    const leaving=exitTiles.has(key(queue[i]))&&exitTiles.has(key(p));
+    const allowed=leaving?source.id:stools&&!stools.some(([x,z])=>seat.x+x===p.x&&seat.z+z===p.z)?null:seatId;
     if(tiles.has(key(p))&&!occupied.has(key(p))&&!blocked(room,p.x,p.z,allowed)&&!parents.has(key(p))){parents.set(key(p),queue[i]);queue.push(p);}
   }
   if(!parents.has(key(end)))return null;

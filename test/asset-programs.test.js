@@ -11,17 +11,28 @@ const look={hair:{model:'1',color:'#624631'},skin:{model:'1',color:'#e8b18a'},to
 let t;
 beforeEach(()=>{t=convexTest(schema,modules);});
 afterEach(()=>vi.restoreAllMocks());
-async function setup(){
+async function setup(assetSpec={}){
   const player=await t.mutation(api.room.join,{token,name:'Builder',look});
   const {agentToken}=await t.mutation(api.agents.createKey,{token,label:'Test'});
   await t.mutation(api.agents.addSpace,{agentToken,name:'Workshop'});
   const storageId=await t.run(ctx=>ctx.storage.store(new Blob(['sprite'])));
-  const asset=await t.mutation(api.agents.createAsset,{agentToken,name:'Chair',category:'Seating',width:1,depth:1,spriteDensity:1,icon:storageId,parts:[{storageId,direction:2,width:32,height:48,reg:{x:16,y:40}}],views:[0,2,4,6].map(direction=>({direction,source:2,mirror:false}))});
+  const asset=await t.mutation(api.agents.createAsset,{agentToken,name:'Chair',category:'Seating',width:1,depth:1,spriteDensity:1,icon:storageId,parts:[{storageId,direction:2,width:32,height:48,reg:{x:16,y:40}}],views:[0,2,4,6].map(direction=>({direction,source:2,mirror:false})),...assetSpec});
   const {itemId}=await t.mutation(api.agents.place,{agentToken,assetId:asset.id,x:23,z:3});
   const set=extra=>t.mutation(api.programs.set,{agentToken,assetId:asset.id,source:spinningChairProgram,...extra});
   return {player,agentToken,asset,itemId,set};
 }
 describe('saved asset programs',()=>{
+  it('lets a seated player walk out of a custom car after starting its program',async()=>{
+    const {player,itemId,set}=await setup({name:'Car',width:3,depth:3,seat:{x:1,z:1,height:10}});
+    await set({});await t.mutation(api.room.setDeckPower,{token,id:itemId,on:false});
+    const ride=await t.mutation(api.room.move,{token,x:24,z:4,seatId:itemId});
+    await t.run(ctx=>ctx.db.patch(player.id,{startedAt:ride.startedAt-30000}));
+    await t.mutation(api.room.setDeckPower,{token,id:itemId,on:true});
+    const walk=await t.mutation(api.room.move,{token,x:26,z:4});
+    expect(walk.seatId).toBeNull();
+    expect(walk.route).toEqual([{x:24.5,z:4.5},{x:25.5,z:4.5},{x:26.5,z:4.5}]);
+    expect((await t.query(api.room.me,{token})).seatId).toBeNull();
+  });
   it('publishes code live, protects ownership and stale edits, and removes power cleanly',async()=>{
     const {agentToken,asset,itemId,set}=await setup();
     await set({initialState:{count:0},expectedRevision:0});
