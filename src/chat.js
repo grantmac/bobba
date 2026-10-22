@@ -21,7 +21,9 @@ export function createChat({getSpeaker,onSelectSpeaker}){
   // A shared screen-space stack keeps distant speakers readable while the map moves.
   // Only the bubbles rise; avatar positions and camera zoom cannot move chat off screen.
   function position(){
-    const anchor=stream.clientHeight-16,left=stream.clientWidth/2;
+    const height=stream.clientHeight,left=stream.clientWidth/2;
+    // Float around the upper half of the room, leaving enough space for a wrapped reply.
+    const anchor=Math.min(height-16,Math.max(height*.45,(bubbles.at(-1)?.element.offsetHeight??0)+8));
     let ceiling=Infinity;
     for(let i=bubbles.length-1;i>=0;i--){
       const item=bubbles[i],height=item.element.offsetHeight;

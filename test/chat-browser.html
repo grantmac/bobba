@@ -26,6 +26,7 @@ function assertStack(){
 function update(){chat.update(performance.now());const head=document.querySelector('#head');head.style.left=`${layout.originX+speaker.x*layout.scale}px`;head.style.top=`${layout.originY+(speaker.y-layout.centerY-96)*layout.scale}px`;}
 try{
   chat.say('Visible from anywhere in the room');update();await frame();
+  assert(rect(bubble()).bottom<=document.querySelector('.chat-stream').clientHeight*.5,'Short messages must float in the upper half of the room');
   let before=rect(bubble());layout.originY+=37.5;update();
   let after=rect(bubble());assert(near(after.y,before.y),'Vertical panning must leave the bubble on screen');
   before=after;layout.originX+=20.5;layout.originY-=13.5;update();after=rect(bubble());
