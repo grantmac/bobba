@@ -7,16 +7,19 @@ import {POSTERS,STICKY_COLORS,STICKY_LIMIT,STICKY_TEXT_LIMIT,validWallPosition,v
 import {seatFor,isWallItem,canHang} from '../shared/furniture-model.js';
 import {openVisit,closeVisits,closeStaleVisits} from './lib/visits.js';
 import {definitionsFor,assertOwnedChanges} from './lib/assets.js';
+import {discardRemovedPrograms} from './lib/programs.js';
+import {queueBotEvent} from './lib/bot_events.js';
 const SESSION_AGE=30*24*60*60*1000,ADMIN_AGE=12*60*60*1000;
 // A guest name frees up this long after its holder was last seen; Grant is reserved for good.
 const NAME_REUSE_AFTER=4*60*60*1000;
 async function hash(value){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))].map(b=>b.toString(16).padStart(2,'0')).join('');}
 function equal(a,b){if(a.length!==b.length)return false;let diff=0;for(let i=0;i<a.length;i++)diff|=a.charCodeAt(i)^b.charCodeAt(i);return diff===0;}
 function validToken(token){if(!/^[a-f0-9]{64}$/.test(token))fail('Please enter the room again.');}
-async function sessionFor(ctx,token){
+export async function sessionFor(ctx,token){
   validToken(token);const digest=await hash(token);
   const session=await ctx.db.query('sessions').withIndex('by_token',q=>q.eq('tokenHash',digest)).unique();
   if(!session||session.expiresAt<Date.now())fail('Your session has ended. Please enter the room again.');
+  if((session.blockedUntil??0)>Date.now())fail('You have been removed from the room for 10 minutes. Please return later.');
   return session;
 }
 export async function playerFor(ctx,token,admin=false){
@@ -33,7 +36,7 @@ async function notifyArrival(ctx,player,now,pageOrigin){
   await ctx.scheduler.runAfter(0,internal.notifications.roomJoin,{name:player.name});
 }
 async function getRoom(ctx,withDefinitions=true){const room=await ctx.db.query('rooms').withIndex('by_key',q=>q.eq('key','main')).unique();if(room&&withDefinitions)room.definitions=await definitionsFor(ctx);return room;}
-function publicPlayer(p){return {id:p._id,name:p.name,role:p.role,look:p.look,route:p.route,startedAt:p.startedAt,direction:p.direction,seatId:p.seatId,lastSeen:p.lastSeen,action:p.action??null,actionStarted:p.actionStarted??0,drink:p.drink??null,typingUntil:p.typingUntil??0};}
+export function publicPlayer(p){return {id:p._id,name:p.name,role:p.role,...(p.kind?{kind:p.kind}:{}),look:p.look,route:p.route,startedAt:p.startedAt,direction:p.direction,seatId:p.seatId,lastSeen:p.lastSeen,action:p.action??null,actionStarted:p.actionStarted??0,drink:p.drink??null,typingUntil:p.typingUntil??0};}
 async function checkEntryCode(code){
   if(!code||code.length>200||!process.env.GRANT_ENTRY_HASH||!equal(await hash(code),process.env.GRANT_ENTRY_HASH))fail('This private entry link is not valid.');
 }
@@ -41,6 +44,17 @@ export const entryAppearance=query({args:{entryCode:v.string()},handler:async(ct
   await checkEntryCode(entryCode);
   const player=await ctx.db.query('players').withIndex('by_name',q=>q.eq('nameKey','grant')).unique();
   return player?.look??null;
+}});
+// This is a preview; join checks again atomically before assigning the name.
+export const checkName=query({args:{name:v.string(),entryCode:v.optional(v.string())},handler:async(ctx,{name,entryCode})=>{
+  const named=validName(name);
+  if(entryCode){await checkEntryCode(entryCode);return;}
+  if(named.key==='grant')fail('That name is reserved. Please choose another name.');
+  const player=await ctx.db.query('players').withIndex('by_name',q=>q.eq('nameKey',named.key)).unique();
+  if(player?.kind==='bot')fail('That name is reserved for the room bot.');
+  if(player?.savedAt&&!entryCode)fail('That name belongs to a saved character. Use your room key or choose another name.');
+  if((player?.blockedUntil??0)>Date.now())fail('You have been removed from the room for 10 minutes. Please return later.');
+  if(player&&(isOnline(player)||Date.now()-player.lastSeen<NAME_REUSE_AFTER))fail('That name is already taken. Please choose another name.');
 }});
 export const join=mutation({args:{token:v.string(),name:v.string(),look:v.any(),entryCode:v.optional(v.string()),replaceLook:v.optional(v.boolean()),pageOrigin:v.optional(v.string())},handler:async(ctx,args)=>{
   validToken(args.token);validateLook(args.look);const named=validName(args.name),digest=await hash(args.token);
@@ -54,14 +68,19 @@ export const join=mutation({args:{token:v.string(),name:v.string(),look:v.any(),
   if(!admin&&named.key==='grant')fail('That name is reserved. Please choose another name.');
   const key=admin?'grant':named.key;
   let player=await ctx.db.query('players').withIndex('by_name',q=>q.eq('nameKey',key)).unique();
-  const now=Date.now();let takeover=false;
+  if(player?.kind==='bot')fail('That name is reserved for the room bot.');
+  if((player?.blockedUntil??0)>Date.now())fail('You have been removed from the room for 10 minutes. Please return later.');
+  if(player?.savedAt&&!admin)fail('That name belongs to a saved character. Use your room key or choose another name.');
+  const now=Date.now();
   if(player&&!admin){
     if(isOnline(player,now)||now-player.lastSeen<NAME_REUSE_AFTER)fail('That name is already taken. It frees up four hours after its last visit.');
-    // The name's previous holder has been away long enough: hand the record to the newcomer and
-    // end the old holder's sessions and connections, so they re-enter under a fresh name.
-    for(const s of await ctx.db.query('sessions').withIndex('by_expiry',q=>q.gt('expiresAt',0)).filter(q=>q.eq(q.field('playerId'),player._id)).collect())await ctx.db.delete(s._id);
+    // Retire the unsaved identity; never transfer its belongings or memories to a newcomer.
+    for(const s of await ctx.db.query('sessions').withIndex('by_player',q=>q.eq('playerId',player._id)).collect())await ctx.db.delete(s._id);
     for(const c of await ctx.db.query('connections').withIndex('by_player',q=>q.eq('playerId',player._id)).collect())await ctx.db.delete(c._id);
-    takeover=true;
+    for(const link of await ctx.db.query('agentLinks').withIndex('by_player',q=>q.eq('playerId',player._id)).collect())await ctx.db.delete(link._id);
+    await closeVisits(ctx,player._id,now);
+    await ctx.db.patch(player._id,{nameKey:`retired:${player._id}`,online:false,identityVersion:(player.identityVersion??0)+1});
+    player=null;
   }
   const online=await onlinePlayers(ctx,now,51);
   if(online.length>=50&&!player)fail('The room is full. Please try again shortly.');
@@ -72,13 +91,14 @@ export const join=mutation({args:{token:v.string(),name:v.string(),look:v.any(),
   let playerId;
   if(player){
     playerId=player._id;
-    await ctx.db.patch(playerId,{online:undefined,look:takeover||args.replaceLook?args.look:player.look,lastSeen:now,route:[position],startedAt:now,seatId:null,drink:null,typingUntil:0,action:null,...(takeover?{lastJoinAlertAt:undefined}:{})});
+    await ctx.db.patch(playerId,{online:undefined,look:args.replaceLook?args.look:player.look,lastSeen:now,route:[position],startedAt:now,seatId:null,drink:null,typingUntil:0,action:null});
   }else playerId=await ctx.db.insert('players',{name:admin?'Grant':named.name,nameKey:key,role:admin?'admin':'guest',look:args.look,route:[position],startedAt:now,direction:2,seatId:null,drink:null,lastSeen:now,lastChat:0});
   await ctx.db.insert('sessions',{role:admin?'admin':'guest',tokenHash:digest,playerId,expiresAt:now+(admin?ADMIN_AGE:SESSION_AGE)});
   await ctx.scheduler.runAfter(45000,internal.room.expireArrival,{playerId,seenAt:now});
   const joined=await ctx.db.get(playerId);
   await openVisit(ctx,joined,now);
   await notifyArrival(ctx,joined,now,args.pageOrigin);
+  await queueBotEvent(ctx,joined,'arrival');
   return publicPlayer(joined);
 }});
 // Public visitors can watch the shared room before choosing a character.
@@ -111,6 +131,15 @@ export const voiceIdentity=internalQuery({args:{token:v.string()},handler:async(
   if(!isOnline(player))fail('Enter the room before joining voice.');
   return player._id;
 }});
+// Remember every issued tab identity, including disconnected tabs, so moderation can revoke them.
+export const registerVoice=internalMutation({args:{token:v.string(),identity:v.string()},handler:async(ctx,{token,identity})=>{
+  const player=await playerFor(ctx,token);
+  if(!isOnline(player))fail('Enter the room before joining voice.');
+  if(identity!==player._id&&!identity.startsWith(`${player._id}#`))fail('Invalid voice identity.');
+  const old=await ctx.db.query('voiceGrants').withIndex('by_identity',q=>q.eq('identity',identity)).unique();
+  const expiresAt=Date.now()+12*3600000;
+  if(old)await ctx.db.patch(old._id,{expiresAt});else await ctx.db.insert('voiceGrants',{playerId:player._id,identity,expiresAt});
+}});
 // Room contents on their own subscription: they change rarely, so player movement no
 // longer re-sends the furniture list to everyone.
 export const roomState=query({args:{token:v.string()},handler:async(ctx,{token})=>{
@@ -140,6 +169,7 @@ export const heartbeat=mutation({args:{token:v.string(),connectionId:v.string(),
   let positionUpdate={};
   if(!isOnline(p,now)){
     await openVisit(ctx,p,now);await notifyArrival(ctx,p,now,pageOrigin);
+    await queueBotEvent(ctx,p,'arrival');
     const room=await getRoom(ctx),online=await onlinePlayers(ctx,now);
     positionUpdate={route:[freePosition(room,atTime(p,now),playerTiles(online,now,p._id))],startedAt:now,seatId:null};
   }
@@ -188,7 +218,11 @@ export const appearance=mutation({args:{token:v.string(),look:v.any()},handler:a
   const p=await playerFor(ctx,token);validateLook(look);await ctx.db.patch(p._id,{look,lastSeen:Date.now()});
 }});
 export const move=mutation({args:{token:v.string(),x:v.number(),z:v.number(),seatId:v.optional(v.string()),direction:v.optional(v.union(v.literal(0),v.literal(2),v.literal(4),v.literal(6)))},handler:async(ctx,args)=>{
-  const p=await playerFor(ctx,args.token),room=await getRoom(ctx),now=Date.now();
+  return await movePlayer(ctx,await playerFor(ctx,args.token),args);
+}});
+// Both human and bot movement use the same server-checked paths and seat reservations.
+export async function movePlayer(ctx,p,args){
+  const room=await getRoom(ctx),now=Date.now();
   if(!Number.isInteger(args.x)||!Number.isInteger(args.z))fail('Choose a floor tile.');
   const target={x:args.x,z:args.z};let seat=null;
   let spot=null;
@@ -204,7 +238,7 @@ export const move=mutation({args:{token:v.string(),x:v.number(),z:v.number(),sea
   const seatId=seat?.id??(pit?'pit':null);
   await ctx.db.patch(p._id,{route,startedAt:now,seatId,direction,lastSeen:now,action:!seatId&&(p.action==='dance'||p.action==='breakdance')?p.action:null});
   return {route,startedAt:now,seatId,direction};
-}});
+}
 // Fridges serve nearby players; the bar serves a player after they reach a stool.
 export const takeDrink=mutation({args:{token:v.string(),id:v.string()},handler:async(ctx,{token,id})=>{
   const p=await playerFor(ctx,token),room=await getRoom(ctx),now=Date.now();
@@ -241,8 +275,9 @@ export const chat=mutation({args:{token:v.string(),body:v.string(),mode:v.union(
   if(!text||text.length>400)fail('Messages must contain 1–400 characters.');
   if(now-p.lastChat<350)fail('Please wait a moment before sending another message.');
   const position=atTime(p,now);
-  await ctx.db.insert('messages',{playerId:p._id,name:p.name,color:p.look.top.color,body:text,mode,...position,sentAt:now});
+  const messageId=await ctx.db.insert('messages',{playerId:p._id,name:p.name,color:p.look.top.color,body:text,mode,...position,sentAt:now});
   await ctx.db.patch(p._id,{lastChat:now,lastSeen:now,typingUntil:0});
+  await queueBotEvent(ctx,p,'chat',text,messageId);
 }});
 async function resetPlayers(ctx,room){
   const players=await onlinePlayers(ctx,Date.now(),100);
@@ -267,6 +302,7 @@ export const setFurniture=mutation({args:{token:v.string(),items:v.array(v.any()
   // Hanging a wall piece never displaces anyone, so only floor changes reset players.
   const placement=value=>JSON.stringify(value.filter(item=>!isWallItem(room.definitions[item.type])).map(({on,...item})=>item));
   const changedPlacement=placement(items)!==placement(room.furniture);
+  await discardRemovedPrograms(ctx,room.furniture,items);
   await ctx.db.patch(room._id,{furniture:items,revision:revision+1});
   if(changedPlacement)await resetPlayers(ctx,next);
 }});
@@ -328,6 +364,7 @@ export const deleteSticky=mutation({args:{token:v.string(),id:v.string(),revisio
   await ctx.db.patch(room._id,{stickies:room.stickies.filter(n=>n.id!==id)});
 }});
 export const cleanup=internalMutation({args:{},handler:async ctx=>{
+  for(const grant of await ctx.db.query('voiceGrants').withIndex('by_expiry',q=>q.lt('expiresAt',Date.now())).take(100))await ctx.db.delete(grant._id);
   const expired=await ctx.db.query('sessions').withIndex('by_expiry',q=>q.lt('expiresAt',Date.now())).take(100);
   for(const s of expired)await ctx.db.delete(s._id);
   const oldMessages=await ctx.db.query('messages').withIndex('by_time',q=>q.lt('sentAt',Date.now()-7*86400000)).take(200);

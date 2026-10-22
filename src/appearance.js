@@ -1,3 +1,4 @@
+import {createAgentPrompt} from './agent-link.js';
 import {makeDraggable} from './draggable.js';
 import {randomAppearance} from './random-appearance.js';
 import {appearanceChoices,appearanceGender,changeAppearanceGender} from './appearance-options.js';
@@ -7,7 +8,7 @@ const LABELS = {hair:'Hair',skin:'Faces',top:'Tops',bottom:'Trousers',shoes:'Sho
 const DEFAULT = {hair:{model:'1',color:'#624631'},skin:{model:'1',color:'#e8b18a'},top:{model:'1',color:'#6b8c64'},bottom:{model:'1',color:'#55677e'},shoes:{model:'1',color:'#42454c'}};
 const copy = value => structuredClone(value);
 
-export async function createAppearance({prepareImage, onApply, onOpen}) {
+export async function createAppearance({prepareImage, onApply, onOpen, onRoomKey}) {
   const response = await fetch(ROOT+'catalog.json');
   if (!response.ok) throw new Error('Appearance choices could not be loaded.');
   const catalog = await response.json();
@@ -125,12 +126,17 @@ export async function createAppearance({prepareImage, onApply, onOpen}) {
   dialog.className='appearance-dialog character-editor';dialog.setAttribute('aria-labelledby','appearance-title');
   dialog.innerHTML=`
     <header><h1 id="appearance-title">Your appearance</h1><button type="button" class="appearance-close" aria-label="Close appearance editor">×</button></header>
-    <div class="entry-name" hidden><label for="entry-name">Your name</label><input id="entry-name" autocomplete="nickname" minlength="2" maxlength="20" placeholder="Choose a name"><p class="entry-note"></p></div>
+    <ol class="entry-progress" hidden><li>Name</li><li>Character</li><li>Agent</li></ol>
+    <section class="entry-intro" hidden><h2>Welcome! Make yourself at home.</h2><p>Choose a name for your character, then pick your look.</p></section>
+    <button type="button" class="entry-return" hidden>Use my room key</button>
+    <section class="entry-agent" hidden><h2 class="entry-agent-title">Connect your agent</h2><p class="entry-agent-description">Use an agent to create a space and style it with your own furniture.</p><div class="entry-agent-setup"><button type="button" class="entry-connect agent-copy-prompt">Copy Agent Prompt</button><p class="agent-copy-status" role="status" aria-live="polite"></p><textarea class="agent-prompt" aria-label="Agent setup prompt" readonly spellcheck="false" hidden></textarea><p class="agent-attached" role="status" aria-live="polite" data-connected="false">Not connected</p></div><p class="entry-agent-note">You can also do this later from the catalogue.</p></section>
+    <div class="entry-name" hidden><label for="entry-name">Your name</label><input id="entry-name" autocomplete="nickname" minlength="2" maxlength="20" placeholder="What should we call you?" aria-describedby="entry-name-help entry-name-error"><p class="entry-note" id="entry-name-help"></p><p class="entry-name-error" id="entry-name-error" role="alert"></p></div>
     <div class="appearance-body">
-      <div class="appearance-character"><div class="preview-stage"><canvas id="appearance-preview" width="96" height="112" aria-label="Character preview"></canvas></div><div class="turn-controls"><button type="button" aria-label="Turn preview left">◀</button><span>Your Habbo</span><button type="button" aria-label="Turn preview right">▶</button></div></div>
+      <div class="appearance-character"><div class="preview-stage"><canvas id="appearance-preview" width="96" height="112" aria-label="Character preview"></canvas></div><div class="turn-controls"><button type="button" aria-label="Turn preview left">◀</button><button type="button" aria-label="Turn preview right">▶</button></div></div>
       <div class="appearance-choices"><div class="appearance-gender" role="group" aria-label="Character style"><button type="button" data-gender="M">Man</button><button type="button" data-gender="F">Woman</button></div><nav aria-label="Appearance categories"></nav><h2 id="choice-title">Choose your hair</h2><div class="item-grid" aria-label="Styles"></div><div class="style-pages"><button type="button" aria-label="Previous styles">◀</button><span></span><button type="button" aria-label="Next styles">▶</button></div><h2>Colour <button type="button" class="color-channel" hidden>Primary</button></h2><div class="color-grid" aria-label="Colours"></div></div>
     </div>
     <p class="appearance-status" role="status" aria-live="polite"></p>
+    <button type="button" class="character-room-key" hidden>Your room key</button>
     <footer><button type="button" class="appearance-cancel">Cancel</button><button type="button" class="appearance-apply">Apply</button></footer>`;
   dialog.tabIndex=-1;document.body.append(dialog);makeDraggable(dialog,dialog.querySelector('header'));
   const preview=dialog.querySelector('#appearance-preview'), status=dialog.querySelector('.appearance-status');
@@ -184,20 +190,80 @@ export async function createAppearance({prepareImage, onApply, onOpen}) {
   }
   dialog.querySelectorAll('.style-pages button').forEach((button,i)=>button.onclick=()=>{if(busy)return;page+=i?1:-1;update();});
   dialog.querySelector('.color-channel').onclick=()=>{colorChannel=colorChannel==='color'?'color2':'color';update();};
+  const nameInput=dialog.querySelector('#entry-name'),nameError=dialog.querySelector('.entry-name-error');
+  const returnButton=dialog.querySelector('.entry-return'),roomKeyButton=dialog.querySelector('.character-room-key');
+  roomKeyButton.onclick=()=>{if(!busy)onRoomKey?.();};
+  returnButton.onclick=async()=>{
+    if(busy||!entry?.onReturn)return;
+    busy=true;apply.disabled=true;returnButton.disabled=true;
+    try{
+      const player=await entry.onReturn();
+      if(player){current=normalize(player.look);const rendered=await frames(current);await onApply(rendered,current,{entry:true});finishEntry();}
+    }catch(error){status.textContent=error.message;}
+    finally{busy=false;apply.disabled=false;returnButton.disabled=false;}
+  };
+  let entryStep=0,agentSetup=null;
+  function showEntryStep(step){
+    entryStep=step;dialog.dataset.entryStep=String(step);
+    dialog.querySelectorAll('.entry-progress li').forEach((item,i)=>{
+      if(i+1===step)item.setAttribute('aria-current','step');else item.removeAttribute('aria-current');
+    });
+    dialog.querySelector('.entry-intro').hidden=step!==1;
+    returnButton.hidden=step!==1||!entry.onReturn||entry.admin;
+    roomKeyButton.hidden=true;
+    dialog.querySelector('.entry-name').hidden=step!==1;
+    dialog.querySelector('.appearance-body').hidden=step!==2;
+    dialog.querySelector('.entry-agent').hidden=step!==3;
+    dialog.querySelector('h1').textContent=['','Welcome to the room','Make it your own','One more thing…'][step];
+    dialog.querySelector('.appearance-cancel').hidden=step!==2;
+    dialog.querySelector('.appearance-cancel').textContent='Back';
+    apply.textContent=step===3?'Enter room':'Continue';
+    if(step===3){
+      agentSetup=createAgentPrompt({network:{agents:entry.agents},root:dialog.querySelector('.entry-agent-setup'),onAttached:list=>{
+        const connected=list.some(agent=>agent.connectedAt!=null);
+        dialog.dataset.agentConnected=String(connected);
+        dialog.querySelector('.entry-agent-title').textContent=connected?"You're connected!":'Connect your agent';
+        dialog.querySelector('.entry-agent-description').textContent=connected?'Enter the room to explore and bring your ideas to life with your agent.':'Use an agent to create a space and style it with your own furniture.';
+        dialog.querySelector('.entry-agent-note').textContent=connected?'Your agent will explain what you can create. Head into the room when you’re ready.':'You can also do this later from the catalogue.';
+        apply.textContent=connected?'Enter the room':'Enter room';
+      }});
+      agentSetup.start();
+    }
+    status.textContent='';dialog.scrollTop=0;
+    if(step===1)nameInput.focus();
+    else {dialog.focus();if(step===2)update();}
+  }
+  function finishEntry(){
+    agentSetup?.stop();agentSetup=null;version++;dialog.close();const entered=entry;entry=null;entered.resolve();
+    document.querySelector('#scene').focus({preventScroll:true});
+  }
+  nameInput.addEventListener('input',()=>{nameError.textContent='';nameInput.removeAttribute('aria-invalid');});
+  nameInput.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();apply.click();}});
   function open(){
     if(dialog.open)return;
+    delete dialog.dataset.entryStep;delete dialog.dataset.agentConnected;dialog.classList.remove('entry-flow');
+    returnButton.hidden=true;roomKeyButton.hidden=!onRoomKey;
+    dialog.querySelector('.entry-progress').hidden=true;dialog.querySelector('.entry-intro').hidden=true;dialog.querySelector('.entry-agent').hidden=true;dialog.querySelector('.appearance-body').hidden=false;dialog.querySelector('.appearance-cancel').textContent='Cancel';
     dialog.querySelector('.entry-name').hidden=true;dialog.querySelector('h1').textContent='Your appearance';
     apply.textContent='Apply';dialog.querySelector('.appearance-close').hidden=false;dialog.querySelector('.appearance-cancel').hidden=false;
     draft=copy(current);gender=appearanceGender(catalog,current,preferredGender);genderDrafts={};page=0;previewDirection=2;dialog.showModal();dialog.focus();onOpen();update();
   }
   function close(){if(busy||entry)return;version++;dialog.close();document.querySelector('#scene').focus({preventScroll:true});}
   dialog.querySelector('.appearance-close').onclick=close;
-  dialog.querySelector('.appearance-cancel').onclick=close;
+  dialog.querySelector('.appearance-cancel').onclick=()=>{if(entry&&!busy)showEntryStep(1);else close();};
   dialog.addEventListener('cancel',event=>{event.preventDefault();close();});
   dialog.querySelectorAll('.turn-controls button').forEach((button,i)=>button.onclick=()=>{if(busy)return;previewDirection=(previewDirection+(i?1:7))%8;update();});
   apply.onclick=async()=>{
     if(busy||apply.disabled)return;
-    busy=true;apply.disabled=true;status.textContent='Changing your look…';
+    if(entry&&entryStep===3){finishEntry();return;}
+    if(entry&&entryStep===1){
+      busy=true;apply.disabled=true;nameInput.readOnly=true;status.textContent='Checking your name…';
+      try{await entry.onCheckName(nameInput.value);showEntryStep(2);}
+      catch(error){nameError.textContent=error.message;nameInput.setAttribute('aria-invalid','true');status.textContent='';nameInput.focus();}
+      finally{busy=false;nameInput.readOnly=entry.admin;apply.disabled=false;}
+      return;
+    }
+    busy=true;apply.disabled=true;status.textContent=entry?'Getting your character ready…':'Changing your look…';
     dialog.querySelectorAll('button').forEach(b=>b.disabled=true);
     try {
       const next=copy(draft), rendered=await frames(next);
@@ -205,23 +271,21 @@ export async function createAppearance({prepareImage, onApply, onOpen}) {
       await onApply(rendered,next,{entry:!!entry});current=next;
       preferredGender=gender;
       let saved=true;try{localStorage.setItem(KEY,JSON.stringify(current));localStorage.setItem(KEY+'-gender',gender);}catch{saved=false;}
+      if(entry){showEntryStep(3);return;}
       version++;dialog.close();document.querySelector('#scene').focus({preventScroll:true});
-      const entered=entry;entry=null;entered?.resolve();
-    }catch(error){status.textContent=error.message;}
+    }catch(error){if(entry){showEntryStep(1);nameError.textContent=error.message;nameInput.setAttribute('aria-invalid','true');}else status.textContent=error.message;}
     finally{busy=false;dialog.querySelectorAll('button').forEach(b=>b.disabled=false);}
   };
   const initial=await frames(current);
   return {initial,open,isOpen:()=>dialog.open,chatColor:()=>current.top.color,frames,previewFrame:render,
     async useLook(look){if(!validate(look))throw new Error('Invalid saved appearance.');current=normalize(look);const result=await frames(current);return result;},
-    enter({name='',admin=false,onEnter}){
+    enter({name='',admin=false,onEnter,onCheckName,agents,onReturn}){
       return new Promise(resolve=>{
-        entry={onEnter,resolve};draft=admin?copy(current):randomAppearance(catalog);gender=appearanceGender(catalog,draft,preferredGender);genderDrafts={};category='hair';page=0;previewDirection=2;
-        dialog.querySelector('h1').textContent=admin?'Welcome back, Grant':'Welcome to the room';
-        dialog.querySelector('.entry-name').hidden=false;
-        const nameInput=dialog.querySelector('#entry-name');nameInput.value=admin?'Grant':name;nameInput.readOnly=admin;
-        dialog.querySelector('.entry-note').textContent=admin?'Choose your look and enter as the room owner.':'Choose your name and style your character.';
-        apply.textContent='Enter room';dialog.querySelector('.appearance-close').hidden=true;dialog.querySelector('.appearance-cancel').hidden=true;
-        dialog.showModal();update();nameInput.focus();
+        entry={onEnter,onCheckName,agents,admin,resolve,onReturn};draft=admin?copy(current):randomAppearance(catalog);gender=appearanceGender(catalog,draft,preferredGender);genderDrafts={};category='hair';page=0;previewDirection=2;
+        nameInput.value=admin?'Grant':name;nameInput.readOnly=admin;
+        dialog.querySelector('.entry-note').textContent=admin?'Choose your look and enter as the room owner.':'2–20 characters, starting with a letter. Names already in use are unavailable.';
+        dialog.querySelector('.entry-progress').hidden=false;dialog.querySelector('.appearance-close').hidden=true;dialog.querySelector('.appearance-cancel').hidden=true;
+        dialog.classList.add('entry-flow');nameError.textContent='';nameInput.removeAttribute('aria-invalid');dialog.showModal();showEntryStep(1);apply.disabled=false;
       });
     }
   };

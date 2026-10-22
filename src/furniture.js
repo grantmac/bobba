@@ -5,6 +5,7 @@ import {spriteSheetFrames} from './furniture-spritesheet.js';
 import {prepareCarGlass} from './car-glass.js';
 import {createBalloonMotion} from './balloon-motion.js';
 import {createSpeakerMotion} from './speaker-motion.js';
+import {createAssetPrograms} from './asset-program-runtime.js';
 
 const ROOT='/assets/furniture/';
 // Built pieces reference their sprites by URL; the shipped catalogue by file name.
@@ -15,7 +16,7 @@ const load=(image,file)=>{if(/^https?:\/\//.test(file))image.crossOrigin='anonym
 // The wall face is 117 px tall above the floor line; hung pieces are kept within it.
 const WALL_FACE=117;
 const USABLE=new Set(['custom_dj_decks','fridge','dmg_fridge','custom_logbook','asset_kd7acza4w9bg93w99rxrd5346x8gpfwq']);
-export async function createFurniture({prepareImage,makeVisual,disposeVisual,positionVisual,markTiles,worldPoint,isTile,getAvatar,stopWalking,onChanged,onSit,onUse=()=>{},onInspect=()=>{},canBuildAt=()=>true,focusRoom,onAttachAgent,floorHeight=()=>0,hasWall=()=>false,walls=()=>[],initialItems=[],initialAssets=[]}){
+export async function createFurniture({prepareImage,makeVisual,disposeVisual,positionVisual,markTiles,worldPoint,isTile,getAvatar,stopWalking,onChanged,onSit,onUse=()=>{},onInspect=()=>{},canBuildAt=()=>true,focusRoom,onAttachAgent,floorHeight=()=>0,hasWall=()=>false,walls=()=>[],initialItems=[],initialAssets=[],programPlayers=()=>[],programMe=()=>null,programNow=null,programReducedMotion=()=>false,onProgramSave=()=>Promise.reject(new Error('Enter the room first.')),onProgramUse=()=>{}}){
   const response=await fetch(ROOT+'catalog.json');
   if(!response.ok)throw new Error('Furniture could not be loaded.');
   let catalog=[...await response.json(),...initialAssets];const definitions=new Map(catalog.map(d=>[d.id,d]));
@@ -58,7 +59,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
       const resting=layers.filter(p=>!p.state);
       const full=paint(resting,def.frameDuration?0:5);
       // Original chair/sofa layers straddle the seated avatar's depth.
-      const slices=def.category==='Seating'?resting.filter(p=>p.width>1&&p.height>1).map(p=>({...paint([p]),orderShift:p.z/100})):null;
+      const slices=def.category==='Seating'&&!def.frameDuration?resting.filter(p=>p.width>1&&p.height>1).map(p=>({...paint([p]),orderShift:p.z/100})):null;
       const frame={...full,density,left:(view.mirror?64-right:left)-32,top:top+16};
       if(def.frameDuration)frame.off={...frame,...paint(resting.map(p=>p.offCanvas?{...p,cells:null,canvas:p.offCanvas}:p),0)};
       if(layers.some(p=>p.state==='open'))frame.open={...frame,...paint(layers.filter(p=>!p.state||p.state==='open'),def.frameDuration?0:5)};
@@ -99,6 +100,9 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
   const canEdit=item=>admin||(!!me&&item.owner===me);
   // Pieces with a power switch: the decks, and built animations marked switchable.
   const switchable=item=>item?.type==='custom_dj_decks'||!!definitions.get(item?.type)?.switchable;
+  const programs=createAssetPrograms({getPlayers:programPlayers,getMe:programMe,getTime:programNow,getReducedMotion:programReducedMotion,saveState:onProgramSave,onError:message=>{console.warn(message);onPowerError(message);}});
+  let lastEffects='',reduceProgramMotion=false;
+  const effectFor=id=>{const effect=programs.visual(id);return reduceProgramMotion?{opacity:effect.opacity,animation:false}:effect;};
   // Builders drop pieces only inside their own space; Grant anywhere. Loading never applies this.
   const buildTile=(x,z)=>isTile(x,z)&&(admin||canBuildAt(x,z));
   items=restoreItems(initialItems,definitions);
@@ -116,7 +120,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
   const attachButton=document.createElement('button');attachButton.type='button';attachButton.className='agent-attach';attachButton.textContent='Build with your agent';attachButton.hidden=!onAttachAgent;
   attachButton.onclick=()=>{panel.hidden=true;cancel();onAttachAgent?.();};
   panel.querySelector('.furniture-filters').after(attachButton);
-  actions.innerHTML=`<button class="furniture-close" aria-label="Deselect furniture">×</button><img alt=""><strong></strong><span class="furniture-location"></span><div>${['Move','Rotate','Pick up','Delete','Power'].map(name=>`<button data-action="${name}">${name}</button>`).join('')}</div>`;
+  actions.innerHTML=`<button class="furniture-close" aria-label="Deselect furniture">×</button><img alt=""><strong></strong><span class="furniture-location"></span><div>${['Move','Rotate','Pick up','Delete','Power','Use'].map(name=>`<button data-action="${name}">${name}</button>`).join('')}</div>`;
   const placement=document.createElement('section');placement.className='furniture-placement';placement.hidden=true;
   placement.innerHTML='<span></span><button data-placement="rotate">Rotate (R)</button><button data-placement="cancel">Cancel (Esc)</button>';
   const confirmation=document.createElement('dialog');confirmation.className='appearance-dialog furniture-confirm';
@@ -145,8 +149,11 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     }
   }
   const openUntil=new Map();
-  function frameFor(item){const frame=frames.get(`${item.type}:${item.rotation}`);if(frame?.open&&openUntil.get(item.id)>Date.now())return frame.open;return item.on===false&&frame?.off?frame.off:frame;}
+  function frameFor(item){const effect=effectFor(item.id),frame=frames.get(`${item.type}:${effect.direction??item.rotation}`);if(frame?.open&&openUntil.get(item.id)>Date.now())return frame.open;return (item.on===false||effect.animation===false)&&frame?.off?frame.off:frame;}
   function animate(now,reducedMotion=false,musicPlaying=false){
+    reduceProgramMotion=reducedMotion;programs.tick(now,reducedMotion);
+    const effects=JSON.stringify(items.filter(i=>definitions.get(i.type)?.program).map(i=>[i.id,effectFor(i.id)]));
+    if(effects!==lastEffects){lastEffects=effects;redraw();}
     const updated=new Map();
     for(const {frame,mesh} of visuals){
       if(!frame.animate)continue;
@@ -159,7 +166,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     return isWallItem(def)?canHang(item,def,hasWall):isPlaced(item)&&footprint(item,def).every(([x,z])=>isTile(x,z));
   }
   // Top-left corner of a piece's sprite on screen, and its draw order.
-  function originFor(item,frame){
+  function baseOriginFor(item,frame){
     const def=definitions.get(item.type),p=worldPoint(item.x,item.z);
     if(isWallItem(def)){
       const a=wallAnchor(item),width=frame.canvas.width/frame.density,height=frame.canvas.height/frame.density;
@@ -174,10 +181,12 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     const lift=surfaceHeight(item,viewItems,definitions)-floorHeight(item.x,item.z);
     return {x:p.x+frame.left,y:p.y+frame.top-lift+(table?def.tableOffsetY??0:0),order};
   }
+  function originFor(item,frame){const origin=baseOriginFor(item,frame),effect=effectFor(item.id);return {...origin,x:origin.x+(effect.offsetX??0),y:origin.y+(effect.offsetY??0)};}
   // Meshes persist across redraws, keyed by item and slice; only pieces whose frame
   // changed, appeared or vanished are created or disposed.
   const meshes=new Map();
   function redraw(){
+    programs.sync(items.filter(visible),definitions);
     const kept=new Set();visuals=[];
     viewItems=pending?moveWithContents(items,pending,definitions):items;
     for(const item of viewItems){
@@ -195,7 +204,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
           }
           entry={mesh,canvas:slice.canvas};meshes.set(key,entry);
         }
-        entry.mesh.material.opacity=pending&&(item.id===pending.id||item.supportId===pending.id)?.65:1;
+        entry.mesh.material.opacity=pending&&(item.id===pending.id||item.supportId===pending.id)?.65:effectFor(item.id).opacity??1;
         kept.add(key);visuals.push({item,frame:slice,mesh:entry.mesh});
       });
     }
@@ -236,10 +245,11 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     // The catalogue grid is costly to build, so it waits until the panel is actually showing.
     if(panel.hidden)listStale=true;else{renderList();listStale=false;}
     redraw();const item=items.find(i=>i.id===selected),def=item&&definitions.get(item.type),mine=!!item&&editable&&canEdit(item);
-    actions.hidden=(!mine&&!(networkPower&&item?.type==='custom_dj_decks'))||!item||!isPlaced(item)||!!pending;
+    actions.hidden=(!mine&&!def?.program&&!(networkPower&&item?.type==='custom_dj_decks'))||!item||!isPlaced(item)||!!pending;
     if(!actions.hidden){actions.querySelector('img').src=src(def.icon);actions.querySelector('strong').textContent=def.name;actions.querySelector('.furniture-location').textContent=item.supportId?'On table':isWallItem(def)?'On wall':`Tile ${item.x+1}, ${item.z+1}`;actions.querySelector('[data-action="Rotate"]').disabled=def.views.length<2||isWallItem(def);}
     actions.querySelectorAll('[data-action]').forEach(button=>{button.hidden=!mine;if(saving)button.disabled=true;else if(button.dataset.action!=='Rotate')button.disabled=false;});
     const power=actions.querySelector('[data-action="Power"]');power.hidden=!networkPower||!switchable(item);power.textContent=item?.on===false?'Turn on':'Turn off';power.setAttribute('aria-pressed',String(item?.on!==false));
+    actions.querySelector('[data-action="Use"]').hidden=!def?.program;
     placement.hidden=!pending;
     if(pending){const def=definitions.get(pending.type);placement.querySelector('span').textContent=isWallItem(def)?`${def.name} — click a wall`:def.name;placement.querySelector('[data-placement="rotate"]').disabled=def.views.length<2||isWallItem(def);}
   }
@@ -285,6 +295,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     switch(button.dataset.action){
       case 'Move':begin(item);break;
       case 'Rotate':rotate();break;
+      case 'Use':Promise.resolve(onProgramUse(item.id)).catch(error=>onPowerError(error.message));break;
       case 'Power':
         if(!networkPower||saving||!switchable(item))break;
         saving=true;render();
@@ -349,8 +360,10 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     const hit=hitVisual(point);
     if(click){
       // A built animation that is switchable flips on or off when anyone else clicks it; its builder (and Grant) get the usual selection with a Power button.
-      const flips=hit&&networkPower&&!!definitions.get(hit.item.type)?.switchable&&!(editable&&canEdit(hit.item));
-      selected=hit&&(editable&&canEdit(hit.item)||(networkPower&&hit.item.type==='custom_dj_decks'))?hit.item.id:null;render();onInspect(hit?.item??null,hit?definitions.get(hit.item.type):null);
+      const programmed=hit&&!!definitions.get(hit.item.type)?.program;
+      const flips=hit&&!programmed&&networkPower&&!!definitions.get(hit.item.type)?.switchable&&!(editable&&canEdit(hit.item));
+      selected=hit&&(programmed||editable&&canEdit(hit.item)||(networkPower&&hit.item.type==='custom_dj_decks'))?hit.item.id:null;render();onInspect(hit?.item??null,hit?definitions.get(hit.item.type):null);
+      if(programmed)Promise.resolve(onProgramUse(hit.item.id)).catch(error=>onPowerError(error.message));
       if(flips)networkPower(hit.item.id,hit.item.on===false).catch(error=>onPowerError(error.message));
       const spot=hit&&clickedSeat(hit.item.id,point);if(spot)onSit(spot);else if(hit&&USABLE.has(hit.item.type))onUse(hit.item.id);
     }
@@ -387,6 +400,11 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     if(!spot)return null;
     // These raised seats need a higher avatar anchor than ordinary chairs.
     const offsetY=spot.offsetY??({throne:4,asian_gothic_chair:0})[item.type]??16;
+    const effect=effectFor(id);
+    if(effect.carryOccupants){
+      const rotated=seatFor({...item,rotation:effect.direction??item.rotation},definitions.get(item.type),point)??spot;
+      return {id,...spot,programDirection:effect.direction??spot.direction,offsetX:(rotated.offsetX??0)+(effect.offsetX??0),offsetY:(rotated.offsetY??offsetY)+(effect.offsetY??0)};
+    }
     return {id,...spot,offsetY};
   }
   function clickedSeat(id,point){
@@ -402,6 +420,12 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
   render();
   return {open,pointer,key,roomChanged,redraw,seat,animate,debugVisuals:()=>visuals.map(v=>({id:v.item.id.slice(0,6),type:v.item.type.slice(0,22),x:v.item.x,z:v.item.z,u:v.item.u,h:v.item.height,on:v.item.supportId?.slice(0,6)??null,order:v.mesh.renderOrder,meshX:v.mesh.position.x,meshY:v.mesh.position.y,w:v.frame.canvas.width/v.frame.density,height:v.frame.canvas.height/v.frame.density,top:v.frame.top,left:v.frame.left})),approach:(id,from,canWalk)=>{const item=items.find(i=>i.id===id);return item&&visible(item)?approachFor(item,items,definitions,from,canWalk):null;},blocks:(x,z)=>blocksTile(x,z,items,definitions),close:()=>{cancel();selected=null;panel.hidden=true;render();},get placing(){return !!pending;},
     getItems:()=>structuredClone(items),
+    async whenReady(){
+      await Promise.all([...new Set(items.filter(isPlaced).map(item=>item.type))].filter(id=>definitions.has(id)).map(id=>loadDefinition(definitions.get(id))));
+      redraw();
+    },
+    receivePrograms:list=>{programs.receive(list);redraw();},
+    disposePrograms:()=>programs.dispose(),
     typeOf:id=>items.find(i=>i.id===id)?.type??null,
     // Show a piece's open state until the given time, then fall back to its resting frame.
     setOpen(id,until){openUntil.set(id,until);redraw();setTimeout(()=>{if(openUntil.get(id)===until){openUntil.delete(id);redraw();}},Math.max(0,until-Date.now())+30);},
@@ -414,8 +438,8 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
       const keep=new Set(list.map(d=>d.id));
       for(const def of catalog.filter(d=>d.id.startsWith('asset_')&&!keep.has(d.id))){definitions.delete(def.id);loading.delete(def.id);for(const view of def.views)frames.delete(`${def.id}:${view.direction}`);}
       catalog=[...catalog.filter(d=>!d.id.startsWith('asset_')),...list];
-      // A known piece keeps its loaded sprites; only its sitting spot can change after it is built.
-      for(const def of list){const known=definitions.get(def.id);if(!known)definitions.set(def.id,def);else if(JSON.stringify(known.seat)!==JSON.stringify(def.seat))known.seat=def.seat;}
+      // Keep loaded sprites while seating, power capability and programs change live.
+      for(const def of list){const known=definitions.get(def.id);if(!known)definitions.set(def.id,def);else{known.seat=def.seat;known.program=def.program;known.switchable=def.switchable;}}
       items=restoreItems(rawItems,definitions);listStale=true;render();
     }
   };

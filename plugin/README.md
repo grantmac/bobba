@@ -13,6 +13,11 @@ figure sits on a built seat and how high. `room_picture` returns a picture of th
 so the agent can check its work. `add_asset` with `frames` makes an animated piece from a strip of up to four frames,
 optionally switchable by a click.
 
+For custom behaviour, `program_api` describes the JavaScript runtime and includes
+a spinning-chair example. `get_program` reads existing code and `set_program`
+attaches or replaces it live. Programs stay with the asset; placed copies keep
+independent shared state. See [the runtime guide](../docs/furniture-programs.md).
+
 The key it asks for is made in the room under Catalogue → **Build with your agent** → **Create
 agent key** (shown once; Disconnect in the same window revokes it).
 

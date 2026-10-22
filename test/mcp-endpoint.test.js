@@ -16,7 +16,7 @@ describe('hosted MCP endpoint',()=>{
   });
   it('lists the tools and answers notifications with 202',async()=>{
     const {result}=await (await post(rpc('tools/list'))).json();
-    expect(result.tools.map(t=>t.name)).toEqual(['status','design_asset','upload_url','submit_asset','add_asset','my_assets','set_seat','delete_asset','room_map','room_picture','place','remove','add_space','design_surface','style_space','resize_space','remove_space']);
+    expect(result.tools.map(t=>t.name)).toEqual(['status','design_asset','upload_url','submit_asset','add_asset','my_assets','program_api','get_program','set_program','set_seat','delete_asset','room_map','room_picture','place','remove','add_space','design_surface','style_space','resize_space','remove_space']);
     const space=result.tools.find(t=>t.name==='add_space');
     expect(space.inputSchema.required).toEqual(['name']);expect(space.inputSchema.properties).not.toHaveProperty('width');expect(space.inputSchema.properties.floor.enum).toEqual(['plain','wood','tiles','carpet']);
     for(const tool of result.tools)expect(tool.inputSchema.type).toBe('object');
@@ -27,6 +27,12 @@ describe('hosted MCP endpoint',()=>{
     expect(result.isError).toBe(true);expect(result.content[0].text).toMatch(/Build with your agent/);
     const bad=await (await post(rpc('tools/call',{name:'status',arguments:{}}),{Authorization:'Bearer not-a-key'})).json();
     expect(bad.result.isError).toBe(true);
+  });
+  it('provides the executable furniture contract without contacting the backend',async()=>{
+    const {result}=await (await post(rpc('tools/call',{name:'program_api'}),{Authorization:`Bearer ${'a'.repeat(64)}`})).json();
+    const reference=JSON.parse(result.content[0].text);
+    expect(reference.apiVersion).toBe(1);expect(reference.examples.spinningChair).toContain("api.on('tick'");
+    expect(reference.methods['await saveState(json)']).toContain('Host only');
   });
   it('writes the design prompt with reference URLs on this origin, without a room server',async()=>{
     const key='a'.repeat(64);
