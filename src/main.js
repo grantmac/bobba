@@ -845,7 +845,7 @@ try{
     });
     if(network.adminEntry){const saved=await network.entryAppearance();if(saved)setAppearance(await appearance.useLook(saved));}
     liftVeil();
-    await appearance.enter({admin:network.adminEntry,onEnter:(name,look,options)=>network.join(name,look,options)});
+    await appearance.enter({admin:network.adminEntry,onCheckName:name=>network.checkName(name),agents:network.agents,onEnter:(name,look,options)=>network.join(name,look,options)});
     stopPreview();
   }
   const admin=network.me.role==='admin';

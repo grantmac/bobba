@@ -29,7 +29,7 @@ async function getRoom(ctx){const room=await ctx.db.query('rooms').withIndex('by
 export const attached=query({args:{token:v.string()},handler:async(ctx,{token})=>{
   const player=await playerFor(ctx,token);
   const links=await ctx.db.query('agentLinks').withIndex('by_player',q=>q.eq('playerId',player._id)).collect();
-  return links.filter(l=>l.tokenHash).map(l=>({id:l._id,label:l.label??'Agent',attachedAt:l.createdAt}));
+  return links.filter(l=>l.tokenHash).map(l=>({id:l._id,label:l.label??'Agent',attachedAt:l.createdAt,connectedAt:l.connectedAt??null}));
 }});
 // A key for the hosted endpoint: a long-lived agent token handed to the player directly
 // (shown once) to paste into their agent's key prompt.
@@ -37,6 +37,11 @@ export const createKey=mutation({args:{token:v.string(),label:v.optional(v.strin
   const player=await playerFor(ctx,token),now=Date.now(),agentToken=hex(32);
   await ctx.db.insert('agentLinks',{playerId:player._id,createdAt:now,tokenHash:await hash(agentToken),label:(label??'Plugin').slice(0,40)});
   return {agentToken};
+}});
+// A copied key is not a connection: record the first authenticated MCP contact.
+export const connected=mutation({args:{agentToken:v.string()},handler:async(ctx,{agentToken})=>{
+  const {link}=await agentFor(ctx,agentToken);
+  if(link.connectedAt===undefined)await ctx.db.patch(link._id,{connectedAt:Date.now()});
 }});
 export const revoke=mutation({args:{token:v.string()},handler:async(ctx,{token})=>{
   const player=await playerFor(ctx,token);

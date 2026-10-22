@@ -84,7 +84,7 @@ async function register(token,args,views){
   return summary(result);
 }
 const HANDLERS={
-  async status(_,{token}){return {...await call('query',api.agents.status,{agentToken:token}),conventions:CONVENTIONS};},
+  async status(_,{token}){await call('mutation',api.agents.connected,{agentToken:token});return {...await call('query',api.agents.status,{agentToken:token}),conventions:CONVENTIONS};},
   async design_asset(args,{origin}){
     args=defaults(args);
     const reference=name=>`${origin}/agent-reference/${name}`;
@@ -174,7 +174,9 @@ async function handle(m,context){
   if(!('id' in m)||m.id===null)return null;
   const {id,method,params={}}=m;
   switch(method){
-    case 'initialize':return reply(id,{protocolVersion:PROTOCOLS.includes(params.protocolVersion)?params.protocolVersion:PROTOCOLS.at(-1),capabilities:{tools:{}},serverInfo:SERVER,instructions:INSTRUCTIONS});
+    case 'initialize':
+      if(context.token){try{await call('mutation',api.agents.connected,{agentToken:context.token});}catch(error){return rpcError(id,-32603,message(error));}}
+      return reply(id,{protocolVersion:PROTOCOLS.includes(params.protocolVersion)?params.protocolVersion:PROTOCOLS.at(-1),capabilities:{tools:{}},serverInfo:SERVER,instructions:INSTRUCTIONS});
     case 'ping':return reply(id,{});
     case 'tools/list':return reply(id,{tools:TOOLS});
     case 'tools/call':{

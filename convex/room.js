@@ -42,6 +42,14 @@ export const entryAppearance=query({args:{entryCode:v.string()},handler:async(ct
   const player=await ctx.db.query('players').withIndex('by_name',q=>q.eq('nameKey','grant')).unique();
   return player?.look??null;
 }});
+// This is a preview; join checks again atomically before assigning the name.
+export const checkName=query({args:{name:v.string(),entryCode:v.optional(v.string())},handler:async(ctx,{name,entryCode})=>{
+  const named=validName(name);
+  if(entryCode){await checkEntryCode(entryCode);return;}
+  if(named.key==='grant')fail('That name is reserved. Please choose another name.');
+  const player=await ctx.db.query('players').withIndex('by_name',q=>q.eq('nameKey',named.key)).unique();
+  if(player&&(isOnline(player)||Date.now()-player.lastSeen<NAME_REUSE_AFTER))fail('That name is already taken. Please choose another name.');
+}});
 export const join=mutation({args:{token:v.string(),name:v.string(),look:v.any(),entryCode:v.optional(v.string()),replaceLook:v.optional(v.boolean()),pageOrigin:v.optional(v.string())},handler:async(ctx,args)=>{
   validToken(args.token);validateLook(args.look);const named=validName(args.name),digest=await hash(args.token);
   const oldSession=await ctx.db.query('sessions').withIndex('by_token',q=>q.eq('tokenHash',digest)).unique();

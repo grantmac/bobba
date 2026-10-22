@@ -2,10 +2,11 @@
 <link rel="stylesheet" href="/src/style.css"><style>body{padding:20px;color:white}#run{padding:8px}#result{max-width:500px}</style>
 <button id="run">Run agent prompt checks</button><p id="result">Ready</p>
 <script type="module">
-import {createAgentLink} from '/src/agent-link.js';
+import {createAgentPrompt,createAgentLink} from '/src/agent-link.js';
+let attachedUpdate=()=>{};
 let keys=0,copied='',blocked=false,keyError=false,resolveKey=null,delayKey=false;
 Object.defineProperty(navigator,'clipboard',{configurable:true,value:{async writeText(text){if(blocked)throw Error('Clipboard blocked');copied=text;}}});
-const network={agents:{async key(){keys++;if(keyError)throw Error('Could not create key');if(delayKey)await new Promise(resolve=>resolveKey=resolve);return {agentToken:'preview-agent-key-not-valid'};},attached(cb){cb([]);return ()=>{};},async revoke(){}}};
+const network={agents:{async key(){keys++;if(keyError)throw Error('Could not create key');if(delayKey)await new Promise(resolve=>resolveKey=resolve);return {agentToken:'preview-agent-key-not-valid'};},attached(cb){attachedUpdate=cb;cb([]);return ()=>{};},async revoke(){}}};
 const agent=createAgentLink({network}),dialog=document.querySelector('.agent-dialog');
 const assert=(value,message)=>{if(!value)throw Error(message);},tick=()=>new Promise(resolve=>setTimeout(resolve,0));
 document.querySelector('#run').onclick=async()=>{try{
@@ -13,6 +14,8 @@ document.querySelector('#run').onclick=async()=>{try{
  const copy=dialog.querySelector('.agent-copy-prompt'),prompt=dialog.querySelector('.agent-prompt');
  assert(copy,'Missing single copy-prompt action');assert(prompt.hidden,'Key shown before it was requested');
  copy.click();await tick();
+ assert(dialog.querySelector('.agent-attached').textContent==='Not connected','Copying a key must not claim connection');
+ attachedUpdate([{label:'Agent prompt',connectedAt:123}]);assert(dialog.querySelector('.agent-attached').textContent==='Agent connected','Real contact must update connection status');
  assert(keys===1,'Copy must create one key');assert(copied===prompt.value,'Clipboard differs from displayed prompt');
  assert(copied.includes('https://chat.grantm.ac/api/mcp'),'Prompt must use the hosted MCP endpoint');
  assert(copied.includes('Authorization: Bearer preview-agent-key-not-valid'),'Prompt is missing authentication');
@@ -30,6 +33,14 @@ Use this key only with the MCP server above. Call tools/list to discover its too
  blocked=false;keyError=true;agent.open();copy.click();await tick();assert(dialog.querySelector('[role=status]').textContent==='Could not create key','Key errors must be visible');assert(!copy.disabled,'Copy stays disabled after error');agent.close();
  keyError=false;delayKey=true;agent.open();copy.click();assert(copy.disabled,'Repeated clicks must be blocked while making a key');agent.close();agent.open();resolveKey();await tick();assert(prompt.hidden&&prompt.value==='','A closed request leaked its key into a reopened modal');agent.close();delayKey=false;
  document.querySelector('#result').textContent='PASS: one ready-to-paste prompt with hosted endpoint and key; repeat copy reuses the key; manual copy fallback; key errors; secrets cleared on close; late requests ignored.';
+ const inline=document.createElement('section');inline.className='entry-agent-setup';inline.innerHTML='<button class="agent-copy-prompt">Copy Agent Prompt</button><p class="agent-copy-status" role="status"></p><textarea class="agent-prompt" hidden></textarea><p class="agent-attached"></p>';document.body.append(inline);
+ const setup=createAgentPrompt({network,root:inline});setup.start();inline.querySelector('button').click();await tick();
+ assert(inline.querySelector('.agent-copy-status').textContent.startsWith('Prompt copied.'),'Inline copied view missing');
+ assert(inline.querySelector('.agent-prompt').hidden,'Inline prompt must stay hidden after successful copy');
+ attachedUpdate([{label:'Agent prompt',connectedAt:null}]);assert(inline.querySelector('.agent-attached').textContent==='Not connected','Unused key must not show connected');
+ attachedUpdate([{label:'Agent prompt',connectedAt:123}]);assert(inline.querySelector('.agent-attached').dataset.connected==='true','Inline indicator must update on agent contact');
+ setup.stop();assert(inline.querySelector('.agent-prompt').value==='','Leaving inline setup must clear the key');
+ document.querySelector('#result').textContent+=' Inline copy and actual connection status pass.';
  agent.open();
 }catch(error){document.querySelector('#result').textContent='FAIL: '+error.message;throw error;}};
 </script>

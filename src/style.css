@@ -359,3 +359,36 @@ background-size:11px 11px,11px 11px,11px 11px,11px 11px,calc(100% - 22px) 12px,c
 .agent-attached{margin:4px 0 0;color:#444;font-size:10px}
 .agent-copy-status{margin:8px 0;color:#444}
 .agent-copy-status:empty{display:none}
+
+/* Entry uses the same bitmap window and controls as the room. */
+.character-editor.entry-flow{inset:0;margin:auto;width:530px;max-height:calc(100dvh - 24px)}
+.entry-progress{display:flex;list-style:none;padding:0;margin:0 0 10px;gap:6px;counter-reset:entry}
+.entry-progress li{counter-increment:entry;flex:1;display:flex;gap:5px;align-items:center;color:#173442;font-size:10px;padding:6px;border:1px solid #385b6a;border-radius:3px;background:#81a5b5;box-shadow:inset 0 1px #a6c0ca}
+.entry-progress li::before{content:counter(entry);display:grid;place-items:center;flex-shrink:0;width:16px;height:16px;background:#6794a7;border:1px solid #385b6a;font-weight:bold}
+.entry-progress li[aria-current]{color:#111;background:#eee;border-color:#111;font-weight:bold;box-shadow:inset 0 1px white}
+.entry-progress li[aria-current]::before{background:#fff;border-color:#777}
+.entry-intro,.entry-agent{padding:12px;background:#eee;border:1px solid #111;border-radius:6px;color:#222;margin-bottom:8px}
+.character-editor.entry-flow .entry-intro h2,.character-editor.entry-flow .entry-agent h2{font:bold 13px/1.4 Verdana,sans-serif;margin:0 0 8px}
+.entry-intro p,.entry-agent p{font:11px/1.6 Verdana,sans-serif;margin:6px 0}
+.character-editor.entry-flow .entry-name{display:block;margin:0 0 8px;padding:12px}
+.entry-flow .entry-name label{display:block;font-size:10px;margin-bottom:7px}
+.entry-flow .entry-name input{display:block;width:100%;box-sizing:border-box;padding:7px 8px;font:12px Verdana,sans-serif;border:1px solid #111;border-radius:3px}
+.entry-flow .entry-note{color:#444;font-size:10px;line-height:1.6;margin:7px 0 0}
+.entry-name-error:empty{display:none}
+.entry-name-error{padding:8px;background:#fff0e8;border:1px solid #9b3c31;border-radius:3px;color:#832b20;line-height:1.5;font-size:10px;margin:8px 0 0}
+.entry-name input[aria-invalid=true]{border-color:#9d3025}
+.character-editor.entry-flow footer{padding:2px 0;gap:8px;justify-content:flex-end}
+.character-editor.entry-flow footer button,.entry-connect{min-width:85px;height:25px;padding:3px 12px;font:bold 10px Verdana,sans-serif;border:1px solid #111;border-radius:5px;box-shadow:inset 0 1px #fff,0 1px #333;background:#eee;color:#111}
+.character-editor.entry-flow footer .appearance-apply{background:#e1e7d2}
+.entry-flow .appearance-status{margin:6px 4px;min-height:12px;font-size:10px}
+.entry-agent .entry-connect{margin:6px 0;cursor:pointer}
+@media(max-width:560px){
+  .character-editor.entry-flow{max-width:calc(100vw - 20px)}
+  .entry-progress{gap:4px}.entry-progress li{font-size:9px;gap:4px;padding:5px 3px}
+}
+
+input:focus,textarea:focus,select:focus{outline:none}
+.entry-agent .agent-attached{display:flex;align-items:center;gap:6px;margin:12px 0 4px;font-size:10px}
+.entry-agent .agent-attached::before{content:'';width:7px;height:7px;border:1px solid #666;background:#aaa;border-radius:50%;box-shadow:inset 0 1px #ddd}
+.entry-agent .agent-attached[data-connected=true]::before{background:#59974d;border-color:#2e6127;box-shadow:inset 0 1px #a1c996}
+.entry-agent .agent-prompt{display:block;width:100%;box-sizing:border-box;height:150px;padding:8px;border:1px solid #777;background:#fff;color:#222;font:10px/1.5 monospace;resize:vertical}

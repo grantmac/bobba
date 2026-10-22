@@ -15,7 +15,7 @@ npm run dev
 
 Set `VITE_CONVEX_URL` and `VITE_CONVEX_SITE_URL` to the shared Convex deployment. Backend changes are published with `npx convex dev --once` using the existing authenticated deployment.
 
-- Visitors see the active room behind the entry modal, choose a name and style their character. A name is unique among players seen in the last four hours; after that it can be picked again, which ends the previous holder's sessions. Grant is always reserved.
+- Visitors see the active room behind a three-step entry window: check a name, style their character, then optionally copy an agent connection prompt. Agent setup stays in the window and confirms connection after the agent contacts the MCP server. A name is unique among players seen in the last four hours; after that it can be picked again, which ends the previous holder's sessions. Grant is always reserved.
 - Click the floor to walk, or a chair or sofa to sit. Scroll over the room to zoom. Occupied tiles and reserved walking routes prevent overlapping players.
 - Click yourself to change appearance. Click another player to see their portrait and name in the original-style information stand. Names are not displayed above avatars.
 - Wave and Dance are shared with other players. Walking stops the action.
