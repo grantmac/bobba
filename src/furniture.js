@@ -91,6 +91,18 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
         frame.animate=(now,reducedMotion,musicPlaying)=>motion.draw(now,musicPlaying,reducedMotion);
       }
       if(slices?.length){frame.slices=slices.map(slice=>({...frame,...slice}));if(frame.off)frame.off.slices=frame.slices.map(slice=>({...slice,...paint([slice.part],0),animate:undefined}));}
+      if(def.frameDuration){
+        // Fixed program states share immutable renders, never the looping frame's canvas.
+        const selected=new Map();
+        frame.selectFrame=index=>{
+          if(!selected.has(index)){
+            const still={...frame,...paint(resting,index),animate:undefined};
+            if(frame.slices)still.slices=frame.slices.map(slice=>({...slice,...paint([slice.part],index),animate:undefined}));
+            selected.set(index,still);
+          }
+          return selected.get(index);
+        };
+      }
       frames.set(`${def.id}:${view.direction}`,frame);
     }
   });
@@ -105,7 +117,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
   const displays=createProgramDisplays();
   const programs=createAssetPrograms({getPlayers:programPlayers,getRoom:programRoom,getMe:programMe,getTime:programNow,getReducedMotion:programReducedMotion,saveState:onProgramSave,onError:message=>{console.warn(message);onPowerError(message);}});
   let lastEffects='',reduceProgramMotion=false;
-  const effectFor=id=>{const effect=programs.visual(id);return reduceProgramMotion?{opacity:effect.opacity,display:effect.display,animation:false}:effect;};
+  const effectFor=id=>{const effect=programs.visual(id);return reduceProgramMotion?{opacity:effect.opacity,display:effect.display,frame:effect.frame,animation:false}:effect;};
   // Builders drop pieces only inside their own space; Grant anywhere. Loading never applies this.
   const buildTile=(x,z)=>isTile(x,z)&&(admin||canBuildAt(x,z));
   items=restoreItems(initialItems,definitions);
@@ -164,7 +176,9 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
   function frameFor(item){
     const effect=effectFor(item.id),frame=frames.get(`${item.type}:${effect.direction??item.rotation}`);
     if(frame?.open&&openUntil.get(item.id)>Date.now())return frame.open;
-    if((item.on===false||effect.animation===false)&&frame?.off)return frame.off;
+    if(item.on===false&&frame?.off)return frame.off;
+    if(effect.frame!=null&&frame?.selectFrame)return frame.selectFrame(effect.frame);
+    if(effect.animation===false&&frame?.off)return frame.off;
     // Numeric displays currently apply to static wall pieces only.
     return displays.frame(item.id,frame,item.on!==false&&isWallItem(definitions.get(item.type))&&!frame?.animate?effect.display:null);
   }

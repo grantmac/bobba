@@ -4,7 +4,7 @@ import {programVisual,programState,programHost} from '../shared/asset-program.js
 
 // The program has no game-origin DOM, storage, credentials, or network access.
 // Blob workers inherit the iframe CSP; never add allow-same-origin to this sandbox.
-export function createProgramSandbox({program,views,onVisual,onSave,onError}){
+export function createProgramSandbox({program,views,frameCount=0,onVisual,onSave,onError}){
   const iframe=document.createElement('iframe');iframe.hidden=true;iframe.title='Furniture program';iframe.sandbox='allow-scripts';
   const bootstrap=`(${assetProgramBridge.toString()})(${JSON.stringify(workerSource)});`;
   iframe.srcdoc=`<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob:; worker-src blob:; connect-src 'none';"><script>${bootstrap.replaceAll('</script','<\\/script')}</script>`;
@@ -22,7 +22,7 @@ export function createProgramSandbox({program,views,onVisual,onSave,onError}){
     if(data.type==='error'){fail(String(data.message).slice(0,300));return;}
     if(data.type==='frame'){
       if(!busy||data.sequence!==sequence){fail('Unexpected program response.');return;}
-      try{onVisual(programVisual(data.visual,views));}catch(error){fail(error.message);return;}
+      try{onVisual(programVisual(data.visual,views,frameCount));}catch(error){fail(error.message);return;}
       busy=false;flush();return;
     }
     if(data.type==='save'){
@@ -67,7 +67,7 @@ export function createAssetPrograms({getPlayers,getMe,saveState,getRoom=()=>({pe
         if(entry&&(entry.version!==program.revision||entry.type!==item.type)){stop(item.id,entry);entry=null;}
         if(!entry){
           const next={type:item.type,version:program.revision,item,program};instances.set(item.id,next);
-          next.runtime=sandbox({program,views:def.views.map(v=>v.direction),
+          next.runtime=sandbox({program,views:def.views.map(v=>v.direction),frameCount:Math.max(0,...(def.parts??[]).map(p=>p.frames?.length??0)),
             onVisual:visual=>{if(instances.get(item.id)===next)visuals.set(item.id,visual);},
             onSave:(state,revision)=>{
               if(instances.get(item.id)!==next||programHost(getPlayers(item))!==getMe())throw new Error('This client is no longer hosting this program.');

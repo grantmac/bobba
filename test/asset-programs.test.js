@@ -6,6 +6,7 @@ import {validateProgram,programState,programVisual,programHost} from '../shared/
 import {createAssetPrograms} from '../src/asset-program-runtime.js';
 import {spinningChairProgram} from '../shared/program-examples.js';
 import {drawProgramDisplay} from '../src/program-display.js';
+import beerStack from '../tools/programs/crowd-beer-stack.js';
 const modules=import.meta.glob('../convex/**/*.js');
 const token='a'.repeat(64),otherToken='b'.repeat(64);
 const look={hair:{model:'1',color:'#624631'},skin:{model:'1',color:'#e8b18a'},top:{model:'1',color:'#6b8c64'},bottom:{model:'1',color:'#55677e'},shoes:{model:'1',color:'#42454c'}};
@@ -118,6 +119,19 @@ describe('saved asset programs',()=>{
   });
 });
 describe('runtime boundary',()=>{
+  it('grows and shrinks the beer stack at crowd thresholds without shared state writes',()=>{
+    let tick;const api={room:{people:null},on:(event,fn)=>{expect(event).toBe('tick');tick=fn;},setVisual:vi.fn()};
+    beerStack(api);
+    for(const [people,frame] of [[null,0],[0,0],[1,0],[2,1],[3,1],[4,2],[6,2],[7,3],[100,3],[2,1],[0,0]]){
+      api.room.people=people;tick();expect(api.setVisual).toHaveBeenLastCalledWith({frame,animation:false});
+    }
+  });
+  it('accepts only existing frame indices and allows clearing the selection',()=>{
+    expect(programVisual({frame:3,animation:false},[2,4],4)).toEqual({frame:3,animation:false});
+    expect(programVisual({frame:null},[2,4])).toEqual({frame:null});
+    for(const frame of [-1,4,.5,Infinity,'1'])expect(()=>programVisual({frame},[2,4],4)).toThrow('available animation frame');
+    expect(()=>programVisual({frame:0},[2,4])).toThrow('available animation frame');
+  });
   it('validates numeric display bounds and draws its projected digits',()=>{
     const display={text:'012',color:'#ffbe55',corners:[.1,.2,.9,.6,.1,.4]};
     expect(programVisual({display},[2,4])).toEqual({display});

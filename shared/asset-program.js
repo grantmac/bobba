@@ -20,12 +20,14 @@ export function validateProgram({source,initialState={},apiVersion=1}){
   return {apiVersion,source,initialState:programState(initialState)};
 }
 // Visual effects never change placement, collision, ownership, or the actual player record.
-export function programVisual(value,views){
+export function programVisual(value,views,frameCount=0){
   if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('Invalid program visual.');
   const result={};
   for(const [key,v] of Object.entries(value)){
     if(key==='direction'){
       if(!views.includes(v))throw new Error('Program direction must be an available asset view.');
+    }else if(key==='frame'){
+      if(v!==null&&(!Number.isInteger(v)||v<0||v>=frameCount))throw new Error('Program frame must be an available animation frame.');
     }else if(key==='display'){
       if(v!==null){
         if(!v||typeof v!=='object'||Array.isArray(v)||Object.keys(v).some(k=>!['text','color','corners'].includes(k)))throw new Error('Invalid program display.');

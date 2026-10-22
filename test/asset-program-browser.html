@@ -72,6 +72,19 @@ try{
  check('Hot replacement changes existing copies without reloading sprites or room');
  furniture.receive(items.map(i=>({...i,x:null,z:null})));await wait(100);assert(document.querySelectorAll('iframe').length===0,'pickup leaked workers');
  check('Picking up actual furniture disposes its programs');furniture.disposePrograms();
+ const strip=document.createElement('canvas');strip.width=64;strip.height=16;const sc=strip.getContext('2d');
+ ['#ff0000','#00ff00','#0000ff','#ffff00'].forEach((color,i)=>{sc.fillStyle=color;sc.fillRect(i*16,8,(i+1)*4,8);});
+ const stateDef={id:'asset_states',name:'Frame states',category:'Decor',width:1,depth:1,spriteDensity:1,frameDuration:100,views:[{direction:2,source:2,mirror:false},{direction:4,source:2,mirror:true}],parts:[{file:strip.toDataURL(),layer:'base',direction:2,reg:{x:0,y:0},width:16,height:16,z:0,alphaPrepared:true,trimFrames:false,frames:[0,1,2,3].map(i=>({x:i*16,y:0,width:16,height:16}))}],program:{revision:1,initialState:{},source:`export default function(api){api.on('tick',()=>api.setVisual({frame:api.item.x===0?(api.room.people>=4?3:1):0,animation:false}));}`}};
+ let count=2;const stateMeshes=[],stateItems=[{id:'growing',type:stateDef.id,x:0,z:0,rotation:2},{id:'fixed',type:stateDef.id,x:3,z:0,rotation:2}];
+ const states=await createFurniture({initialItems:stateItems,initialAssets:[stateDef],prepareImage,worldPoint:(x,z)=>({x:x*32,y:z*16}),isTile:()=>true,getAvatar:()=>({x:9,z:9}),stopWalking(){},onChanged(){},onSit(){},focusRoom(){},markTiles(){},programRoom:()=>({people:count}),makeVisual(canvas){const mesh={canvas,material:{map:{}}};stateMeshes.push(mesh);return mesh;},disposeVisual(mesh){stateMeshes.splice(stateMeshes.indexOf(mesh),1);},positionVisual(mesh,x,y,w,h,order){Object.assign(mesh,{x,y,w,h,renderOrder:order});}});
+ states.receivePrograms([]);
+ const colors=()=>{states.animate(performance.now(),true);return stateMeshes.sort((a,b)=>a.x-b.x).map(m=>[...m.canvas.getContext('2d').getImageData(2,12,1,1).data].join(','));};
+ await until(()=>colors().join('|')==='0,255,0,255|255,0,0,255','independent fixed frames');
+ await wait(300);assert(colors().join('|')==='0,255,0,255|255,0,0,255','selected frame animated');
+ count=7;await until(()=>colors()[0]==='255,255,0,255','growing stack');assert(colors()[1]==='255,0,0,255','other copy changed');
+ count=2;await until(()=>colors()[0]==='0,255,0,255','shrinking stack');
+ states.receive(stateItems.map(i=>({...i,on:false})));await until(()=>colors().every(c=>c==='255,0,0,255'),'power off frame');
+ states.receive([]);states.disposePrograms();check('Fixed sprite frames grow/shrink independently, hold still, respect power off and remain readable with reduced motion');
  document.querySelector('#result').textContent='PASS: all furniture program checks';
 }catch(error){document.querySelector('#result').textContent='FAIL: '+error.message;console.error(error);}
 </script>

@@ -78,6 +78,7 @@ does not replay clicks from before the module mounted.
 | `direction` | One of the asset's available sprite directions |
 | `carryOccupants` | Apply the direction and offsets to seated avatars |
 | `animation` | False freezes animated sprites on their first frame |
+| `frame` | Hold an existing zero-based animation frame; null resumes normal animation |
 | `offsetX`, `offsetY` | Screen offset, −64 to 64 pixels |
 | `opacity` | 0.15 to 1 |
 
@@ -85,6 +86,11 @@ does not replay clicks from before the module mounted.
 collisions, ownership, or actual player records. Power off always freezes
 sprite animation; custom behaviour should check `api.item.on`. Reduced-motion
 viewers suppress direction, offset, occupant carry and sprite animation.
+An explicit `frame` selection takes precedence over `animation:false`, including
+with reduced motion: it represents a state rather than continuous movement.
+Power off still shows the off/first frame. Frame selection is independent per copy
+and never alters another copy's animation or the catalogue thumbnail. The bridge
+rejects negative, fractional and out-of-range indices.
 
 `await api.saveState(json)` persists a placed copy's state. Only `api.isHost`
 may write. Await saves, catch failures, and save at most once per second.
