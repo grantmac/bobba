@@ -16,6 +16,7 @@ import {createStickies} from './stickies.js';
 import {installTouchNavigation} from './touch-navigation.js';
 import {createBotPanel} from './bot-panel.js';
 import {robotFrames} from './robot-avatar.js';
+import {createPlayerFrames} from './player-appearance.js';
 import {roomLayout,tileDrop,walkingDrop,tileAtPoint,isPoolWater,pitSeat,backWallTiles,onWalkway,STEP_DOWN,DANCE_ROWS,zonesIn,zoneBounds,zoneAt,MAIN_ZONE} from '../shared/room-layout.js';
 import {floorSampler,createSpaceFloor,createMetalWalkway,picturePixels,pictureSampler,wallSegment} from './spaces.js';
 import {renderPicture,startSnapshots} from './snapshot.js';
@@ -418,7 +419,8 @@ const DRINK_MS=10*60*1000,hasDrink=(player,now)=>!!player?.drink&&now-player.dri
 let avatarCarryFrames=null,avatarCarryLoading=null;
 function ensureCarryFrames(){
   if(avatarCarryFrames||avatarCarryLoading||!selfPlayer)return;
-  avatarCarryLoading=appearance.frames(selfPlayer.look,true).then(frames=>{avatarCarryFrames=makeAtlas(frames);}).catch(()=>{avatarCarryLoading=null;});
+  const source=avatarAtlas;
+  avatarCarryLoading=appearance.frames(selfPlayer.look,true).then(frames=>{if(source===avatarAtlas)avatarCarryFrames=makeAtlas(frames);}).catch(()=>{if(source===avatarAtlas)avatarCarryLoading=null;});
 }
 function setAppearance(frames) {
   toolbar?.setAvatar(frames.get('2:-1'));
@@ -710,11 +712,12 @@ function updatePeers(players){
     const key=data.kind==='bot'?'lobby-robot':data.look?JSON.stringify(data.look):`v${data.lookVersion}`;
     if(peer.lookKey!==key){
       peer.lookKey=key;const version=++peer.version;
-      peer.loading=(data.kind==='bot'?robotFrames():(data.look?Promise.resolve(data.look):network.look(data.id,data.lookVersion)).then(look=>appearance.frames(look))).then(frames=>{
+      peer.carryTextures?.dispose();peer.carryTextures=null;peer.carryLoading=null;peer.frameKey='';
+      peer.renderFrames=createPlayerFrames(data,{fetchLook:(id,version)=>network.look(id,version),frames:appearance.frames,robotFrames});
+      peer.loading=peer.renderFrames().then(frames=>{
         if(version!==peer.version)return;
         peer.atlas?.dispose();peer.atlas=makeAtlas(frames);peer.frameKey='';peer.mesh.visible=true;
-        peer.carryTextures?.dispose();peer.carryTextures=null;peer.carryLoading=null;
-      }).catch(error=>{peer.lookKey='';toolbar?.status(error.message);if(renderInput)throw error;});
+      }).catch(error=>{if(version!==peer.version)return;peer.lookKey='';toolbar?.status(error.message);if(renderInput)throw error;});
     }
   }
 }
@@ -762,7 +765,7 @@ function animate(now){
     for(const peer of peers.values()){
       const point=samplePlayer(peer.data,time),seat=!point.moving&&peer.data.seatId?seatInfo(peer.data.seatId,point):null;
       const pose=characterFrame(peer.data,point,time,seat),carrying=hasDrink(peer.data,time);
-      if(carrying&&!peer.carryTextures&&!peer.carryLoading){const version=peer.version;peer.carryLoading=appearance.frames(peer.data.look,true).then(frames=>{if(version===peer.version)peer.carryTextures=makeAtlas(frames);}).catch(()=>{peer.carryLoading=null;});}
+      if(carrying&&!peer.carryTextures&&!peer.carryLoading){const version=peer.version;peer.carryLoading=peer.renderFrames(true).then(frames=>{if(version===peer.version)peer.carryTextures=makeAtlas(frames);}).catch(()=>{if(version===peer.version)peer.carryLoading=null;});}
       // Only touch the material and the label's styles when something actually changed.
       const key=`${carrying&&peer.carryTextures?'drink:':''}${pose}`;
       if(peer.frameKey!==key){peer.frameKey=key;showFrame(peer.mesh,(carrying&&peer.carryTextures)||peer.atlas,pose);}
