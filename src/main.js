@@ -478,7 +478,11 @@ function peerAt(event){
     return point.x>=p.x-26&&point.x<=p.x+26&&point.y>=p.y-90&&point.y<=p.y+10;
   });
 }
-function selectPeer(peer){furniture.close();infoStand.select(peer.data);if(peer.data.kind==='bot')botPanel?.open();else container.focus({preventScroll:true});}
+function selectPeer(peer){
+  furniture.close();infoStand.select(peer.data);
+  if(ready)void network.face(peer.data.id).catch(error=>toolbar?.status(error.message));
+  if(peer.data.kind==='bot')botPanel?.open();else container.focus({preventScroll:true});
+}
 
 const position={x:3.5,z:4.5};
 let path=[],direction=2,walkTime=0,avatar,lastFrame='',hoverCell=null,target=null,down=null,ready=false,seated=null,seatTarget=null;

@@ -91,6 +91,40 @@ describe('agent build diagnostics and table placement',()=>{
     await expect(t.mutation(api.agents.discardUpload,{agentToken,storageId:foregroundStorageId})).rejects.toThrow('belongs to a piece');
   });
 });
+describe('facing another player',()=>{
+  it.each([[6.5,4.5,2],[2.5,4.5,6],[4.5,6.5,4],[4.5,2.5,0],[6.5,5.5,2],[3.5,6.5,4]])('turns toward (%s, %s) without moving',async(x,z,direction)=>{
+    const me=await guest(),other=await admin(),position={x:4.5,z:4.5};
+    await t.run(async ctx=>{
+      await ctx.db.patch(me.id,{route:[position],seatId:'pit',action:'wave',actionStarted:Date.now()});
+      await ctx.db.patch(other.id,{route:[{x,z}]});
+    });
+    await t.mutation(api.room.face,{token,playerId:other.id});
+    const player=await t.query(api.room.me,{token});
+    expect(player).toMatchObject({route:[position],direction,seatId:'pit',action:'wave'});
+    expect((await t.query(api.room.presence,{zone:'main'})).players.find(p=>p.id===me.id).direction).toBe(direction);
+  });
+  it('stops mid-walk and uses the moving target’s current position',async()=>{
+    const me=await guest(),other=await admin(),now=Date.now(),clock=vi.spyOn(Date,'now').mockReturnValue(now);
+    try{
+      await t.run(async ctx=>{
+        await ctx.db.patch(me.id,{route:[{x:4.5,z:4.5},{x:6.5,z:4.5}],startedAt:now-250,seatId:'future-seat'});
+        await ctx.db.patch(other.id,{route:[{x:2.5,z:4.5},{x:8.5,z:4.5}],startedAt:now-250});
+      });
+      await t.mutation(api.room.face,{token,playerId:other.id});
+      expect(await t.query(api.room.me,{token})).toMatchObject({route:[{x:5.3,z:4.5}],direction:6,seatId:null,zone:'main'});
+    }finally{clock.mockRestore();}
+  });
+  it('ignores self, overlapping and departed targets and requires a valid session',async()=>{
+    const me=await guest(),other=await admin(),before=await t.query(api.room.me,{token});
+    await t.mutation(api.room.face,{token,playerId:me.id});
+    await t.run(ctx=>ctx.db.patch(other.id,{route:before.route,startedAt:before.startedAt}));
+    await t.mutation(api.room.face,{token,playerId:other.id});
+    await t.run(ctx=>ctx.db.patch(other.id,{online:false}));
+    await t.mutation(api.room.face,{token,playerId:other.id});
+    expect(await t.query(api.room.me,{token})).toEqual(before);
+    await expect(t.mutation(api.room.face,{token:'f'.repeat(64),playerId:other.id})).rejects.toThrow('session');
+  });
+});
 describe('room access and persistence',()=>{
   it('keeps movement out of screenshot, agent-list and guest-book query dependencies',async()=>{
     await guest();

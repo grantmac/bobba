@@ -187,6 +187,7 @@ export function createMultiplayer(){
     async voiceCredentials(tab){try{return await client.action(api.voice.connect,{token,...(tab?{tab}:{})});}catch(error){throw new Error(errorMessage(error));}},
     move:(x,z,seatId,direction=null)=>mutate('move',{x,z,...(seatId?{seatId}:{}),...(direction===null?{}:{direction})}),
     gesture:action=>mutate('gesture',{action}),
+    face:playerId=>mutate('face',{playerId}),
     takeDrink:id=>mutate('takeDrink',{id}),
     whiteboard:{
       all:()=>client.query(api.whiteboard.all,{}),

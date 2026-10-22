@@ -296,6 +296,17 @@ export const appearance=mutation({args:{token:v.string(),look:v.any()},handler:a
 export const move=mutation({args:{token:v.string(),x:v.number(),z:v.number(),seatId:v.optional(v.string()),direction:v.optional(v.union(v.literal(0),v.literal(2),v.literal(4),v.literal(6)))},handler:async(ctx,args)=>{
   return await movePlayer(ctx,await playerFor(ctx,args.token),args);
 }});
+// Turn in place toward the selected player's current position, stopping any walk.
+export const face=mutation({args:{token:v.string(),playerId:v.id('players')},handler:async(ctx,{token,playerId})=>{
+  const p=await playerFor(ctx,token),other=await ctx.db.get(playerId),now=Date.now();
+  if(!isOnline(other,now)||other._id===p._id)return;
+  const position=atTime(p,now),target=atTime(other,now),dx=target.x-position.x,dz=target.z-position.z;
+  if(!dx&&!dz)return;
+  const end=p.route.at(-1),arrived=position.x===end.x&&position.z===end.z;
+  const map=await roomFor(ctx),zone=zoneAt(layoutFor(map.options,map.spaces??[]),position.x,position.z);
+  const direction=Math.abs(dx)>Math.abs(dz)?(dx>0?2:6):(dz>0?4:0);
+  await ctx.db.patch(p._id,{route:[position],startedAt:now,direction,seatId:arrived?p.seatId:null,zone,lastSeen:now});
+}});
 // Both human and bot movement use the same server-checked paths, seat reservations and zone caps.
 export async function movePlayer(ctx,p,args){
   const now=Date.now();
