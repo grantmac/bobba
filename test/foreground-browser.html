@@ -1,0 +1,27 @@
+<!doctype html><meta charset="utf-8"><title>Foreground seat regression</title><p id="result">Running…</p>
+<script type="module">
+import {createFurniture} from '/src/furniture.js';
+import {prepareImage} from '/src/sprite-image.js';
+import {isoPoint} from '/shared/asset-geometry.js';
+try{
+  const asset=window.__TEST_ASSET__;
+  for(const view of asset.views){
+    const visuals=[],item={id:'seat',type:asset.id,x:0,z:0,rotation:view.direction};
+    const furniture=await createFurniture({prepareImage,initialItems:[item],initialAssets:[asset],worldPoint:isoPoint,isTile:()=>true,getAvatar:()=>({x:10,z:10}),stopWalking(){},onChanged(){},onSit(){},focusRoom(){},markTiles(){},
+      makeVisual(canvas){const mesh={canvas,material:{map:{}},scale:{setScalar(){}}};visuals.push(mesh);return mesh;},disposeVisual(mesh){visuals.splice(visuals.indexOf(mesh),1);},positionVisual(mesh,x,y,w,h,order){Object.assign(mesh,{x,y,w,h,order});}});
+    await furniture.whenReady();const seat=furniture.seat(item.id),[x,z]=seat.cells[0],order=300+(x+z)*10+9.5;
+    if(visuals.length!==2||!(Math.min(...visuals.map(v=>v.order))<order&&Math.max(...visuals.map(v=>v.order))>order))throw Error('Seat layers must straddle the avatar in every rotation');
+    if(asset.frameDuration){
+      furniture.animate(0);const before=visuals.map(v=>v.canvas.toDataURL());
+      furniture.animate(asset.frameDuration);
+      if(visuals.some((v,i)=>v.canvas.toDataURL()===before[i]))throw Error('Both seat layers must animate');
+      if(visuals.some(v=>!v.material.map.needsUpdate))throw Error('Both layer textures need an update');
+      furniture.receive([{...item,on:false}]);const off=visuals.map(v=>v.canvas.toDataURL());
+      furniture.animate(asset.frameDuration*3);
+      if(visuals.some((v,i)=>v.canvas.toDataURL()!==off[i]))throw Error('Foreground must freeze when power is off');
+    }
+    furniture.disposePrograms();
+  }
+  window.__TEST_RESULT__='passed';document.querySelector('#result').textContent='PASS: seat layers straddle the sitter, animate together and freeze together.';
+}catch(error){window.__TEST_RESULT__=error.message;}
+</script>

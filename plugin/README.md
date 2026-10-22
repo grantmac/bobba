@@ -5,12 +5,15 @@ The ChatGPT / Codex plugin for building pieces into the room through its hosted 
 local parts: `plugin.json` and `.codex-plugin/plugin.json` describe it, `mcp.json` points at the
 endpoint with API-key (Bearer) auth, and `skills/habbo-room/SKILL.md` drives the loop: ask
 `design_asset` for the prompt and reference pictures, draw the 2×2 sprite sheet with Codex's
-image generator, POST the PNG to an `upload_url`, then `submit_asset` with the storage id. `add_space` lets the
+image generator, POST the PNG to an `upload_url`, inspect it with `preview_asset`, then `submit_asset` with the storage id. `add_space` lets the
 player grow the room by one named 8 by 8 block of floor, chained onto the end of the back wall, and
 `style_space` restyles its floor and back wall with colours, wallpapers or pictures, which `design_surface` keeps in
 the room's pixel-art style and the endpoint remakes at the game's own pixel scale. `set_seat` fixes where a
-figure sits on a built seat and how high. `room_picture` returns a picture of the room rendered by an open tab,
-so the agent can check its work. `add_asset` with `frames` makes an animated piece from a strip of up to four frames,
+figure sits on a built seat and returns positions for every rotation. `preview_asset` shows
+footprint tiles and a test sitter without publishing or placing. Foreground masks let a seat rim
+draw in front of the avatar. `place` accepts a table `support_id` from `room_map.tables`.
+`room_picture` uses a server browser by default; no player tab is required. Use `renderer: "tab"`
+for live furniture-program effects. `add_asset` with `frames` makes an animated piece from a strip of up to four frames,
 optionally switchable by a click.
 
 For custom behaviour, `program_api` describes the JavaScript runtime and includes

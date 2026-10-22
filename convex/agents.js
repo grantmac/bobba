@@ -7,7 +7,8 @@ import {backWallTiles} from '../shared/room-layout.js';
 import {ASSET_CATEGORIES,assetType,assetCatalogueEntry,definitionsFor} from './lib/assets.js';
 import {loadZones,zoneItems,ownedItems,itemDoc,applyChanges,shiftItems} from './lib/furnitureStore.js';
 import {floorColors} from './lib/catalog.js';
-import {playerFor} from './room.js';
+import {playerFor,publicPlayer,publicSpaces} from './room.js';
+import {seatReport} from '../shared/asset-geometry.js';
 import {isWallItem} from '../shared/furniture-model.js';
 import {furnitureControls} from '../shared/furniture-controls.js';
 import {SPACE_LIMIT,SPACES_PER_PLAYER,SPACE_SIZE,SPACE_MIN_WIDTH,SPACE_MAX_WIDTH,SPACE_FLOORS,SPACE_WALLS,SPACE_FITS,SPACE_IMAGE_MAX} from '../shared/spaces.js';
@@ -64,7 +65,7 @@ export const status=query({args:{agentToken:v.string()},handler:async(ctx,{agent
   const {player}=await agentFor(ctx,agentToken);
   const assets=await ctx.db.query('assets').withIndex('by_owner',q=>q.eq('ownerId',player._id)).collect();
   const room=await getRoom(ctx),placed=(await ownedItems(ctx,player._id)).filter(isPlaced);
-  return {playerName:player.name,playerId:player._id,assets:assets.map(a=>({id:a._id,type:assetType(a),name:a.name,category:a.category,width:a.width,depth:a.depth,...(a.category==='Seating'?{seat:a.seat??null}:{}),...(a.frameDuration?{animated:true,frameMs:a.frameDuration,switchable:!!a.switchable}:{}),programRevision:a.programRevision??0,programmable:!!a.program,controls:furnitureControls(a),createdAt:a.createdAt})),
+  return {playerName:player.name,playerId:player._id,assets:assets.map(a=>({id:a._id,type:assetType(a),name:a.name,category:a.category,width:a.width,depth:a.depth,views:a.views,...(a.category==='Seating'?{seat:a.seat??null,positions:seatReport(a)}:{}),...(a.frameDuration?{animated:true,frameMs:a.frameDuration,switchable:!!a.switchable}:{}),programRevision:a.programRevision??0,programmable:!!a.program,controls:furnitureControls(a),createdAt:a.createdAt})),
     placed:placed.map(({id,type,x,z,rotation})=>({id,type,x,z,rotation})),categories:ASSET_CATEGORIES,
     spaces:(room.spaces??[]).filter(s=>s.owner===player._id).map(s=>({id:s.id,name:s.name,width:s.width,depth:s.depth,...spaceStyle(s)})),
     spaceOptions:{perPlayer:SPACES_PER_PLAYER,limit:SPACE_LIMIT,size:`${SPACE_SIZE} by ${SPACE_SIZE} tiles to start; resize_space makes it ${SPACE_MIN_WIDTH} to ${SPACE_MAX_WIDTH} tiles wide`,floors:SPACE_FLOORS,walls:SPACE_WALLS,colors:'any hex colour like #b59232 (floorColors are the room palette)',floorColors,pictures:`PNG, JPEG, WebP or GIF up to ${SPACE_IMAGE_MAX/1024/1024} MB, uploaded through upload_url; fit 'tile' repeats it on every tile or wall segment, 'cover' stretches one copy over the whole floor or wall`}};
@@ -85,13 +86,13 @@ export const uploadedFile=query({args:{agentToken:v.string(),storageId:v.string(
 export const discardUpload=mutation({args:{agentToken:v.string(),storageId:v.string()},handler:async(ctx,{agentToken,storageId})=>{
   const {player}=await agentFor(ctx,agentToken),id=await uploadFor(ctx,storageId);
   const owned=await ctx.db.query('assets').withIndex('by_owner',q=>q.eq('ownerId',player._id)).collect();
-  if(owned.some(a=>a.icon===id||a.parts.some(p=>p.storageId===id)))fail('That file belongs to a piece.');
+  if(owned.some(a=>a.icon===id||a.parts.some(p=>p.storageId===id||p.foregroundStorageId===id)))fail('That file belongs to a piece.');
   await ctx.storage.delete(id);
 }});
 // An animated part carries its frame cells (2 to 4, in the stored sheet's pixels); the piece then
 // has a frameDuration, and may be switchable: players use its power button to freeze it on its first frame.
 const cell=v.object({x:v.number(),y:v.number(),width:v.number(),height:v.number()});
-const part=v.object({storageId:v.id('_storage'),direction:v.number(),width:v.number(),height:v.number(),reg:v.object({x:v.number(),y:v.number()}),frames:v.optional(v.array(cell))});
+const part=v.object({storageId:v.id('_storage'),foregroundStorageId:v.optional(v.id('_storage')),direction:v.number(),width:v.number(),height:v.number(),reg:v.object({x:v.number(),y:v.number()}),frames:v.optional(v.array(cell))});
 const view=v.object({direction:v.number(),source:v.number(),mirror:v.boolean()});
 const seatArg=v.object({x:v.number(),z:v.number(),height:v.number(),offsetX:v.optional(v.number()),offsetY:v.optional(v.number())});
 // A seat's sitting spot: one footprint tile (as placed facing lower-right: x across the depth, z
@@ -110,7 +111,7 @@ export const setSeat=mutation({args:{agentToken:v.string(),assetId:v.id('assets'
   const {player}=await agentFor(ctx,agentToken),asset=await ctx.db.get(assetId);
   if(!asset||(asset.ownerId!==player._id&&player.role!=='admin'))fail('That piece is not yours.');
   await ctx.db.patch(assetId,{seat:seat?validSeat(seat,asset):undefined});
-  return {assetId,seat:seat?validSeat(seat,asset):null};
+  return {assetId,seat:seat?validSeat(seat,asset):null,positions:seatReport({...asset,seat:seat??undefined})};
 }});
 export const createAsset=mutation({args:{agentToken:v.string(),name:v.string(),category:v.string(),width:v.number(),depth:v.number(),surfaceHeight:v.optional(v.number()),spriteDensity:v.number(),
   wallWidth:v.optional(v.number()),tableOffsetY:v.optional(v.number()),seat:v.optional(seatArg),frameDuration:v.optional(v.number()),switchable:v.optional(v.boolean()),icon:v.id('_storage'),parts:v.array(part),views:v.array(view)},handler:async(ctx,{agentToken,...spec})=>{
@@ -125,6 +126,7 @@ export const createAsset=mutation({args:{agentToken:v.string(),name:v.string(),c
   for(const p of spec.parts){
     if(![0,2,4,6].includes(p.direction)||!whole(p.width)||!whole(p.height)||p.width<4||p.height<4||p.width>200||p.height>200||!Number.isFinite(p.reg.x)||!Number.isFinite(p.reg.y))fail('Sprite sizes must be 4 to 200 room pixels.');
     if(!await ctx.db.system.get(p.storageId))fail('A sprite upload is missing.');
+    if(p.foregroundStorageId&&(spec.category!=='Seating'||!await ctx.db.system.get(p.foregroundStorageId)))fail('Foreground masks require a seat and a valid uploaded foreground.');
     if(p.frames!==undefined&&(p.frames.length<2||p.frames.length>4||p.frames.some(c=>!whole(c.x)||!whole(c.y)||!whole(c.width)||!whole(c.height)||c.width<1||c.height<1)))fail('An animated sprite has 2 to 4 frame cells.');
   }
   const animated=spec.parts.some(p=>p.frames);
@@ -146,7 +148,7 @@ export const deleteAsset=mutation({args:{agentToken:v.string(),id:v.id('assets')
   if(!asset||asset.ownerId!==player._id)fail('That piece is not yours.');
   // Every copy goes, wherever it stands; a piece that sat on one of them is healed back to its owner's hands when that zone next changes.
   for(const doc of await ctx.db.query('furniture').withIndex('by_type',q=>q.eq('type',assetType(asset))).collect())await ctx.db.delete(doc._id);
-  for(const storageId of new Set([asset.icon,...asset.parts.map(p=>p.storageId)]))await ctx.storage.delete(storageId);
+  for(const storageId of new Set([asset.icon,...asset.parts.flatMap(p=>[p.storageId,p.foregroundStorageId].filter(Boolean))]))await ctx.storage.delete(storageId);
   for(const row of await ctx.db.query('programInstances').withIndex('by_asset',q=>q.eq('assetId',id)).collect())await ctx.db.delete(row._id);
   await ctx.db.delete(id);
 }});
@@ -165,17 +167,41 @@ export const map=query({args:{agentToken:v.string()},handler:async(ctx,{agentTok
     spaces:layout.spaces.map((space,i)=>({id:space.id,name:space.name,owner:space.owner,ownerName:space.ownerName,mine:space.owner===player._id,latest:i===layout.spaces.length-1,x:space.x,z:space.z,width:space.width,depth:space.depth,...spaceStyle(space),...(detailed.has(space.id)?{tiles:space.tiles.map(([x,z])=>({x,z,free:!taken.has(`${x},${z}`)}))}:{})})),
     walkway:{tiles:layout.walkwayTiles.map(([x,z])=>({x,z})),note:'A walk-only strip along the front of the lounge and the spaces: players walk here, furniture never goes here.'},
     walls:wallsOf([...layout.mainTiles,...layout.danceTiles,...backWallTiles(layout).filter(([x])=>{const s=layout.spaces.find(s=>x>=s.x&&x<s.x+s.width);return !s||detailed.has(s.id);})]),
-    furniture:room.furniture.filter(isPlaced).map(({id,type,x,z,rotation,owner})=>({id,type,x,z,rotation,mine:owner===player._id,owner:owner??null}))};
+    tables:room.furniture.filter(i=>isPlaced(i)&&room.definitions[i.type]?.category==='Tables').map(i=>({id:i.id,x:i.x,z:i.z,rotation:i.rotation,height:room.definitions[i.type].surfaceHeight,tiles:cells(i,room.definitions).map(([x,z])=>({x,z,free:!room.furniture.some(other=>other.supportId===i.id&&cells(other,room.definitions).some(([cx,cz])=>cx===x&&cz===z))}))})),
+    furniture:room.furniture.filter(isPlaced).map(({id,type,x,z,rotation,owner,supportId,u,height})=>({id,type,x,z,rotation,mine:owner===player._id,owner:owner??null,...(supportId?{support_id:supportId}:{}),...(u!==undefined?{u,height}:{})}))};
 }});
-export const place=mutation({args:{agentToken:v.string(),assetId:v.id('assets'),x:v.number(),z:v.number(),rotation:v.optional(v.number()),u:v.optional(v.number()),height:v.optional(v.number())},handler:async(ctx,{agentToken,assetId,x,z,rotation,u,height})=>{
+export const place=mutation({args:{agentToken:v.string(),assetId:v.id('assets'),x:v.number(),z:v.number(),rotation:v.optional(v.number()),supportId:v.optional(v.string()),u:v.optional(v.number()),height:v.optional(v.number())},handler:async(ctx,{agentToken,assetId,x,z,rotation,supportId,u,height})=>{
   const {player}=await agentFor(ctx,agentToken),asset=await ctx.db.get(assetId);
   if(!asset||asset.ownerId!==player._id)fail('That piece is not yours.');
   const room=await getRoom(ctx),type=assetType(asset),def=(await definitionsFor(ctx,[{type}]))[type];
-  const item={id:crypto.randomUUID(),type,rotation:rotation??def.views[0].direction,x,z,owner:player._id,...(isWallItem(def)?{u:u??.5,height:height??60}:{})};
+  const item={id:crypto.randomUUID(),type,rotation:rotation??(isWallItem(def)?def.views.find(v=>v.direction===4||v.direction===2)?.direction:def.views[0].direction),x,z,owner:player._id,...(supportId?{supportId}:{}),...(isWallItem(def)?{u:u??.5,height:height??60}:{})};
   if(!def.views.some(vw=>vw.direction===item.rotation))fail(`Rotation must be one of ${def.views.map(vw=>vw.direction).join(', ')}.`);
   if(!Number.isInteger(x)||!Number.isInteger(z))fail('Furniture must fit in a free floor space.');
   await applyChanges(ctx,room,player,[item]);
   return {itemId:item.id};
+}});
+// Read-only scene for the server renderer. No session or avatar is created by taking a picture.
+export const renderScene=query({args:{agentToken:v.string(),focus:v.union(v.literal('mine'),v.literal('space'),v.literal('room')),spaceId:v.optional(v.string())},handler:async(ctx,{agentToken,focus,spaceId})=>{
+  const {player}=await agentFor(ctx,agentToken),room=await getRoom(ctx),layout=layoutFor(room.options,room.spaces??[]);
+  const space=focus==='mine'?layout.spaces.find(s=>s.owner===player._id):layout.spaces.find(s=>s.id===spaceId);
+  if(focus!=='room'&&!space)fail('No matching space. Use focus room or add a space first.');
+  const zones=focus==='room'?[MAIN_ZONE,...layout.spaces.map(s=>s.id)]:[space.id];
+  await loadZones(ctx,room,zones);
+  const assets=[];
+  for(const type of new Set(room.furniture.map(i=>i.type).filter(t=>t.startsWith('asset_')))){
+    const id=ctx.db.normalizeId('assets',type.slice(6)),asset=id&&await ctx.db.get(id);
+    if(asset){const entry=await assetCatalogueEntry(ctx,asset);delete entry.program;assets.push(entry);}
+  }
+  const now=Date.now(),players=await zonesPlayers(ctx,zones,now);
+  const signals=await ctx.db.query('signals').withIndex('by_key',q=>q.eq('key','main')).unique();
+  return {serverTime:now,room:{options:room.options,spaces:await publicSpaces(ctx,room),furniture:room.furniture,stickies:room.stickies??[],danceFloorOn:signals?.danceFloorOn??room.danceFloorOn??true,fridge:signals?.fridge??room.fridge??null},players:players.map(p=>publicPlayer(p,true)),assets,
+    region:space&&focus!=='room'?{x:space.x,z:space.z,width:space.width,depth:space.depth}:{x:0,z:0,width:layout.extentWidth,depth:layout.depth}};
+}});
+export const previewAsset=query({args:{agentToken:v.string(),assetId:v.id('assets')},handler:async(ctx,{agentToken,assetId})=>{
+  const {player}=await agentFor(ctx,agentToken),asset=await ctx.db.get(assetId);
+  if(!asset||(asset.ownerId!==player._id&&player.role!=='admin'))fail('That piece is not yours.');
+  const entry=await assetCatalogueEntry(ctx,asset);delete entry.program;
+  return {asset:entry,positions:seatReport(asset)};
 }});
 export const remove=mutation({args:{agentToken:v.string(),itemId:v.string()},handler:async(ctx,{agentToken,itemId})=>{
   const {player}=await agentFor(ctx,agentToken),room=await getRoom(ctx),doc=await itemDoc(ctx,itemId);

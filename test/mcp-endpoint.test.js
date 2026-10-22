@@ -16,10 +16,13 @@ describe('hosted MCP endpoint',()=>{
   });
   it('lists the tools and answers notifications with 202',async()=>{
     const {result}=await (await post(rpc('tools/list'))).json();
-    expect(result.tools.map(t=>t.name)).toEqual(['status','design_asset','upload_url','submit_asset','add_asset','my_assets','set_controls','program_api','get_program','set_program','set_seat','delete_asset','room_map','room_picture','place','remove','add_space','design_surface','style_space','resize_space','remove_space']);
+    expect(result.tools.map(t=>t.name)).toEqual(['status','design_asset','upload_url','preview_asset','submit_asset','add_asset','my_assets','set_controls','program_api','get_program','set_program','set_seat','delete_asset','room_map','room_picture','place','remove','add_space','design_surface','style_space','resize_space','remove_space']);
     const space=result.tools.find(t=>t.name==='add_space');
     expect(space.inputSchema.required).toEqual(['name']);expect(space.inputSchema.properties).not.toHaveProperty('width');expect(space.inputSchema.properties.floor.enum).toEqual(['plain','wood','tiles','carpet']);
     for(const tool of result.tools)expect(tool.inputSchema.type).toBe('object');
+    expect(result.tools.find(t=>t.name==='place').inputSchema.properties.support_id.type).toBe('string');
+    expect(result.tools.find(t=>t.name==='room_picture').inputSchema.properties.renderer.default).toBe('server');
+    expect(result.tools.find(t=>t.name==='preview_asset').inputSchema.properties.foreground_mask_storage_id.type).toBe('string');
     const controls=result.tools.find(t=>t.name==='set_controls');
     expect(controls.inputSchema.required).toEqual(['asset_id','use','power']);
     expect(controls.inputSchema.properties.use.type).toEqual(['string','null']);
@@ -45,6 +48,9 @@ describe('hosted MCP endpoint',()=>{
     expect(design.prompt).toMatch(/REDRAW the object in reference image 1/);
     expect(design.attach).toEqual(['/tmp/lamp.png','https://chat.example.test/agent-reference/room-style.png','https://chat.example.test/agent-reference/sprite-sofa.png']);
     expect(design.then).toMatch(/upload_url/);
+    expect(design.then).toMatch(/preview_asset/);expect(design.brief.scale.tile_px).toEqual([64,32]);
+    expect(design.brief.views.map(v=>v.direction)).toEqual([2,4,6,0]);
+    expect(result.content[1]).toMatchObject({type:'image',mimeType:'image/png'});
     const wall=JSON.parse((await (await post(rpc('tools/call',{name:'design_asset',arguments:{name:'Sign',description:'A neon sign.',kind:'wall'}}),{Authorization:`Bearer ${key}`})).json()).result.content[0].text);
     expect(wall.attach).toEqual(['https://chat.example.test/agent-reference/room-style.png','https://chat.example.test/agent-reference/sprite-wall-speaker.png']);
   });

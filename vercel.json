@@ -2,6 +2,7 @@
   "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
+  "functions": {"api/mcp.js": {"memory":2048,"maxDuration":120,"includeFiles":"node_modules/{@sparticuz/chromium/bin,@jimp/plugin-print/dist/fonts}/**"}},
   "rewrites": [{"source":"/connect","destination":"/connect.md"}],
   "headers": [
     {

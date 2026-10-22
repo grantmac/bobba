@@ -18,6 +18,45 @@ const guest=()=>t.mutation(api.room.join,{token,name:'Visitor',look});
 const admin=()=>t.mutation(api.room.join,{token:adminToken,name:'Grant',look,entryCode:secret});
 // Every piece in the world, wherever it stands, in the order it was added.
 const everywhere=()=>t.run(async ctx=>(await ctx.db.query('furniture').collect()).map(docItem));
+describe('agent build diagnostics and table placement',()=>{
+  it('places on a named table, reports free surface tiles and rejects occupied surfaces',async()=>{
+    await admin();const {agentToken}=await t.mutation(api.agents.createKey,{token:adminToken});
+    const storageId=await t.run(ctx=>ctx.storage.store(new Blob(['test'],{type:'image/png'})));
+    const make=category=>t.mutation(api.agents.createAsset,{agentToken,name:category,category,width:1,depth:1,spriteDensity:1,icon:storageId,parts:[{storageId,direction:2,width:40,height:40,reg:{x:20,y:40}}],views:[{direction:2,source:2,mirror:false}]});
+    const table=await make('Tables'),lamp=await make('Lighting');
+    const placed=await t.mutation(api.agents.place,{agentToken,assetId:table.id,x:2,z:2});
+    let map=await t.query(api.agents.map,{agentToken});expect(map.tables.find(t=>t.id===placed.itemId).tiles).toEqual([{x:2,z:2,free:true}]);
+    const lampItem=await t.mutation(api.agents.place,{agentToken,assetId:lamp.id,x:2,z:2,supportId:placed.itemId});
+    map=await t.query(api.agents.map,{agentToken});expect(map.tables.find(t=>t.id===placed.itemId).tiles[0].free).toBe(false);
+    expect(map.furniture.find(i=>i.id===lampItem.itemId).support_id).toBe(placed.itemId);
+    await expect(t.mutation(api.agents.place,{agentToken,assetId:lamp.id,x:2,z:2,supportId:placed.itemId})).rejects.toThrow();
+    await expect(t.mutation(api.agents.place,{agentToken,assetId:lamp.id,x:3,z:2,supportId:placed.itemId})).rejects.toThrow();
+  });
+  it('uses valid wall defaults and returns a read-only render scene including distant spaces',async()=>{
+    await admin();const {agentToken}=await t.mutation(api.agents.createKey,{token:adminToken});
+    await t.mutation(api.agents.addSpace,{agentToken,name:'Workshop'});
+    const map=await t.query(api.agents.map,{agentToken}),wall=map.walls.find(w=>w.x===map.spaces[0].x&&w.side==='right');
+    const storageId=await t.run(ctx=>ctx.storage.store(new Blob(['test'],{type:'image/png'})));
+    const poster=await t.mutation(api.agents.createAsset,{agentToken,name:'Poster',category:'Wall',width:1,depth:1,spriteDensity:1,wallWidth:24,icon:storageId,parts:[{storageId,direction:0,width:24,height:40,reg:{x:12,y:40}}],views:[0,4].map(direction=>({direction,source:0,mirror:false}))});
+    await t.mutation(api.agents.place,{agentToken,assetId:poster.id,x:wall.x,z:wall.z});
+    const before=await everywhere(),scene=await t.query(api.agents.renderScene,{agentToken,focus:'space',spaceId:map.spaces[0].id});
+    expect(scene.room.furniture).toHaveLength(1);expect(scene.room.furniture[0].rotation).toBe(4);
+    expect(scene.region.x).toBe(wall.x);expect(scene.assets[0].parts[0].file).toContain('https://');
+    expect(await everywhere()).toEqual(before);
+    await expect(t.query(api.agents.renderScene,{agentToken:'f'.repeat(64),focus:'room'})).rejects.toThrow();
+  });
+  it('preserves foreground sprites and returns seat pixel positions after edits',async()=>{
+    await admin();const {agentToken}=await t.mutation(api.agents.createKey,{token:adminToken});
+    const storageId=await t.run(ctx=>ctx.storage.store(new Blob(['test'],{type:'image/png'}))),foregroundStorageId=await t.run(ctx=>ctx.storage.store(new Blob(['front'],{type:'image/png'})));
+    const asset=await t.mutation(api.agents.createAsset,{agentToken,name:'Cockpit',category:'Seating',width:2,depth:1,spriteDensity:1,icon:storageId,parts:[{storageId,foregroundStorageId,direction:2,width:90,height:70,reg:{x:45,y:60}}],views:[2,4].map(direction=>({direction,source:2,mirror:direction===4}))});
+    const result=await t.mutation(api.agents.setSeat,{agentToken,assetId:asset.id,seat:{x:0,z:1,height:20}});
+    expect(result.positions.rotations[0].seats[0].surface).toEqual({x:-32,y:12});
+    await t.mutation(api.agents.place,{agentToken,assetId:asset.id,x:2,z:2});
+    const scene=await t.query(api.agents.renderScene,{agentToken,focus:'room'});
+    expect(scene.assets.find(a=>a.id===asset.type).parts.map(p=>p.foreground)).toEqual([false,true]);
+    await expect(t.mutation(api.agents.discardUpload,{agentToken,storageId:foregroundStorageId})).rejects.toThrow('belongs to a piece');
+  });
+});
 describe('room access and persistence',()=>{
   it('checks a name without creating a player and rejects reserved or recently used names',async()=>{
     await t.query(api.room.checkName,{name:'NewVisitor'});

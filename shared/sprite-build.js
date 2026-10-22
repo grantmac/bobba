@@ -2,6 +2,7 @@
 // metadata of a catalogue piece. Shared by the local stdio server and the hosted endpoint.
 import {Jimp,ResizeStrategy} from 'jimp';
 import {DENSITY,KINDS} from './sprite-conventions.js';
+import {seatReport,designBrief} from './asset-geometry.js';
 export async function readImage(buffer){
   if(buffer.length>12*1024*1024)throw new Error('Image is over 12 MB.');
   const image=await Jimp.read(buffer);
@@ -25,18 +26,29 @@ export function trim(image){
   image.scan(0,0,image.width,image.height,(x,y,idx)=>{if(image.bitmap.data[idx+3]>40){if(x<minX)minX=x;if(y<minY)minY=y;if(x>maxX)maxX=x;if(y>maxY)maxY=y;}});
   if(maxX<0)throw new Error('The picture is fully transparent.');
   image.crop({x:minX,y:minY,w:maxX-minX+1,h:maxY-minY+1});
+  return {x:minX,y:minY,w:maxX-minX+1,h:maxY-minY+1};
 }
+function foreground(image,mask,box){
+  const selected=image.clone(),alpha=mask.clone().crop(box).bitmap.data;
+  selected.scan(0,0,selected.width,selected.height,(_,__,i)=>{selected.bitmap.data[i+3]=Math.round(selected.bitmap.data[i+3]*alpha[i+3]/255);});
+  return selected;
+}
+function checkMask(image,mask){if(mask&&(mask.width!==image.width||mask.height!==image.height))throw new Error('Foreground mask must have exactly the same dimensions as the sprite sheet/strip. Use transparent pixels outside the foreground; mask alpha selects pixels from the artwork.');}
 // A piece's declared width is the length of its front and depth how far it reaches back;
 // the room swaps the two for rotations 2 and 6, so the on-screen footprint depends on the view.
 const footprintFor=(direction,width,depth)=>direction%4===2?{width:depth,depth:width}:{width,depth};
 // Split a 2x2 sheet into the four rotations: top-left faces lower-right (2), top-right
 // lower-left (4), bottom-left upper-left (6), bottom-right upper-right (0).
-export function splitSheet(sheet){
+export function splitSheet(sheet,mask){
+  checkMask(sheet,mask);
+  if(sheet.width%2||sheet.height%2)throw new Error('The four-view sheet dimensions must divide evenly into a 2 by 2 grid.');
   keyOutBackground(sheet);
   const w=Math.floor(sheet.width/2),h=Math.floor(sheet.height/2),views={};
   for(const [direction,x,y] of [[2,0,0],[4,w,0],[6,0,h],[0,w,h]]){
     const view=sheet.clone().crop({x,y,w,h});
-    try{trim(view);}catch{throw new Error('The sheet must hold four views in a 2 by 2 grid, one per quadrant, on a transparent background.');}
+    let box;try{box=trim(view);}catch{throw new Error('The sheet must hold four views in a 2 by 2 grid, one per quadrant, on a transparent background.');}
+    if(mask)view.foreground=foreground(view,mask.clone().crop({x,y,w,h}),box);
+    view.prepared=true;
     views[direction]=view;
   }
   return views;
@@ -44,15 +56,24 @@ export function splitSheet(sheet){
 // An animated piece is one view drawn as a strip of 2 to 4 equal frames side by side. The frames
 // are cut to one shared bounding box so the piece never jumps between them.
 export const FRAME_MAX=4;
-export function splitStrip(image,frames){
+export function splitStrip(image,frames,mask){
+  checkMask(image,mask);
   if(!Number.isInteger(frames)||frames<2||frames>FRAME_MAX)throw new Error(`frames must be 2 to ${FRAME_MAX}.`);
+  if(image.width%frames)throw new Error('Animation strip width must divide evenly by its frame count.');
   keyOutBackground(image);
   const w=Math.floor(image.width/frames),h=image.height;
   const cells=Array.from({length:frames},(_,i)=>image.clone().crop({x:i*w,y:0,w,h}));
   let minX=w,minY=h,maxX=-1,maxY=-1;
   for(const cell of cells)cell.scan(0,0,w,h,(x,y,idx)=>{if(cell.bitmap.data[idx+3]>40){if(x<minX)minX=x;if(y<minY)minY=y;if(x>maxX)maxX=x;if(y>maxY)maxY=y;}});
   if(maxX<0)throw new Error('The strip is fully transparent.');
-  return cells.map(cell=>cell.crop({x:minX,y:minY,w:maxX-minX+1,h:maxY-minY+1}));
+  const box={x:minX,y:minY,w:maxX-minX+1,h:maxY-minY+1};
+  return cells.map((cell,i)=>{cell.crop(box);if(mask)cell.foreground=foreground(cell,mask.clone().crop({x:i*w,y:0,w,h}),box);return cell;});
+}
+export function singleSprite(image,mask){
+  checkMask(image,mask);keyOutBackground(image);const box=trim(image);
+  if(mask)image.foreground=foreground(image,mask,box);
+  image.prepared=true;
+  return image;
 }
 export function buildSprite(image,{kind,width,depth,display_width,facing,base_inset,direction,prepared=false}){
   if(!prepared){keyOutBackground(image);trim(image);}
@@ -60,6 +81,7 @@ export function buildSprite(image,{kind,width,depth,display_width,facing,base_in
   const span=(width+depth)*32;
   let W=display_width??(kind==='rug'?span:kind==='wall'?48:kind==='tabletop'?40:Math.round(span*.85));
   W=Math.max(8,Math.min(200,Math.round(W)));
+  if(kind==='wall')W=Math.min(96,W);
   let H=Math.max(4,Math.min(200,Math.round(W*image.height/image.width)));
   // A wall piece must fit on the 117 px wall face with room to hang it: cap its height, keeping its shape.
   if(kind==='wall'&&H>96){W=Math.max(8,Math.round(W*96/H));H=96;}
@@ -80,10 +102,25 @@ export function buildSprite(image,{kind,width,depth,display_width,facing,base_in
 // The seat settings an agent gives, in the shape the server stores.
 export const seatSpec=args=>({x:args.seat_x??0,z:args.seat_z??0,height:args.seat_height??10,...(args.seat_offset_x?{offsetX:args.seat_offset_x}:{}),...(args.seat_offset_y?{offsetY:args.seat_offset_y}:{})});
 export async function prepareAsset(args,views,upload){
-  const parts=[],viewList=[];let meta=null,icon=null;
+  if(!Object.hasOwn(KINDS,args.kind)||![args.width,args.depth].every(n=>Number.isInteger(n)&&n>=1&&n<=4))throw new Error('Choose a valid kind and a footprint of 1 to 4 tiles each way.');
+  if(args.display_width!==undefined&&(!Number.isFinite(args.display_width)||args.display_width<8||args.display_width>200))throw new Error('display_width must be 8 to 200 room pixels.');
+  if(args.base_inset!==undefined&&(!Number.isFinite(args.base_inset)||Math.abs(args.base_inset)>16))throw new Error('base_inset must be -16 to 16 room pixels.');
+  const seatGiven=['seat_x','seat_z','seat_height','seat_offset_x','seat_offset_y'].some(key=>args[key]!==undefined);
+  if(seatGiven){const s=seatSpec(args);if(args.kind!=='seat')throw new Error('Seat settings apply to kind "seat" only.');if(!Number.isInteger(s.x)||s.x<0||s.x>=args.depth||!Number.isInteger(s.z)||s.z<0||s.z>=args.width||!Number.isInteger(s.height)||s.height<0||s.height>40||[s.offsetX??0,s.offsetY??0].some(n=>!Number.isInteger(n)||Math.abs(n)>24))throw new Error('Seat tile must be within the footprint, height 0–40 px and offsets -24–24 px.');}
+  if(Object.values(views).some(v=>(Array.isArray(v)?v:[v]).some(i=>i.foreground))&&args.kind!=='seat')throw new Error('Foreground masks are supported for seats only.');
+  const animated=Object.values(views).some(Array.isArray);
+  if(args.switchable&&!animated)throw new Error('Only an animated piece (frames) can be switchable.');
+  if(animated&&args.frame_ms!==undefined&&(!Number.isInteger(args.frame_ms)||args.frame_ms<80||args.frame_ms>2000))throw new Error('frame_ms must be 80 to 2000 milliseconds.');
+  const parts=[],viewList=[],warnings=[];let meta=null,icon=null;
   for(const direction of Object.keys(views).map(Number).sort((a,b)=>a-b)){
+    if(args.kind==='wall'&&![2,4].includes(direction))continue;
     const source=views[direction],single=Object.keys(views).length===1,strip=Array.isArray(source)?source:null,image=strip?strip[0]:source;
-    const sprite=buildSprite(image,{...args,...(single?{}:{direction}),prepared:!!strip});
+    const foregrounds=(strip??[image]).map(i=>i.foreground);
+    // A fully opaque bounding rectangle often means the generated background survived keying.
+    const data=image.bitmap.data;let opaque=0;for(let i=3;i<data.length;i+=4)if(data[i]>240)opaque++;
+    if(opaque/(image.width*image.height)>.97)warnings.push({code:'possible_background',direction,message:'Almost the entire view is opaque. Inspect for a painted background.'});
+    const sprite=buildSprite(image,{...args,...(single?{}:{direction}),prepared:!!strip||!!image.prepared});
+    if(sprite.width>(args.width+args.depth)*32)warnings.push({code:'horizontal_overhang',direction,message:'The sprite is wider than its tile footprint. Check whether the overhang is intentional.'});
     let buffer,cells;
     if(strip){
       // Every frame is scaled like the first and packed side by side; the client plays the cells in turn.
@@ -92,18 +129,21 @@ export async function prepareAsset(args,views,upload){
       buffer=await sheet.getBuffer('image/png');cells=strip.map((_,i)=>({x:i*W,y:0,width:W,height:H}));
     }else buffer=await image.getBuffer('image/png');
     const storageId=await upload(buffer);
-    parts.push({storageId,direction:single?sprite.views.find(v=>!v.mirror).source:direction,width:sprite.width,height:sprite.height,reg:sprite.reg,...(cells?{frames:cells}:{})});
+    let foregroundStorageId;
+    if(foregrounds[0]){
+      const W=sprite.width*DENSITY,H=sprite.height*DENSITY,fg=new Jimp({width:W*foregrounds.length,height:H,color:0});
+      foregrounds.forEach((image,i)=>fg.composite(image.resize({w:W,h:H,mode:ResizeStrategy.BICUBIC}),i*W,0));
+      foregroundStorageId=await upload(await fg.getBuffer('image/png'));
+    }
+    parts.push({storageId,direction:single?sprite.views.find(v=>!v.mirror).source:direction,width:sprite.width,height:sprite.height,reg:sprite.reg,...(foregroundStorageId?{foregroundStorageId}:{}),...(cells?{frames:cells}:{})});
     viewList.push(...sprite.views);
     if(direction===2||!icon){icon=storageId;meta=sprite;}
   }
   // A seat may name the tile sat on and the seat top's height; anything else must not.
-  const seatGiven=['seat_x','seat_z','seat_height','seat_offset_x','seat_offset_y'].some(key=>args[key]!==undefined);
   if(seatGiven&&args.kind!=='seat')throw new Error('seat_x, seat_z, seat_height and seat offsets apply to kind "seat" only.');
-  const animated=Object.values(views).some(Array.isArray);
-  if(args.switchable&&!animated)throw new Error('Only an animated piece (frames) can be switchable.');
   const spec={name:args.name,category:meta.category,width:args.width,depth:args.depth,spriteDensity:DENSITY,...(seatGiven?{seat:seatSpec(args)}:{}),...(animated?{frameDuration:args.frame_ms??250,...(args.switchable?{switchable:true}:{})}:{}),
     ...(meta.wallWidth!==undefined?{wallWidth:meta.wallWidth}:{}),...(meta.tableOffsetY!==undefined?{tableOffsetY:meta.tableOffsetY}:{}),...(meta.surfaceHeight!==undefined?{surfaceHeight:meta.surfaceHeight}:{}),
     icon,parts,views:viewList.sort((a,b)=>a.direction-b.direction)};
-  const summary=result=>({asset_id:result.id,type:result.type,name:args.name,category:meta.category,rotations:viewList.length,...(animated?{frames:Object.values(views).find(Array.isArray).length,frame_ms:spec.frameDuration,switchable:!!spec.switchable}:{}),display_size:`${meta.width}x${meta.height} px`,footprint:`${args.width}x${args.depth}`,next:'Call place with this asset_id and a free tile from room_map, or the player can place it from Furniture (Rotate turns it).'});
+  const summary=result=>({asset_id:result.id,type:result.type,name:args.name,category:meta.category,rotations:viewList.length,views:viewList,seat:seatReport(spec),validation:{warnings,visual_checks_required:['Drawn base alignment with tiles','Consistency between views','Seat surface alignment; use preview_asset'],note:'Warnings are heuristic. Overhang alone is not invalid.'},brief:designBrief(args),...(animated?{frames:Object.values(views).find(Array.isArray).length,frame_ms:spec.frameDuration,switchable:!!spec.switchable}:{}),display_size:`${meta.width}x${meta.height} px`,footprint:`${args.width}x${args.depth}`,next:'Call place with this asset_id and a free tile from room_map, or support_id from room_map.tables for a tabletop item.'});
   return {spec,summary};
 }

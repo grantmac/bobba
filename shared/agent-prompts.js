@@ -1,7 +1,7 @@
 // Image-generation prompts for new pieces, in the shape that has produced good results:
 // one standalone transparent sprite, the room's pixel-art style, strict 2:1 isometric
 // geometry with the orientation spelled out, then the design, then what to leave out.
-const STYLE=`Art direction: genuinely match the reference image's retro hand-drawn pixel-art furniture: crisp stair-step contours, thin near-black outlines, compact shading ramps and slightly chunky proportions. Upper-left light, subtle shading within the asset, no external cast shadows. It must look like it belongs beside the room's existing sofas, fridge and DJ booth, not a realistic miniature render. Avoid glossy gradients, smooth vector edges, antialiasing, blurry texture or excessive tiny detail; keep details readable at game scale.`;
+const STYLE=`Art direction: match the reference image's retro hand-drawn pixel-art furniture: crisp stair-step contours, thin near-black outlines, compact shading ramps and slightly chunky proportions. Scale against 64 by 32 pixel floor diamonds and a roughly 95 pixel standing avatar; these are game display pixels, not the resolution of this source sheet. Upper-left light, subtle shading within the asset, no external cast shadows. It must look like it belongs beside the room's existing sofas, fridge and DJ booth, not a realistic miniature render. Avoid glossy gradients, smooth vector edges, antialiasing, blurry texture or excessive tiny detail; keep details readable at game scale.`;
 const DELIVER=`Deliver the COMPLETE piece alone, fully visible, with ample transparent margins and genuine transparent alpha outside it and through any gaps. No room wall, ceiling, floor platform, floor tiles, signs, text, typography, people, other furniture, labels, borders or watermark. Do not recreate the room screenshot; output only the new placeable sprite.`;
 const KIND_NOTES={
   floor:'a freestanding floor piece',tabletop:'a small object that can also sit on a tabletop',table:'a table whose top other small objects can sit on',
@@ -9,7 +9,7 @@ const KIND_NOTES={
   rug:'a flat rug lying on the floor, drawn as the floor diamond itself with no height',wall:'a wall-mounted piece seen flat against the wall',
 };
 export function assetPrompt({description,kind='floor',width=1,depth=1,facing='right',details=''}){
-  const long=depth>width?'lower-left to upper-right':width>depth?'upper-left to lower-right':null;
+  const long=depth===width?null:(width>depth)===(facing!=='left')?'lower-left to upper-right':'upper-left to lower-right';
   const front=facing==='left'?'lower-left':'lower-right';
   const against=facing==='left'?'the right-hand wall, whose wall lines run from UPPER LEFT down to LOWER RIGHT':'the left-hand wall, whose wall lines rise from LOWER LEFT to UPPER RIGHT';
   const wrong=facing==='left'?'lower-left to upper-right':'upper-left to lower-right';
@@ -33,10 +33,10 @@ export function sheetPrompt({description,kind='floor',width=1,depth=1,details=''
     ?['TOP-LEFT: hanging on the left-hand wall, whose lines rise from lower left to upper right, its face foreshortened 2:1 and turned toward the lower-right.',
       'TOP-RIGHT: hanging on the right-hand wall, whose lines fall from upper left to lower right, its face turned toward the lower-left.',
       'BOTTOM-LEFT: the same as top-left.','BOTTOM-RIGHT: the same as top-right.']
-    :['TOP-LEFT: front facing the lower-right, its long side running from lower left up to upper right (as if standing against the left-hand wall).',
-      'TOP-RIGHT: front facing the lower-left, its long side running from upper left down to lower right (as if against the right-hand wall).',
-      'BOTTOM-LEFT: seen from behind, front facing the upper-left, long side running upper left to lower right.',
-      'BOTTOM-RIGHT: seen from behind, front facing the upper-right, long side running lower left to upper right.'];
+    :['TOP-LEFT: front facing the lower-right, its width edge running from lower left up to upper right; depth runs upper left to lower right.',
+      'TOP-RIGHT: front facing the lower-left, its width edge running from upper left down to lower right; depth runs lower left to upper right.',
+      'BOTTOM-LEFT: seen from behind, front facing the upper-left, width edge running lower left to upper right; depth runs upper left to lower right.',
+      'BOTTOM-RIGHT: seen from behind, front facing the upper-right, width edge running upper left to lower right; depth runs lower left to upper right.'];
   return [
     `${hasReference?'REDRAW the object in reference image 1':'Create the object described below'} as ONE transparent pixel-art SPRITE SHEET for the game shown in the room reference image. ${hasReference?'Reference image 1 is a design reference only: keep its shapes, colours and character, but do not copy its rendering, perspective or background.':''} The room reference is authoritative for the game's hand-drawn pixel-art style, furniture scale and 2:1 isometric projection.`,
     `The piece: ${description.trim()} It is ${KIND_NOTES[kind]??KIND_NOTES.floor}. ${sized}`,

@@ -10,7 +10,7 @@ import {furnitureControls} from '../shared/furniture-controls.js';
 
 const ROOT='/assets/furniture/';
 // Built pieces reference their sprites by URL; the shipped catalogue by file name.
-const src=file=>/^https?:\/\//.test(file)?file:ROOT+file;
+const src=file=>/^(https?:\/\/|data:image\/)/.test(file)?file:ROOT+file;
 // Sprites served from storage must load with CORS so their canvases can be read back.
 const load=(image,file)=>{if(/^https?:\/\//.test(file))image.crossOrigin='anonymous';image.src=src(file);};
 // Pieces a click uses rather than selects: the player walks up to them first.
@@ -60,7 +60,8 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
       const resting=layers.filter(p=>!p.state);
       const full=paint(resting,def.frameDuration?0:5);
       // Original chair/sofa layers straddle the seated avatar's depth.
-      const slices=def.category==='Seating'&&!def.frameDuration?resting.filter(p=>p.width>1&&p.height>1).map(p=>({...paint([p]),orderShift:p.z/100})):null;
+      const hasForeground=resting.some(p=>p.foreground);
+      const slices=def.category==='Seating'&&(!def.frameDuration||hasForeground)?resting.filter(p=>p.width>1&&p.height>1).map(p=>({...paint([p],def.frameDuration?0:5),orderShift:p.z/100,foreground:!!p.foreground,part:p})):null;
       const frame={...full,density,left:(view.mirror?64-right:left)-32,top:top+16};
       if(def.frameDuration)frame.off={...frame,...paint(resting.map(p=>p.offCanvas?{...p,cells:null,canvas:p.offCanvas}:p),0)};
       if(layers.some(p=>p.state==='open'))frame.open={...frame,...paint(layers.filter(p=>!p.state||p.state==='open'),def.frameDuration?0:5)};
@@ -69,7 +70,9 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
         frame.animate=now=>{
           const phase=def.frameDuration?Math.floor(now/def.frameDuration)%resting[0].cells.length:macintoshScreenPhase(now);
           if(phase===lastPhase)return false;
-          lastPhase=phase;frame.pixels=paint(resting,phase,frame.canvas).pixels;return true;
+          lastPhase=phase;frame.pixels=paint(resting,phase,frame.canvas).pixels;
+          for(const slice of frame.slices??[])slice.pixels=paint([slice.part],phase,slice.canvas).pixels;
+          return true;
         };
       }
       if(def.id==='anniv_balloongift'){
@@ -87,7 +90,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
         frame.canvas=motion.canvas;
         frame.animate=(now,reducedMotion,musicPlaying)=>motion.draw(now,musicPlaying,reducedMotion);
       }
-      if(slices?.length)frame.slices=slices.map(slice=>({...frame,...slice}));
+      if(slices?.length){frame.slices=slices.map(slice=>({...frame,...slice}));if(frame.off)frame.off.slices=frame.slices.map(slice=>({...slice,...paint([slice.part],0),animate:undefined}));}
       frames.set(`${def.id}:${view.direction}`,frame);
     }
     })();
@@ -167,8 +170,8 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     const updated=new Map();
     for(const {frame,mesh} of visuals){
       if(!frame.animate)continue;
-      if(!updated.has(frame))updated.set(frame,frame.animate(now,reducedMotion,musicPlaying));
-      if(updated.get(frame)&&mesh.material.map)mesh.material.map.needsUpdate=true;
+      if(!updated.has(frame.animate))updated.set(frame.animate,frame.animate(now,reducedMotion,musicPlaying));
+      if(updated.get(frame.animate)&&mesh.material.map)mesh.material.map.needsUpdate=true;
     }
   }
   function visible(item){
@@ -187,7 +190,8 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     const cells=footprint(item,def),table=viewItems.find(t=>t.id===item.supportId),orderCells=table?footprint(table,definitions.get(table.type)):cells;
     // A piece on a table draws just above the table (front ones last) but under an avatar on the
     // same diagonal (+9.5): someone sitting at the desk is in front of what is on it.
-    const order=def.category==='Rugs'?20:def.category==='Seating'?300+(item.x+item.z)*10+9+(frame.orderShift??0):300+Math.max(...orderCells.map(([x,z])=>x+z))*10+9+(table?0.1+(item.x+item.z)/1000:0);
+    const seatCells=frame.foreground?(def.seat?.[item.rotation]?.cells??[def.seat?.[item.rotation]?.cell??[cells.at(-1)[0]-item.x,cells.at(-1)[1]-item.z]]):null;
+    const order=frame.foreground?300+(item.x+item.z+Math.max(...seatCells.map(([x,z])=>x+z)))*10+9.6:def.category==='Rugs'?20:def.category==='Seating'?300+(item.x+item.z)*10+9+(frame.orderShift??0):300+Math.max(...orderCells.map(([x,z])=>x+z))*10+9+(table?0.1+(item.x+item.z)/1000:0);
     const lift=surfaceHeight(item,viewItems,definitions)-floorHeight(item.x,item.z);
     return {x:p.x+frame.left,y:p.y+frame.top-lift+(table?def.tableOffsetY??0:0),order};
   }

@@ -33,6 +33,15 @@ have.
 
 ## 2. Picture → piece (the normal path)
 
+Read the `brief` and footprint diagram returned by `design_asset` before generating.
+Tiles are 64×32 room pixels; compare scale with a roughly 95 px avatar. Source PNG
+resolution is separate. At rotation 2, +x goes down-right across depth and +z goes
+down-left along width. Tile `(0,0)` is the top/back tile. Sheet order is **2,4 / 6,0**:
+lower-right, lower-left / upper-left, upper-right. Four-view sheets use separate
+artwork; animation strips and single sprites supply one view and its horizontal
+mirror, directions 2 and 4 only. Wall pieces hang only at 2 or 4.
+
+
 For any picture that is not already a finished game sprite (photos, logos,
 concept art, screenshots, real objects):
 
@@ -52,7 +61,10 @@ concept art, screenshots, real objects):
    pixels when the art sits off the tile centre. Without them the figure sits
    on every tile at chair height. If it ends up floating, sunk or on the wrong
    tile, fix it afterwards with `set_seat` (asset_id from `my_assets`) instead
-   of rebuilding; open rooms update at once.
+   of rebuilding; open rooms update at once. Its response includes the seat
+   surface and avatar-anchor pixel positions for every rotation. Call
+   `preview_asset` with `asset_id` to inspect the revised seat without asking the
+   player to sit on it.
 2. The result has `prompt`, the `attach` list and the `attach_order`. The room
    and sprite references are URLs: download them first (`curl -sO <url>`).
    Generate ONE image with your image-generation tool using the prompt verbatim
@@ -74,13 +86,21 @@ concept art, screenshots, real objects):
 4. Call `upload_url`, then POST the PNG to it from the shell:
    `curl -s -X POST "<upload_url>" -H "Content-Type: image/png" --data-binary @sheet.png`
    The JSON reply has a `storageId`.
-5. Call `submit_asset` with that `storage_id`, the same `name`, `kind`, `width`
+5. Call `preview_asset` with the uploaded `storage_id`, `name`, `kind`, footprint,
+   seat settings and `format: "sheet"` (or `"strip"` with `frames` for animation).
+   It returns a PNG showing all supported rotations, labelled footprint tiles,
+   an avatar at the same scale and a test sitter. It does not publish or place
+   anything. Check the drawn base, seat surface, real transparency and intentional
+   overhang. Review warnings; these are heuristics, not proof the drawing is correct.
+   Then call `submit_asset` with that `storage_id`, the same `name`, `kind`, `width`
    and `depth`. The server keys, trims, splits and scales the four views and
    registers the piece for everyone in the room at once.
 6. Tell the user the piece is in the Catalogue (and under which category). Only
    place it when they say where: `room_map` lists free tiles and wall segments,
    `place` takes `asset_id`, `x`, `z` and optionally `rotation` (0, 2, 4, 6);
-   wall pieces also take `u` and `height`.
+   wall pieces also take `u` and `height`. To put an object on a table, use
+   `support_id` from `room_map.tables` and its free surface tiles. The entire
+   footprint must fit; floor availability is not tabletop availability.
 
 Never upload the user's picture with `add_asset`: it would appear in the room as
 a photo. `add_asset` is only for art that is already a finished pixel-art
@@ -92,6 +112,15 @@ and pass `storage_id`).
 If the user describes a piece in words only, still call `design_asset`
 without `reference_image_path`; the prompt then describes the piece instead of
 redrawing a reference. Attach the room and sprite references it lists.
+
+### Seats with a front panel
+
+Upload an optional foreground mask PNG with exactly the same dimensions and grid
+as the original sprite sheet/strip. Keep its background truly transparent; make
+only the rim or front panel opaque. Mask RGB is ignored: alpha selects the original
+artwork that draws in front of the sitter. Pass its ID as
+`foreground_mask_storage_id` to preview and submission. It rotates and animates
+with the piece. Check every direction in the preview.
 
 ## 4. Housekeeping
 
@@ -139,8 +168,10 @@ room; `room_picture` can check appearance but cannot prove motion from one frame
 ## 7. Seeing the room
 
 You cannot see the game directly, but `room_picture` returns a PNG of it as
-players see it, rendered just now by a browser tab that has the room open
-(the player's, usually). `focus` is `mine` (the player's space), `space`
+players see it, rendered on the server using the game renderer, without an open player tab.
+Use `renderer: "tab"` only when checking live custom furniture-program effects;
+that option requires an open room tab. Server captures do not execute arbitrary
+furniture programs. `focus` is `mine` (the player's space), `space`
 with a `space_id`, or `room` for everything. After placing, moving, restyling
 or fixing a seat, call it and describe what you see; attach or show the
 picture when the user asks how it looks. If it reports that no tab answered,

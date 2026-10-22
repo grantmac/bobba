@@ -12,7 +12,7 @@ const STALE=20000,RETAKE=8000;
 const takeable=(c,now)=>c.status==='pending'||(c.status==='taking'&&(c.takenAt??0)<now-RETAKE);
 async function roomArtwork(ctx,storageId){
   const assets=await ctx.db.query('assets').collect();
-  if(assets.some(asset=>asset.icon===storageId||asset.parts.some(part=>part.storageId===storageId)))return true;
+  if(assets.some(asset=>asset.icon===storageId||asset.parts.some(part=>part.storageId===storageId||part.foregroundStorageId===storageId)))return true;
   const room=await ctx.db.query('rooms').first();
   return (room?.spaces??[]).some(space=>space.floorImage===storageId||space.wallImage===storageId);
 }

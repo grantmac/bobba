@@ -40,6 +40,7 @@ import {createPong} from './pong.js';
 import {createWhiteboard} from './whiteboard.js';
 import {createLogbook} from './logbook.js';
 import {createBlimp} from './blimp.js';
+const renderInput=window.__ROOM_RENDER_INPUT__?.mode==='room'?window.__ROOM_RENDER_INPUT__.scene:null;
 
 const container = document.querySelector('#scene');
 const reducedMotion=matchMedia('(prefers-reduced-motion: reduce)');
@@ -351,7 +352,7 @@ function buildRoom(options){
 // Segments overlap left to right, but all stay below the ceiling lines (82) and hung pieces (95), however far the spaces reach.
 function backWallSegment(x,z,face,color,endCap){
   const p=iso(x,z);
-  sprite(face,p.x,p.y-116,50+x/10);
+  sprite(face,p.x,p.y-116,50+20*x/(1+Math.abs(x)));
   polygon([[p.x,p.y-115],[p.x+7,p.y-118],[p.x+39,p.y-102],[p.x+32,p.y-99]],color,82,true);
   if(endCap)polygon([[p.x+32,p.y-99],[p.x+39,p.y-102],[p.x+39,p.y+14],[p.x+32,p.y+18]],color,81,true);
 }
@@ -416,6 +417,7 @@ function visibleZones(){
 }
 let lastZoneKey='';
 function updateVisibleZones(){
+  if(renderInput){visibleZoneIds=new Set([MAIN_ZONE,...(layout?.spaces??[]).map(s=>s.id)]);syncSpaces();return;}
   const ids=visibleZones(),mine=network?.me?.zone;
   if(mine&&!ids.includes(mine))ids.push(mine);
   const key=ids.join('|');if(key===lastZoneKey)return;lastZoneKey=key;
@@ -468,13 +470,14 @@ function overCharacter(event) {
 async function takePicture(region){
   const r=region??zoneBounds(layout,MAIN_ZONE);
   // Whatever the region covers must be in this tab, drawn and furnished, even if the camera is elsewhere.
-  const zones=zonesIn(layout,r),release=await network.ensureZones(zones);
+  const zones=zonesIn(layout,r),release=renderInput?()=>{}:await network.ensureZones(zones);
   try{
     await loadSpacePictures(layout.spaces.filter(s=>zones.includes(s.id)));
     for(const id of zones)visibleZoneIds.add(id);syncSpaces();
+    await furniture.whenReady();
     const top=iso(r.x,r.z),right=iso(r.x+r.width,r.z),left=iso(r.x,r.z+r.depth),bottom=iso(r.x+r.width,r.z+r.depth),margin=12;
     const bounds={left:left.x-margin,right:right.x+margin,top:CENTER_Y-top.y+124,bottom:CENTER_Y-bottom.y-28-margin};
-    const scale=Math.max(1,Math.min(2,1600/(bounds.right-bounds.left)));
+    const scale=Math.min(2,1600/(bounds.right-bounds.left),1600/(bounds.top-bounds.bottom));
     // One frame so furniture that just arrived is positioned before the read-back.
     await new Promise(resolve=>requestAnimationFrame(resolve));
     return await new Promise((resolve,reject)=>renderPicture(renderer,scene,bounds,scale).toBlob(blob=>blob?resolve(blob):reject(new Error('Could not encode the picture.')),'image/png'));
@@ -740,11 +743,11 @@ function updatePeers(players){
     const key=data.kind==='bot'?'lobby-robot':data.look?JSON.stringify(data.look):`v${data.lookVersion}`;
     if(peer.lookKey!==key){
       peer.lookKey=key;const version=++peer.version;
-      (data.kind==='bot'?robotFrames():(data.look?Promise.resolve(data.look):network.look(data.id,data.lookVersion)).then(look=>appearance.frames(look))).then(frames=>{
+      peer.loading=(data.kind==='bot'?robotFrames():(data.look?Promise.resolve(data.look):network.look(data.id,data.lookVersion)).then(look=>appearance.frames(look))).then(frames=>{
         if(version!==peer.version)return;
         peer.atlas?.dispose();peer.atlas=makeAtlas(frames);peer.frameKey='';peer.mesh.visible=true;
         peer.carryTextures?.dispose();peer.carryTextures=null;peer.carryLoading=null;
-      }).catch(error=>{peer.lookKey='';toolbar?.status(error.message);});
+      }).catch(error=>{peer.lookKey='';toolbar?.status(error.message);if(renderInput)throw error;});
     }
   }
 }
@@ -838,7 +841,7 @@ try{
   toolbar.setMusicState(radio.snapshot());
   for(const event of ['pointerdown','keydown'])document.addEventListener(event,()=>{if(ready)void radio.unlock();});
   window.addEventListener('pagehide',()=>radio.close());
-  const [catalogResponse,paletteResponse,initialRoom]=await Promise.all([fetch('/assets/room-options/catalog.json'),fetch('/assets/room-options/source-palette.json'),network.loadPreview()]);
+  const [catalogResponse,paletteResponse,initialRoom]=await Promise.all([fetch('/assets/room-options/catalog.json'),fetch('/assets/room-options/source-palette.json'),renderInput??network.loadPreview()]);
   grantOnline=initialRoom.players.some(player=>player.role==='admin');
   receiveDanceFloor(initialRoom.room.danceFloorOn);
   initialFurniture=initialRoom.room.furniture;
@@ -887,7 +890,7 @@ try{
   stickies.receive(initialRoom.room.stickies??[]);
   const furnitureMarks=new THREE.Group();scene.add(furnitureMarks);
   const agentLink=createAgentLink({network,focusRoom:()=>container.focus({preventScroll:true})});
-  const initialAssets=await network.assets.list();
+  const initialAssets=renderInput?.assets??await network.assets.list();
   furniture=await createFurniture({initialItems:initialRoom.room.furniture,initialAssets,onAttachAgent:()=>agentLink.open(),
     // Who may host a piece's program: the players in its zone, else the lobby's, else everyone in view (convex/programs.js agrees).
     programPlayers:item=>{
@@ -919,6 +922,13 @@ try{
   ensureFreeTile();
   const blank=document.createElement('canvas');blank.width=96;blank.height=112;
   avatar=sprite(blank,0,0,300);avatar.material.map.dispose();avatar.visible=false;
+  if(renderInput){
+    await furniture.whenReady();receiveFridge(initialRoom.room.fridge);updatePeers(renderInput.players);
+    await Promise.all([...peers.values()].map(p=>p.loading));
+    const blob=await takePicture(renderInput.region);
+    window.__ROOM_RENDER_RESULT__=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(blob);});
+    liftVeil();
+  }else{
   const resumed=await network.resume();
   if(resumed)setAppearance(await appearance.useLook(resumed.look));
   else {
@@ -1016,4 +1026,5 @@ try{
   }
   container.focus({preventScroll:true});
   openAgentEntry(network);
-}catch(error){liftVeil();const notice=document.querySelector('#load-error');notice.textContent=error.message||'The room could not be opened. Please reload to try again.';notice.hidden=false;console.error(error);}
+  }
+}catch(error){if(renderInput)window.__ROOM_RENDER_ERROR__=error.message;liftVeil();const notice=document.querySelector('#load-error');notice.textContent=error.message||'The room could not be opened. Please reload to try again.';notice.hidden=false;console.error(error);}
