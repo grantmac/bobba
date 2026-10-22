@@ -9,6 +9,7 @@ beforeEach(()=>{
   vi.useFakeTimers();vi.stubEnv('VITE_CONVEX_URL','https://test.convex.cloud');
   listeners={};
   vi.stubGlobal('window',{addEventListener:(name,fn)=>listeners[name]=fn,removeEventListener:vi.fn()});
+  vi.stubGlobal('document',{hidden:false,addEventListener:(name,fn)=>listeners[name]=fn,removeEventListener:vi.fn()});
   vi.stubGlobal('location',{hash:'',origin:'http://localhost',pathname:'/',search:''});
   vi.stubGlobal('localStorage',{getItem:()=> 'a'.repeat(64),setItem:vi.fn()});
   vi.stubGlobal('sessionStorage',{getItem:()=>null});
@@ -76,5 +77,45 @@ describe('room network budget',()=>{
     finish({serverTime:Date.now(),heartbeatInterval:30000});await Promise.resolve();await Promise.resolve();
     listeners.pageshow({persisted:true});expect(pulses()).toHaveLength(3);
     finish({serverTime:Date.now(),heartbeatInterval:30000});
+  });
+  it('refreshes presence immediately after a suspended tab becomes visible',async()=>{
+    await watch();
+    document.hidden=true;listeners.visibilitychange();listeners.online();
+    expect(pulses()).toHaveLength(1);
+    // A suspended browser advances wall time without executing interval callbacks.
+    vi.setSystemTime(Date.now()+10*60000);
+    document.hidden=false;listeners.visibilitychange();
+    expect(pulses()).toHaveLength(2);
+    listeners.online();listeners.pageshow({persisted:true});
+    expect(pulses()).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(0);
+    listeners.online();expect(pulses()).toHaveLength(3);
+  });
+  it('reports a temporary heartbeat failure without requiring the room to disable controls',async()=>{
+    const onError=vi.fn();await watch({onError});
+    fake.client.mutation.mockRejectedValueOnce(new Error('Connection interrupted'));
+    await vi.advanceTimersByTimeAsync(30000);
+    expect(onError).toHaveBeenCalledWith('Connection interrupted',{transient:true});
+    listeners.visibilitychange();await vi.advanceTimersByTimeAsync(0);
+    expect(pulses()).toHaveLength(3);expect(onError).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(30000);expect(pulses()).toHaveLength(4);
+  });
+  it.each(['Your session has ended. Please enter the room again.','You have been removed from the room.'])('keeps server rejection fatal: %s',async message=>{
+    const onError=vi.fn();await watch({onError});
+    fake.client.mutation.mockRejectedValueOnce(Object.assign(new Error('Server Error'),{data:message}));
+    listeners.visibilitychange();await vi.advanceTimersByTimeAsync(0);
+    expect(onError).toHaveBeenCalledWith(message,{transient:false});
+  });
+  it('ignores wake events and late heartbeat errors after closing',async()=>{
+    const onError=vi.fn();await watch({onError});let fail;
+    fake.client.mutation.mockImplementation(()=>new Promise((resolve,reject)=>fail=reject));
+    listeners.online();expect(pulses()).toHaveLength(2);
+    network.close();network=null;
+    fail(new Error('Connection closed'));await vi.advanceTimersByTimeAsync(0);
+    listeners.visibilitychange();listeners.online();listeners.pageshow({persisted:true});
+    expect(pulses()).toHaveLength(2);expect(onError).not.toHaveBeenCalled();
+    expect(document.removeEventListener).toHaveBeenCalledWith('visibilitychange',listeners.visibilitychange);
+    expect(window.removeEventListener).toHaveBeenCalledWith('pageshow',listeners.pageshow);
+    expect(window.removeEventListener).toHaveBeenCalledWith('online',listeners.online);
   });
 });

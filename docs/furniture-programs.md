@@ -108,7 +108,7 @@ the instance's state; deleting a copy discards it.
 the shared room, including off-screen spaces and the viewer. Duplicate tabs
 count once; bots are excluded. `null` means the count is not loaded or unavailable.
 Clean departures update immediately; lost connections expire after the existing
-lease (up to 90 seconds). A shared `room.population` subscription reads connection
+lease (up to fifteen minutes, including away visitors). A shared `room.population` subscription reads connection
 leases rather than player records, so walking and appearance changes do not
 invalidate it. It performs no extra writes and exposes no identities to programs.
 

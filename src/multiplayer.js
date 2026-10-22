@@ -31,18 +31,22 @@ export function createMultiplayer(){
         heartbeatInterval=result.heartbeatInterval===30000?30000:15000;
       }
       return result;
-    }catch(error){throw new Error(errorMessage(error));}
+    }catch(error){throw new Error(errorMessage(error),{cause:error});}
   }
   function randomToken(){return [...crypto.getRandomValues(new Uint8Array(32))].map(b=>b.toString(16).padStart(2,'0')).join('');}
   const connectionId=randomToken();let population={people:null};
-  let pendingHeartbeat=null;
+  let pendingHeartbeat=null,refreshConnection=null,closed=false;
   function pulse(){
     if(!pendingHeartbeat)pendingHeartbeat=mutate('heartbeat',{connectionId,pageOrigin:location.origin}).finally(()=>{pendingHeartbeat=null;});
     return pendingHeartbeat;
   }
   const depart=()=>{if(token&&me)navigator.sendBeacon(import.meta.env.VITE_CONVEX_SITE_URL+'/disconnect',JSON.stringify({token,connectionId}));};
+  const wake=()=>{if(!closed&&!document.hidden)refreshConnection?.();};
+  const restore=event=>{if(event.persisted)wake();};
   window.addEventListener('pagehide',depart);
-  window.addEventListener('pageshow',event=>{if(event.persisted&&me)pulse().catch(()=>{});});
+  window.addEventListener('pageshow',restore);
+  window.addEventListener('online',wake);
+  document.addEventListener('visibilitychange',wake);
   return {
     get adminEntry(){return !!entryCode;},get me(){return me;},get state(){return state;},now:()=>Date.now()+offset,
     get population(){return {...population};},
@@ -165,7 +169,12 @@ export function createMultiplayer(){
       };
       // Zones asked for before the room was live are picked up now.
       wanted(lastZones);
-      clearInterval(heartbeat);heartbeat=setInterval(()=>pulse().catch(error=>onError(error.message)),heartbeatInterval);
+      // Sleeping tabs may lose their presence lease. Refresh as soon as they return,
+      // and let the transport retry temporary failures without disabling the room.
+      refreshConnection=()=>pulse().catch(error=>{
+        if(!closed)onError(error.message,{transient:!error.cause?.data});
+      });
+      clearInterval(heartbeat);heartbeat=setInterval(refreshConnection,heartbeatInterval);
     },
     // The zones the camera can see; the player's own zone is always included.
     setZones(ids){lastZones=ids;wanted?.(ids);},
@@ -257,7 +266,7 @@ export function createMultiplayer(){
       finish:(id,storageId)=>client.mutation(api.captures.finish,{token,id,storageId}),
       failed:(id,reason)=>client.mutation(api.captures.failed,{token,id,reason}),
     },
-    close(){population={people:null};depart();window.removeEventListener('pagehide',depart);unsubscribe?.();unsubscribeRoom?.();clearInterval(heartbeat);client.close();},
+    close(){closed=true;refreshConnection=null;population={people:null};depart();window.removeEventListener('pagehide',depart);window.removeEventListener('pageshow',restore);window.removeEventListener('online',wake);document.removeEventListener('visibilitychange',wake);unsubscribe?.();unsubscribeRoom?.();clearInterval(heartbeat);client.close();},
   };
 }
 export function samplePlayer(player,now){

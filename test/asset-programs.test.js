@@ -194,7 +194,7 @@ describe('world-wide people count',()=>{
     await t.mutation(internal.room.disconnect,{token,connectionId:ca});expect(await t.query(api.room.population,{})).toEqual({people:2});
     await t.mutation(api.room.leave,{token});expect(await t.query(api.room.population,{})).toEqual({people:1});
     const lease=await t.run(ctx=>ctx.db.query('connections').withIndex('by_connection',q=>q.eq('connectionId',cb)).unique());
-    vi.spyOn(Date,'now').mockReturnValue(lease.lastSeen+90001);
+    vi.spyOn(Date,'now').mockReturnValue(lease.lastSeen+lease.timeoutMs+1);
     await t.mutation(internal.room.expireConnection,{connectionId:cb,seenAt:lease.lastSeen});
     expect(await t.query(api.room.population,{})).toEqual({people:0});expect(a.id).not.toBe(b.id);
   });

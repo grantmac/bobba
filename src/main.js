@@ -710,6 +710,8 @@ function updatePeers(players){
       peer={mesh,label,atlas:null,carryTextures:null,carryLoading:null,version:0,lookKey:''};peers.set(data.id,peer);
     }
     peer.data=data;
+    peer.label.dataset.away=String(data.away===true);
+    peer.label.setAttribute('aria-label',`Select ${data.name}${data.away?' (away)':''}`);
     // Movement updates carry no appearance: it is fetched once per version and kept.
     const key=data.kind==='bot'?'lobby-robot':data.look?JSON.stringify(data.look):`v${data.lookVersion}`;
     if(peer.lookKey!==key){
@@ -737,6 +739,7 @@ function positionCharacter(mesh,point,seat){
 }
 function characterFrame(player,point,time,seat){
   if(seat?.programDirection!==undefined)point={...point,direction:seat.programDirection};
+  if(player.away)return `${point.direction}:${seat?'sit':'-1'}`;
   if(point.moving)return `${point.direction}:${Math.floor(time/1000*9)%4}`;
   const age=time-(player.actionStarted??0);
   if(player.action==='wave'&&age<3000)return `${point.direction}:${seat?'sit-wave':'wave'}:${Math.floor(age/180)%2}`;
@@ -960,7 +963,15 @@ try{
       const recentIds=new Set(state.messages.map(m=>m.id));for(const id of seenMessages)if(!recentIds.has(id))seenMessages.delete(id);
       avatar.visible=true;ready=true;toolbar.setAppearanceEnabled(true);centreViewOnAvatar();
       playerPrepared=true;finishInitialLoad();
-    },onError:message=>{ready=false;radio.close();toolbar.setAppearanceEnabled(false);toolbar.status(message);if(message.includes('removed from the room')){network.close();const notice=document.querySelector('#load-error');notice.textContent=message;notice.hidden=false;}if(first)reject(new Error(message));},onMap,onSignals,onFurniture,onPrograms:list=>furniture.receivePrograms(list)});
+    },onError:(message,{transient=false}={})=>{
+      toolbar.status(message);
+      if(transient&&!first)return;
+      ready=false;radio.close();toolbar.setAppearanceEnabled(false);
+      if(message.includes('removed from the room')||message.includes('session has ended')){
+        network.close();const notice=document.querySelector('#load-error');notice.textContent=message;notice.hidden=false;
+      }
+      if(first)reject(new Error(message));
+    },onMap,onSignals,onFurniture,onPrograms:list=>furniture.receivePrograms(list)});
     lastZoneKey='';updateVisibleZones();
   });
   // Both subscriptions and the restored avatar have rendered before returning visitors see it.

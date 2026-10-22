@@ -30,13 +30,15 @@ Set `VITE_CONVEX_URL` and `VITE_CONVEX_SITE_URL` to the shared Convex deployment
 
 The private Grant entry link is kept in `ADMIN-ENTRY.md` (Git-ignored and excluded from Vercel), outside the deployed application bundle. Its secret is verified against a server-side hash; the name Grant is reserved. Guest identity is remembered in the same browser for 30 days, renewed when returning with less than seven days left; admin sessions last 12 hours. Visitors can optionally keep their character with a passkey or one-time backup code, and return from another browser through “Use my room key”. There is no account signup, password form or email service.
 
-Room and furniture state comes only from Convex. The browser remembers appearance preferences and a session token, not an alternative room. Closing the last tab sends a departure signal; a 90-second heartbeat timeout handles crashes or lost connections. Connected tabs send a heartbeat every 30 seconds, with at most one request in flight.
+Room and furniture state comes only from Convex. The browser remembers appearance preferences and a session token, not an alternative room. Connected tabs send a heartbeat every 30 seconds, with at most one request in flight. After five minutes without contact from any tab, the avatar stays in place with a small sleeping indicator; returning within fifteen minutes clears that status without changing the visit, seat or position or sending an arrival alert. After fifteen minutes without contact, it leaves. Closing the last tab normally removes it immediately; a silent crash can leave an away avatar visible until cleanup.
+
+Returning to a background tab, restoring a cached page, or regaining the network refreshes presence immediately. Temporary heartbeat failures leave the room controls available while the connection recovers; an expired session or moderation removal still blocks access and displays a persistent notice.
 
 ## Running costs
 
 This project is personally funded. Minimize recurring costs when changing it: avoid unnecessary polling, writes, subscriptions and broad database reads, and measure the affected usage rather than assuming fewer network requests means an equally smaller bill. Keep realtime interactions where they matter. See [the cost audit](docs/convex-costs.md) for the baseline, safeguards and remaining hotspots.
 
-Deploy the Convex schema and functions before the client. Connection rows retain their timeout so already scheduled 45-second leases can expire normally or upgrade on a heartbeat. The heartbeat response advertises the new interval; the client retains 15-second heartbeats and the legacy presence query against an older backend. Old browser clients can continue using the existing endpoints.
+Deploy the Convex schema and functions before the client. Connection rows retain their timeout so older leases can expire normally or upgrade on a heartbeat. The heartbeat response advertises the interval; the client retains 15-second heartbeats and the legacy presence query against an older backend. Old browser clients can continue using the existing endpoints.
 
 ## Zones
 
