@@ -18,6 +18,8 @@ try{
   assert(visible(toggle)===compact,'Menu visibility must match the screen size');
   if(compact){
     assert(!visible(icons),'Phone controls must start collapsed');
+    const field=q('.chat-field').getBoundingClientRect(),face=toggle.querySelector('span').getBoundingClientRect();
+    assert(Math.abs(field.top-face.top)<1&&Math.abs(field.height-face.height)<1,'Menu face must align with the chat input');
     assert(q('#chat-message').getBoundingClientRect().width>=170,'Phone chat field is still cramped');
     openTools();assert(toggle.getAttribute('aria-expanded')==='true'&&visible(icons),'Menu did not open');
     for(const button of icons.querySelectorAll('.bar-icon')){const r=button.getBoundingClientRect();assert(r.width>=44&&r.height>=44,'Control target is too small');}

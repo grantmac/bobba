@@ -1,6 +1,0 @@
-<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Toolbar inspection</title><link rel="stylesheet" href="/src/style.css"><style>body{background:#333;color:white}#measure{padding:12px;font:12px Verdana}</style><p id="measure"></p><script type="module">
-import {createToolbar} from '/src/toolbar.js';
-const toolbar=createToolbar({admin:true,onGesture(){},onVoice(){},onAppearance(){},onRoomEdit(){},onFurniture(){},onChat(){},onMusicMute(){},onMusicVolume(){}});
-toolbar.setVoiceEnabled(true);toolbar.setAppearanceEnabled(true);
-document.querySelector('#measure').textContent=`${innerWidth}px screen · chat field ${Math.round(document.querySelector('#chat-message').getBoundingClientRect().width)}px · icon targets ${document.querySelector('.voice-toggle').getBoundingClientRect().width}px`;
-</script>
