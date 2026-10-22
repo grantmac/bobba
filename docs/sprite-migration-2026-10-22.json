@@ -1,0 +1,2217 @@
+{
+  "date": "2026-10-22",
+  "deployment": "perfect-peacock-308",
+  "codeCommit": "caabf922076a6c84ecabce6709ebb02c5112c0d2",
+  "assetsScanned": 162,
+  "filesChecked": 490,
+  "assetsChanged": 96,
+  "filesChanged": 271,
+  "sourceBytes": 21346371,
+  "optimizedBytes": 17194970,
+  "savedBytes": 4151401,
+  "originalsRetained": true,
+  "changes": [
+    {
+      "assetId": "kd71qsjhtyeqhjtabrasd2kt098gq9zq",
+      "files": [
+        {
+          "next": "kg28yx537m9rrhch7202p5gtys8grqjp",
+          "optimizedBytes": 19659,
+          "previous": "kg2d82t9nfgg702yzv0ntafnt98gq7fj",
+          "sourceBytes": 25079
+        }
+      ],
+      "name": "Exercise Bike"
+    },
+    {
+      "assetId": "kd7epyeenxw27cfatwqk9158qd8gpzcj",
+      "files": [
+        {
+          "next": "kg2aq4qs81w9rss4vwcmkx3vpn8grxyg",
+          "optimizedBytes": 88336,
+          "previous": "kg250dkz7sh3f3n1gjjw0h3n358gqgqb",
+          "sourceBytes": 111571
+        },
+        {
+          "next": "kg2dt14wcedtvze61jr7cvqwz18grz02",
+          "optimizedBytes": 86091,
+          "previous": "kg25gf15jrjka6vksy6fd87g2n8gpaew",
+          "sourceBytes": 108080
+        },
+        {
+          "next": "kg2dhyycwhs8e8qw9dwdz7sjp98gsf03",
+          "optimizedBytes": 79730,
+          "previous": "kg2cmh8fr6qhjgf1s6610p3xfd8gpym6",
+          "sourceBytes": 99743
+        },
+        {
+          "next": "kg26sbg2t8cwxxvnvvf2jatexn8gs29s",
+          "optimizedBytes": 88759,
+          "previous": "kg2dr1094x2j7va6gxwzy74ck18gqspr",
+          "sourceBytes": 112344
+        }
+      ],
+      "name": "Greek Marble Bust"
+    },
+    {
+      "assetId": "kd72sxms0tg90xg3w4tj8dvnz18gq390",
+      "files": [
+        {
+          "next": "kg28ggbpsxbf3k496pf618a0e18grarb",
+          "optimizedBytes": 52335,
+          "previous": "kg27vssdpj7j9spz2q1gr2kqd58gq1vx",
+          "sourceBytes": 65838
+        },
+        {
+          "next": "kg2e986b9kpfq9hytm8qrz143x8gs133",
+          "optimizedBytes": 46016,
+          "previous": "kg24nd58b4f50pmjnmdt21r9q98gq258",
+          "sourceBytes": 59059
+        },
+        {
+          "next": "kg296sjmsm6p6ss6b73wm4z67n8grd7h",
+          "optimizedBytes": 43874,
+          "previous": "kg2cdv5wr2b8gpzknfgh4fx3r18gqngg",
+          "sourceBytes": 55341
+        },
+        {
+          "next": "kg22cx006mjmjh3eq1tr1w32sx8gsep4",
+          "optimizedBytes": 49971,
+          "previous": "kg2ag5pkmjfyeevwz4vfb7ssxs8gpp35",
+          "sourceBytes": 65504
+        }
+      ],
+      "name": "Tyre Stack"
+    },
+    {
+      "assetId": "kd752z6kghsr4ba82cy0wzttv98gqrwr",
+      "files": [
+        {
+          "next": "kg2fwhf0d7gbw8h33em9p95cc98gsz1z",
+          "optimizedBytes": 24261,
+          "previous": "kg2219yv8tx3j7230pgtzy50wx8gp2me",
+          "sourceBytes": 28259
+        },
+        {
+          "next": "kg2267da32j2ck079wkp266dtd8gsaye",
+          "optimizedBytes": 24404,
+          "previous": "kg2f9s4sp5yqkb0sf3znt69k458gp6gv",
+          "sourceBytes": 27874
+        },
+        {
+          "next": "kg2825jm2npaz2a6va6htywdfn8gsw5x",
+          "optimizedBytes": 24261,
+          "previous": "kg22a3vj48gd5qfwak9yt6ejks8gpb56",
+          "sourceBytes": 28259
+        },
+        {
+          "next": "kg2a0vba8hzjkc0tyycdmr70w58gsd0d",
+          "optimizedBytes": 24404,
+          "previous": "kg2ax37zs8wqa4jarmz81zh6m18gpm3t",
+          "sourceBytes": 27874
+        }
+      ],
+      "name": "Teal Garage Banner"
+    },
+    {
+      "assetId": "kd7c2azpkwjk3nhb4hff8p03j98gq03q",
+      "files": [
+        {
+          "next": "kg2ayg1xcrvx3b1kyv8300qth58gsw9x",
+          "optimizedBytes": 88951,
+          "previous": "kg248abt4b49522vff2f9egxkn8gqtfr",
+          "sourceBytes": 128988
+        },
+        {
+          "next": "kg2azz8vj8t2der8n5qq9h8nnx8gs23w",
+          "optimizedBytes": 117226,
+          "previous": "kg287478hsj15xwjkqcejmjtf98gp233",
+          "sourceBytes": 150166
+        },
+        {
+          "next": "kg27aw1rpn6dsg0d4gdpeahqxx8gsep6",
+          "optimizedBytes": 119281,
+          "previous": "kg25pmea7axmybyhknndvwzrp98gpdtz",
+          "sourceBytes": 152915
+        },
+        {
+          "next": "kg20nkw4y1jqgdvjvz4fmjb0y98gr31e",
+          "optimizedBytes": 91697,
+          "previous": "kg23f08vab3aycr06h4q3rhvj98gpsn8",
+          "sourceBytes": 133454
+        }
+      ],
+      "name": "Pit Wall Monitors"
+    },
+    {
+      "assetId": "kd7d58sxz19fj6rr02gsbsmtkn8gqg3f",
+      "files": [
+        {
+          "next": "kg2c4j8gfb0n486exdchnm17c18grj52",
+          "optimizedBytes": 49013,
+          "previous": "kg24cvtwr0963nvv276razedx18gp9zc",
+          "sourceBytes": 71754
+        },
+        {
+          "next": "kg271sbpyptrg3ytxfshwxgha58gsdr4",
+          "optimizedBytes": 68814,
+          "previous": "kg29gwmx4x5s1j7ep3en5xy4qn8gqcgv",
+          "sourceBytes": 87391
+        },
+        {
+          "next": "kg265499z6x40whq4fpc6mb6w98gr81r",
+          "optimizedBytes": 71457,
+          "previous": "kg2f9x3406qy59fmk59jk1453d8gqb76",
+          "sourceBytes": 89946
+        },
+        {
+          "next": "kg23dx7gwm23t1ndrvdjjbksqh8gr7cr",
+          "optimizedBytes": 48359,
+          "previous": "kg2dybz14xw2b9k0knbt5v6w9h8gpqzv",
+          "sourceBytes": 70131
+        }
+      ],
+      "name": "Pit Toolbox"
+    },
+    {
+      "assetId": "kd72bkfqyyqz5k04k8xzwk1t2s8gp1ey",
+      "files": [
+        {
+          "next": "kg2a8czrx24svvpy9t4p67tjt58gr8mv",
+          "optimizedBytes": 173902,
+          "previous": "kg2ehbs81qspdsbscwsxaqmaqh8gq4j9",
+          "sourceBytes": 240145
+        },
+        {
+          "next": "kg29ss0y889v1t72cr3jpx5j8x8grvxy",
+          "optimizedBytes": 201392,
+          "previous": "kg201nfasajaz594k7m9w867n58gpg28",
+          "sourceBytes": 297094
+        },
+        {
+          "next": "kg2b2nh0gd28mrde38ygys52298gr0qr",
+          "optimizedBytes": 169709,
+          "previous": "kg2ddvv9dgrsen6gbkks01c6518gp20z",
+          "sourceBytes": 233297
+        },
+        {
+          "next": "kg2cn5jzz2qrwz8g9bfxqtrkbh8gsq30",
+          "optimizedBytes": 206417,
+          "previous": "kg2cdf3g30r5s2zrxd86xcr5a98gqj54",
+          "sourceBytes": 301482
+        }
+      ],
+      "name": "Millennium Falcon XL"
+    },
+    {
+      "assetId": "kd7a5jcb88x78ja16n653v1b098gq833",
+      "files": [
+        {
+          "next": "kg2b742gk9418tjay26vnk1jbd8gsjj2",
+          "optimizedBytes": 54547,
+          "previous": "kg22mhb3f6h3bbw88aft619nwh8gqxvm",
+          "sourceBytes": 58138
+        },
+        {
+          "next": "kg21jrc43yk4ajz2nf14tdwqex8grcev",
+          "optimizedBytes": 54793,
+          "previous": "kg22gn8c0gp600744ssj202yf58gq2kj",
+          "sourceBytes": 58261
+        },
+        {
+          "next": "kg22mgc4drtm9xxdmbkbs58w798gs9gk",
+          "optimizedBytes": 50182,
+          "previous": "kg2bm5nae033qvhm5vqqzd1k4n8gqwbj",
+          "sourceBytes": 52888
+        }
+      ],
+      "name": "Raised Bed"
+    },
+    {
+      "assetId": "kd7aghq2a5hz631tjxab025ayx8gphj4",
+      "files": [
+        {
+          "next": "kg23gfxshy9apjr06pejq5mf4x8gs39f",
+          "optimizedBytes": 21401,
+          "previous": "kg2cakgzwey44t23arjjcyj4hx8gqa6b",
+          "sourceBytes": 25065
+        },
+        {
+          "next": "kg26aztrt3fbyfwkwywg0a8nzd8grmd2",
+          "optimizedBytes": 20464,
+          "previous": "kg214e0hnac4kxyanfrm4181t58gpp7f",
+          "sourceBytes": 23216
+        },
+        {
+          "next": "kg24dvrkk1vq7jr5ttv53zey2x8grsqb",
+          "optimizedBytes": 20445,
+          "previous": "kg22p69qp3evqbj266c5errcm18gqqhy",
+          "sourceBytes": 23134
+        },
+        {
+          "next": "kg26bmmyjp19f6cwcxxme8yaq58gs109",
+          "optimizedBytes": 21107,
+          "previous": "kg2eenn5s0w02j3t0xesva7q698gpww1",
+          "sourceBytes": 24862
+        }
+      ],
+      "name": "R2-D2"
+    },
+    {
+      "assetId": "kd7a3zxzmtx9dw9wm7v4pgk3eh8gqgg8",
+      "files": [
+        {
+          "next": "kg2aaswmk2b3peb1g945rcp3s18gs0yn",
+          "optimizedBytes": 17813,
+          "previous": "kg2a8r2yfptv5ps6b9av5s58p98gqrp5",
+          "sourceBytes": 19303
+        },
+        {
+          "next": "kg21f57w0m1shs3jkeed56nbhn8grx82",
+          "optimizedBytes": 19059,
+          "previous": "kg273jd3qjdxv2pn36nv73rap58gpbc7",
+          "sourceBytes": 20476
+        },
+        {
+          "next": "kg292ch1vy6kt7es4vrnmrvdkd8grq2y",
+          "optimizedBytes": 18942,
+          "previous": "kg28efkqyha24eqe3escdf5jqs8gq2fh",
+          "sourceBytes": 20394
+        },
+        {
+          "next": "kg21rq3hma2m922801j5t912z98gr8ma",
+          "optimizedBytes": 17634,
+          "previous": "kg2bmfhp60z13mxpqantwrqnr18gpq35",
+          "sourceBytes": 19201
+        }
+      ],
+      "name": "C-3PO"
+    },
+    {
+      "assetId": "kd75gkra8zackhw0p8b6zmbwhs8gpctn",
+      "files": [
+        {
+          "next": "kg289nxz83z05wd21yyrcg6mn58gsyf1",
+          "optimizedBytes": 18634,
+          "previous": "kg2d3q4mx9tpq4nsg6k2zf92fn8gp13x",
+          "sourceBytes": 29168
+        },
+        {
+          "next": "kg2dfxdbp9gjpb0f46n5hd77r98grvf1",
+          "optimizedBytes": 23788,
+          "previous": "kg237pqq76gwda5jcas1jqwmjh8gqbmh",
+          "sourceBytes": 34845
+        },
+        {
+          "next": "kg2fpa95681ndewcb28j7d8ka58grffj",
+          "optimizedBytes": 22706,
+          "previous": "kg2bd4q7nw6fxhynfqnsdzd7398gpf6d",
+          "sourceBytes": 32065
+        },
+        {
+          "next": "kg2819j1ns0d7h1mkmeq25tadd8gr56a",
+          "optimizedBytes": 21923,
+          "previous": "kg241av9j0crxje7brh59y4w1n8gq330",
+          "sourceBytes": 33138
+        }
+      ],
+      "name": "Darth Vader Statue"
+    },
+    {
+      "assetId": "kd7cg0kej6qtf0ff0b88gr0b1n8gq9nn",
+      "files": [
+        {
+          "next": "kg27x3cjvpwf9p6qjfr795w8dd8grmwh",
+          "optimizedBytes": 24594,
+          "previous": "kg2fm17yx4ek31rwynypv52wb98gqyst",
+          "sourceBytes": 28551
+        },
+        {
+          "next": "kg24epydgkm9a3z2yhheekj9dx8gs88q",
+          "optimizedBytes": 23571,
+          "previous": "kg29yk4me33qgrkmd9bg2ygdms8gqvxr",
+          "sourceBytes": 27760
+        },
+        {
+          "next": "kg2bx2egnk3j41rgrdd2p97qss8gsw8q",
+          "optimizedBytes": 29321,
+          "previous": "kg2099bekntrvx2fdhkb913b698gq773",
+          "sourceBytes": 33588
+        },
+        {
+          "next": "kg2dqeny2r1jz1edwh5cg7az9h8gsa2s",
+          "optimizedBytes": 20780,
+          "previous": "kg25gm1vv3gmyqvpmtwcxqtdkd8gqbw4",
+          "sourceBytes": 24028
+        }
+      ],
+      "name": "Vader at the Bar"
+    },
+    {
+      "assetId": "kd7ca3j4ff95h7vvsz2ewb97ws8gqnmt",
+      "files": [
+        {
+          "next": "kg2e19edjce5j2rbmrcbckwr2s8gsqkz",
+          "optimizedBytes": 43418,
+          "previous": "kg2ccyq8375b8va2bthqexa92h8gqd04",
+          "sourceBytes": 53120
+        },
+        {
+          "next": "kg2ew5nwfjpwzbpj9enpcnbae18gsg71",
+          "optimizedBytes": 44146,
+          "previous": "kg20z1rq5wp2jqcjb2wnd81hn98gqznk",
+          "sourceBytes": 52596
+        },
+        {
+          "next": "kg26jxq8m4hy59xg38p2n7qe098gsfs5",
+          "optimizedBytes": 42994,
+          "previous": "kg2bc6g41wxy9wxhzw9erbh8yn8gqtkm",
+          "sourceBytes": 51970
+        },
+        {
+          "next": "kg24s295e9hs00xgbncpfe8fnn8gs8a4",
+          "optimizedBytes": 44902,
+          "previous": "kg21vcbs2za6hknsy0hj2ytcr58gqpfb",
+          "sourceBytes": 54647
+        }
+      ],
+      "name": "TIE Fighter"
+    },
+    {
+      "assetId": "kd7bx1gxg2h02hrhwseb4nj2qh8gptax",
+      "files": [
+        {
+          "next": "kg257p4n9fyc7rby9qzpnar6vh8grt80",
+          "optimizedBytes": 8447,
+          "previous": "kg21kt4ar939nf20y0ddjbefqn8gqgcn",
+          "sourceBytes": 13026
+        },
+        {
+          "next": "kg20x6fjwdvrj7wksr7563s5818gsknz",
+          "optimizedBytes": 17032,
+          "previous": "kg2am3kfvrk6p38t3q61s4n2q98gqb1m",
+          "sourceBytes": 22980
+        },
+        {
+          "next": "kg2922t6t6apcr7tdyb8erbz858gscjr",
+          "optimizedBytes": 17389,
+          "previous": "kg29cg67g9zxy1gb8ctaa0x20x8gpmnv",
+          "sourceBytes": 23546
+        },
+        {
+          "next": "kg277dy96tx2fkcym8p585j9v18gsjyt",
+          "optimizedBytes": 8032,
+          "previous": "kg21y7kyj9s1q7spvm6ar332m18gpkke",
+          "sourceBytes": 12254
+        }
+      ],
+      "name": "Han Solo in Carbonite"
+    },
+    {
+      "assetId": "kd73ms5cqwh1sm4wamrrq6bncs8gpz84",
+      "files": [
+        {
+          "next": "kg264ck31zt1w260cy2g1t8tr18gs37z",
+          "optimizedBytes": 19420,
+          "previous": "kg29w7zebxn8txn5qq2banfp058gq6q7",
+          "sourceBytes": 27349
+        },
+        {
+          "next": "kg2erhpwxkw3mv5hdcfsatz69n8gr0ww",
+          "optimizedBytes": 22988,
+          "previous": "kg23dwsc1z8a5mbzxsa0tjm4c98gq8dt",
+          "sourceBytes": 28396
+        },
+        {
+          "next": "kg29da3x534t5s8085rwt8d0pd8gr8vz",
+          "optimizedBytes": 23639,
+          "previous": "kg29dh4g4q4nekvr49aggb41xh8gp2hm",
+          "sourceBytes": 29269
+        },
+        {
+          "next": "kg21022hxj8esmn1w7end52rvs8gr7w2",
+          "optimizedBytes": 19115,
+          "previous": "kg24drzrkhmhr64shfx3w0p5758gqcqe",
+          "sourceBytes": 26876
+        }
+      ],
+      "name": "Cargo Crates"
+    },
+    {
+      "assetId": "kd73a8ap6x3a4rpdsk5xqaq3v58gp5sy",
+      "files": [
+        {
+          "next": "kg2e1mg0s5q8v0tg61pzy5kwyh8grt21",
+          "optimizedBytes": 20989,
+          "previous": "kg27pynqxj8n411f9c9fp8010d8gp9j3",
+          "sourceBytes": 22207
+        },
+        {
+          "next": "kg24bcg4qyx0x7zj3awbkn8dyx8grx0d",
+          "optimizedBytes": 21032,
+          "previous": "kg2cjj4q289fb88gs3h0pvvh058gp15r",
+          "sourceBytes": 24922
+        },
+        {
+          "next": "kg21sb6gpjzfpwe7hv1cppsjdx8grmdr",
+          "optimizedBytes": 22311,
+          "previous": "kg2cdnyq6bt125kkfrf6g4d28d8gpagr",
+          "sourceBytes": 23919
+        },
+        {
+          "next": "kg299apyjcbbnz3qhwgddc0sfh8gsebc",
+          "optimizedBytes": 17245,
+          "previous": "kg23x51csgxfdth6mzmtgjtq558gp2ej",
+          "sourceBytes": 20366
+        }
+      ],
+      "name": "Fuel Drums"
+    },
+    {
+      "assetId": "kd74hrxzx4ny9sa7pkxn7r7dkn8gqfvg",
+      "files": [
+        {
+          "next": "kg24qwr2mty2f3t8nv813ed8k18gr9c7",
+          "optimizedBytes": 48259,
+          "previous": "kg2fsfjwz3ws649a8xkphf3tbn8gpyng",
+          "sourceBytes": 52216
+        },
+        {
+          "next": "kg20jr6cqk1wg0cswn0awvcpgn8grvqs",
+          "optimizedBytes": 46362,
+          "previous": "kg21n4g3a64xtgtqc5c50p25gs8gpa54",
+          "sourceBytes": 50147
+        },
+        {
+          "next": "kg28c8y5s54hejh1qy0bbzgzvh8gsv44",
+          "optimizedBytes": 45368,
+          "previous": "kg28nq092e3xebh77j14v0mwtx8gpcas",
+          "sourceBytes": 49121
+        },
+        {
+          "next": "kg2ftmckeycqhexv0qbmza1qy58gsnwx",
+          "optimizedBytes": 47702,
+          "previous": "kg221yz1yjf2px01fp0f4hkp798gp3rt",
+          "sourceBytes": 51505
+        }
+      ],
+      "name": "Dejarik Holochess"
+    },
+    {
+      "assetId": "kd72mf5sh8bmx2p5jtz0fyyp6d8gp0d8",
+      "files": [
+        {
+          "next": "kg24e32z4z7xbwvn00f940av6n8gr8zz",
+          "optimizedBytes": 22218,
+          "previous": "kg26h59s8bdyk5h2hdfkrdkq418gqrwm",
+          "sourceBytes": 30347
+        },
+        {
+          "next": "kg26cvq6c4shfyvbzrkaam1f658grgf6",
+          "optimizedBytes": 23063,
+          "previous": "kg2dh6p8xgd3vkxcwmfdy3k9v18gp9ft",
+          "sourceBytes": 30861
+        },
+        {
+          "next": "kg2ancnzyht6x84fj6extnbrfn8grwj0",
+          "optimizedBytes": 22478,
+          "previous": "kg2chbamqj5sh0awagbrkzp4j58gqj1j",
+          "sourceBytes": 30832
+        },
+        {
+          "next": "kg2fa4js8d7vwttthwkmad00hd8grb4f",
+          "optimizedBytes": 21581,
+          "previous": "kg23af95jw62v90hrjkdqed4658gqtw9",
+          "sourceBytes": 30151
+        }
+      ],
+      "name": "Death Star Lamp"
+    },
+    {
+      "assetId": "kd79rfcdkr3fqkxhjk18fe9dw58gpvhw",
+      "files": [
+        {
+          "next": "kg24190bp5btmyef4gxbmszd7s8gs403",
+          "optimizedBytes": 27697,
+          "previous": "kg2a7d4y7qts9cx52vk05nd47d8gqgbn",
+          "sourceBytes": 29860
+        },
+        {
+          "next": "kg28f0bgq3fsy31zzw4r7tsb818gsnx5",
+          "optimizedBytes": 30177,
+          "previous": "kg268w9c8x9zbfq5asahbafe4n8gqax4",
+          "sourceBytes": 31838
+        },
+        {
+          "next": "kg22rqfmgdrz09m3wq0rbnnwf58grff5",
+          "optimizedBytes": 33346,
+          "previous": "kg26qe7ra2y343wdzjzwwamkfx8gqdga",
+          "sourceBytes": 35354
+        },
+        {
+          "next": "kg289qmpkgfpggmyqe8374e5e58grfcg",
+          "optimizedBytes": 28827,
+          "previous": "kg240mdafyvkkmgz8r2p59crxx8gpw5y",
+          "sourceBytes": 30669
+        }
+      ],
+      "name": "Yoda Swamp Plant"
+    },
+    {
+      "assetId": "kd7anb5fp07babeqajxhf6t96d8gqzp2",
+      "files": [
+        {
+          "next": "kg29h6a2sb4474tnppnyyz94td8gsw54",
+          "optimizedBytes": 37327,
+          "previous": "kg2ab6mzn4e5s46y5ksd572vsx8gp7r7",
+          "sourceBytes": 54966
+        },
+        {
+          "next": "kg262fa8dm3wp1nv6gjrqn9d818gr2b4",
+          "optimizedBytes": 37169,
+          "previous": "kg220733tggszdyztaf144wdd98gpm9r",
+          "sourceBytes": 54901
+        },
+        {
+          "next": "kg2d4wywy0vh4qb5a0y92axvwx8gr0wa",
+          "optimizedBytes": 37150,
+          "previous": "kg229hjayy9sy1tv60fhjg76k98gqrs1",
+          "sourceBytes": 54917
+        },
+        {
+          "next": "kg2551wtdx2ssfzjwtk495c25h8gs15h",
+          "optimizedBytes": 36994,
+          "previous": "kg202js56dcv5ax47abr3bqyed8gptzd",
+          "sourceBytes": 54875
+        }
+      ],
+      "name": "Landing Pad"
+    },
+    {
+      "assetId": "kd7fypazeb9c63w2t57c144ne58gp2f6",
+      "files": [
+        {
+          "next": "kg29p6t0abxkt8arnrnm8n901s8gs5h6",
+          "optimizedBytes": 32292,
+          "previous": "kg20h2hkfme0bwjv5qaevnezm18gqvgq",
+          "sourceBytes": 34521
+        },
+        {
+          "next": "kg2cx5fs8vnhwevkccy1hdepwn8grz9m",
+          "optimizedBytes": 28317,
+          "previous": "kg2fe89m8mkbxj6v9yppnt8gs98gpffg",
+          "sourceBytes": 30633
+        },
+        {
+          "next": "kg258evw5k6726jfe9zw7c5svn8gsn2z",
+          "optimizedBytes": 30643,
+          "previous": "kg287yfrc1k2nr5hz6zx4675mn8gp7cq",
+          "sourceBytes": 32461
+        },
+        {
+          "next": "kg210dvx93ay57hnama3pq0f358gset5",
+          "optimizedBytes": 27337,
+          "previous": "kg21xsswrgh6em97hnqvgkfhmd8gq5rb",
+          "sourceBytes": 29357
+        }
+      ],
+      "name": "Monstera Plant"
+    },
+    {
+      "assetId": "kd7cckdn18cptv7c0vjgebjx458gq4y5",
+      "files": [
+        {
+          "next": "kg25jsekfpr7s0bm805h186f9s8grh7d",
+          "optimizedBytes": 37319,
+          "previous": "kg253xc2adeztg1s3g570z0fch8gpvzx",
+          "sourceBytes": 40206
+        },
+        {
+          "next": "kg2chvwepfwrd0fpp1j1mxr1358gsapy",
+          "optimizedBytes": 39410,
+          "previous": "kg20bjj65ddj4gy6z9mfprjrqn8gq5kb",
+          "sourceBytes": 41821
+        },
+        {
+          "next": "kg2e7vc2zc7wwcn1dwhyvm4pw98gsg8c",
+          "optimizedBytes": 35896,
+          "previous": "kg2fxw8tntn0nsyfrmwv1089x98gpfrv",
+          "sourceBytes": 39033
+        },
+        {
+          "next": "kg2750cegn38nksy0vr1df04g18grb0r",
+          "optimizedBytes": 38716,
+          "previous": "kg2cx5abrbhykggtjbsvm2v05h8gqtk9",
+          "sourceBytes": 41063
+        }
+      ],
+      "name": "Tulip Bed"
+    },
+    {
+      "assetId": "kd714wpn7f6884n5nrxkhh627x8gqhq7",
+      "files": [
+        {
+          "next": "kg25j68ktw7b7js8fp7et2f2rs8gsdqm",
+          "optimizedBytes": 15580,
+          "previous": "kg2akrqrmgfwe1zxmwmrkfx0g58gphgj",
+          "sourceBytes": 20831
+        },
+        {
+          "next": "kg27vbfn4csa0wsc1ryh4fck7s8gr6ra",
+          "optimizedBytes": 16742,
+          "previous": "kg28253drh2hwkn8rncpg8dfhx8gp04y",
+          "sourceBytes": 21951
+        },
+        {
+          "next": "kg27d2f7c3fzbx0eskqefckch98grrq8",
+          "optimizedBytes": 27278,
+          "previous": "kg236s2tncxtag4st9skj1acss8gqvga",
+          "sourceBytes": 29165
+        },
+        {
+          "next": "kg25m6y4pafpahmq1xbzdhd8k58grawr",
+          "optimizedBytes": 24309,
+          "previous": "kg24xtkw8dy3hcetgt2mym1rp98gqhnd",
+          "sourceBytes": 25895
+        }
+      ],
+      "name": "Cactus Bowl"
+    },
+    {
+      "assetId": "kd7b62e0drtbzhq4ycncqdj5an8gp10m",
+      "files": [
+        {
+          "next": "kg2f75sgn9686ha9zd3kxnkrns8greqy",
+          "optimizedBytes": 57951,
+          "previous": "kg2dsn6g7ng06zj6vs0d09tv698gq0q6",
+          "sourceBytes": 61975
+        },
+        {
+          "next": "kg2d27gq76115gk32jernw985x8gry6s",
+          "optimizedBytes": 57770,
+          "previous": "kg27b93gm9ryh6m01bssn4xdyn8gpsqt",
+          "sourceBytes": 61808
+        },
+        {
+          "next": "kg23w01cmebch7ckh2a0grew1x8gr234",
+          "optimizedBytes": 57623,
+          "previous": "kg2fdrwjd7y86gm5mff30ftgfs8gqn6r",
+          "sourceBytes": 61564
+        },
+        {
+          "next": "kg2daer9x6tbpf9wyx2g4qcjjd8gs9vj",
+          "optimizedBytes": 57605,
+          "previous": "kg28446e8n6x9baw1t1s1z52618gqepx",
+          "sourceBytes": 61529
+        }
+      ],
+      "name": "Garden Fountain"
+    },
+    {
+      "assetId": "kd7an7dsx2m2ab4b6e60sb7g3s8gpdnp",
+      "files": [
+        {
+          "next": "kg25zg5aw17drzebqxdtwxgggd8gstc7",
+          "optimizedBytes": 27191,
+          "previous": "kg22x0v0eh5466j8mdp3hrx1qn8gqy05",
+          "sourceBytes": 29538
+        },
+        {
+          "next": "kg221ceg6h5aknz8m1774kepj58gs67g",
+          "optimizedBytes": 38034,
+          "previous": "kg225yb2xxn4qbndhkjkskhb898gpr5m",
+          "sourceBytes": 41622
+        },
+        {
+          "next": "kg26wmekta6hp2azyzqrjkeyt58gsq0p",
+          "optimizedBytes": 37702,
+          "previous": "kg23aqan6ybm5wk2mm2prf25nd8gq281",
+          "sourceBytes": 42720
+        }
+      ],
+      "name": "Garden Bench"
+    },
+    {
+      "assetId": "kd751yzavzjb0h31aht49fj0sn8gptb7",
+      "files": [
+        {
+          "next": "kg2bk33prjbd63sf2xy8tzadyn8gr0jt",
+          "optimizedBytes": 16294,
+          "previous": "kg281sn9ff7ypc194gncgtsv758gq3n2",
+          "sourceBytes": 17166
+        },
+        {
+          "next": "kg2dx3es5eqqwdq36mpv6znq358gr5c1",
+          "optimizedBytes": 15582,
+          "previous": "kg2dhdg20y49stc1h9sc3j8kxx8gqa9v",
+          "sourceBytes": 16471
+        },
+        {
+          "next": "kg24c4em797mz8sqz8q52y37f58gsawg",
+          "optimizedBytes": 16294,
+          "previous": "kg2akc4n9x2n9zzsy8wmb8wq218gq17s",
+          "sourceBytes": 17166
+        },
+        {
+          "next": "kg20pgetc5c54z04019jkfhsn18gsjdh",
+          "optimizedBytes": 15582,
+          "previous": "kg24z6raafmxmzdhxbjv6mgd1s8gp8yk",
+          "sourceBytes": 16471
+        }
+      ],
+      "name": "DJ Mona Lisa"
+    },
+    {
+      "assetId": "kd7afdz8m6sfw0tq254gdyqy9d8gqpcw",
+      "files": [
+        {
+          "next": "kg238x0td4smqamzs0yg0pe2y58gr00j",
+          "optimizedBytes": 12320,
+          "previous": "kg27df27v1yskkxwyqhsn898rn8gqvpn",
+          "sourceBytes": 20828
+        },
+        {
+          "next": "kg28vtyfmev0q73mxc3g9dxrbh8grybd",
+          "optimizedBytes": 10153,
+          "previous": "kg2bw28sajkt0r9c9e5jac939h8gq7v4",
+          "sourceBytes": 16375
+        },
+        {
+          "next": "kg2dfe90gmwdp0fh8h6yas2vrx8grcwc",
+          "optimizedBytes": 12320,
+          "previous": "kg23ewy15n4259n48f9ck1hsq58gq7hw",
+          "sourceBytes": 20828
+        },
+        {
+          "next": "kg22wswcca18ka2p8aa8s5cwhx8gsavg",
+          "optimizedBytes": 10153,
+          "previous": "kg2dcgpsm2jy4pkrt638ct3kc18gqzmx",
+          "sourceBytes": 16375
+        }
+      ],
+      "name": "Lightsaber Rack"
+    },
+    {
+      "assetId": "kd77bxyjrg6318yrdr9t3ky08h8gqws2",
+      "files": [
+        {
+          "next": "kg25qzwdpk2zcdazm0xak2b81x8grtn2",
+          "optimizedBytes": 9665,
+          "previous": "kg28aya78qsfg8be2pf0xsxe858gq5h7",
+          "sourceBytes": 10830
+        },
+        {
+          "next": "kg28n31ejpqbqnekqazkhfcgmd8gs27m",
+          "optimizedBytes": 8868,
+          "previous": "kg249hmaz1zbp8j7y72yrw2dns8gpdwc",
+          "sourceBytes": 10096
+        },
+        {
+          "next": "kg2f6k93kd1cz2ma4nkzb8qe5s8grqy4",
+          "optimizedBytes": 9665,
+          "previous": "kg29kz9wbs73ee82pfvcfdvvzs8gq310",
+          "sourceBytes": 10830
+        },
+        {
+          "next": "kg26363vm4h605y7xe1swyahd58gscf3",
+          "optimizedBytes": 8868,
+          "previous": "kg27xnevs9fjagpj9xh2m6757x8gq8vc",
+          "sourceBytes": 10096
+        }
+      ],
+      "name": "Rebel Alliance Banner"
+    },
+    {
+      "assetId": "kd76vxqpbtsex9tawp6txm9bvh8gq1ak",
+      "files": [
+        {
+          "next": "kg20brmb2xmk88ahe5ee98e7jh8grgq9",
+          "optimizedBytes": 10492,
+          "previous": "kg22frqemjkxfx3f4fa3bqzgn18gp6x4",
+          "sourceBytes": 12755
+        },
+        {
+          "next": "kg2e8m1d3cf03x6x08qh5amkks8gs1xc",
+          "optimizedBytes": 9640,
+          "previous": "kg29nhcvfrg78pakz0q18xf0g98gqhcy",
+          "sourceBytes": 11735
+        },
+        {
+          "next": "kg24k9j9xenbap6ytf9r419v498grfzj",
+          "optimizedBytes": 10492,
+          "previous": "kg23h7q0avzn07radrrh72d52h8gpx7k",
+          "sourceBytes": 12755
+        },
+        {
+          "next": "kg2c7ewx304vzwgewzt04492v98gsrpb",
+          "optimizedBytes": 9640,
+          "previous": "kg21ss6z5xqqtkhej2s33fndqn8gp3fw",
+          "sourceBytes": 11735
+        }
+      ],
+      "name": "Galactic Empire Banner"
+    },
+    {
+      "assetId": "kd7b6g6465cjp06hbncrb65jb58gpr44",
+      "files": [
+        {
+          "next": "kg20ghv33g0q7feh058mmpc0d58gsarm",
+          "optimizedBytes": 68116,
+          "previous": "kg289qx46483khvh6jr3yc1qcd8gq8m0",
+          "sourceBytes": 83669
+        },
+        {
+          "next": "kg2ds2m673aeqvy6gfamht7bg98gs2mp",
+          "optimizedBytes": 64346,
+          "previous": "kg24p2f599p8n4xzvk31dek1fn8gp5t6",
+          "sourceBytes": 75974
+        },
+        {
+          "next": "kg21rm933903typvrv07q27h0d8gsxm2",
+          "optimizedBytes": 68116,
+          "previous": "kg25f0d64h525b8abra743ftw98gq3ph",
+          "sourceBytes": 83669
+        },
+        {
+          "next": "kg28zp5fs6e44vh82kg9wd3x0n8gs64y",
+          "optimizedBytes": 64346,
+          "previous": "kg28bjsxcwcvwrtcmh2e5br7zh8gqwjj",
+          "sourceBytes": 75974
+        }
+      ],
+      "name": "Hangar Window (Left)"
+    },
+    {
+      "assetId": "kd77p3ab2mjmhvc203kybranj18gq6rz",
+      "files": [
+        {
+          "next": "kg2cq9e5w5804qnbza5ap0gh0x8gsdzr",
+          "optimizedBytes": 58158,
+          "previous": "kg25psvdphy9e52m8wf22qgdt58gp70j",
+          "sourceBytes": 70234
+        },
+        {
+          "next": "kg28xn0tqnpcqn37cvb9sv8j4x8gs9qv",
+          "optimizedBytes": 57504,
+          "previous": "kg27ebaswye6yt94xtyh87ej698gpp4a",
+          "sourceBytes": 68160
+        },
+        {
+          "next": "kg25rzwb15vfnpsb4vzy8k1tmh8gr5aj",
+          "optimizedBytes": 58158,
+          "previous": "kg2b4rqrg3nv1ch7h6bvxa2a0d8gqkrm",
+          "sourceBytes": 70234
+        },
+        {
+          "next": "kg22xffhp7df7amfhaqrrm8gy98gsa38",
+          "optimizedBytes": 57504,
+          "previous": "kg2dn6dg0j7dmk5w843ebyrwk18gpvmx",
+          "sourceBytes": 68160
+        }
+      ],
+      "name": "Hangar Window (Right)"
+    },
+    {
+      "assetId": "kd76hbbe2wrrtpfyvn0acc4qsd8gpjcf",
+      "files": [
+        {
+          "next": "kg2befbv45gh9yh2n49kcbegdx8grz1h",
+          "optimizedBytes": 14926,
+          "previous": "kg2fv6a2sw668p8yb4w1r5q4d58gq6k4",
+          "sourceBytes": 15918
+        },
+        {
+          "next": "kg25qt93fsr2mg7707ybnsx47x8gr92p",
+          "optimizedBytes": 14376,
+          "previous": "kg22mwd7j9mzvx59td68tyvmbn8gqjt0",
+          "sourceBytes": 15428
+        },
+        {
+          "next": "kg224ayt2fkr4kvmvw0kjr9xcn8grzv3",
+          "optimizedBytes": 14808,
+          "previous": "kg20r5dc5yk5jmve107zegt5jx8gqs81",
+          "sourceBytes": 15771
+        },
+        {
+          "next": "kg23wn12729yr3ttpx5d8ksce18gs4bk",
+          "optimizedBytes": 14658,
+          "previous": "kg2d67njg8cg2qj5x11nqrw02s8gqqb9",
+          "sourceBytes": 15593
+        }
+      ],
+      "name": "Tiki Torch"
+    },
+    {
+      "assetId": "kd7cr70z7yh9ac4n23r78t83c18gqhs7",
+      "files": [
+        {
+          "next": "kg2b807eedn4dx1nwxvkpdg45n8gstz4",
+          "optimizedBytes": 41779,
+          "previous": "kg27q61xgasbtmmkrcnddsqys58gq4jt",
+          "sourceBytes": 46146
+        },
+        {
+          "next": "kg23518s97w2vb7qh7c32a3qc98grwfy",
+          "optimizedBytes": 51409,
+          "previous": "kg249d9b6y9c6gwycxzvk9dfa58gqm9x",
+          "sourceBytes": 54766
+        },
+        {
+          "next": "kg2dtm0wdd90psd5j4cpdvwhbn8gr18j",
+          "optimizedBytes": 50773,
+          "previous": "kg24azh1n50k300snpmakejqws8gq2dc",
+          "sourceBytes": 54625
+        },
+        {
+          "next": "kg2dhvmjtn2hvkgm831s5ka3ds8gs0bw",
+          "optimizedBytes": 45410,
+          "previous": "kg23byy7zs4vqqzm0qd6kr9n058gp9t5",
+          "sourceBytes": 49970
+        }
+      ],
+      "name": "Edison Blood Analyzer"
+    },
+    {
+      "assetId": "kd77wesxf2j7e9tkvnnb4xvktd8gqzjm",
+      "files": [
+        {
+          "next": "kg26s4bzwze4n5d3djss204kmd8gs961",
+          "optimizedBytes": 72835,
+          "previous": "kg29d86bp3x7p75r6gj7csbjy18gq2sn",
+          "sourceBytes": 81402
+        },
+        {
+          "next": "kg2at1vvxenm368fexjtpy12zs8gsjkk",
+          "optimizedBytes": 66383,
+          "previous": "kg23rk5w89pswe8tg52z0w7y698gpdgj",
+          "sourceBytes": 73732
+        },
+        {
+          "next": "kg2450fnktf806q7fjj0erh7vd8gszdd",
+          "optimizedBytes": 72463,
+          "previous": "kg26pdb5bnyp3ajyxn60cz659d8gp3zd",
+          "sourceBytes": 80469
+        },
+        {
+          "next": "kg2esxdepdc578pq8txymrj0598gr6k5",
+          "optimizedBytes": 69589,
+          "previous": "kg29f9wc7z08jbfgxqrrr7naeh8gp4fk",
+          "sourceBytes": 78158
+        }
+      ],
+      "name": "Black Turtleneck Poster"
+    },
+    {
+      "assetId": "kd794xsfzkxtssj863rghhd4fn8gpq8b",
+      "files": [
+        {
+          "next": "kg28m7ypzcvtew82pthajhcv018gsaf4",
+          "optimizedBytes": 53024,
+          "previous": "kg227hmyrj1j2c2dkhmcpqxjr18gp26c",
+          "sourceBytes": 57960
+        },
+        {
+          "next": "kg21ev61bqk9zk6h2tsax0jgnx8gsdtw",
+          "optimizedBytes": 90454,
+          "previous": "kg2dgrdm197y10k44tppkk330d8gpxjg",
+          "sourceBytes": 101192
+        },
+        {
+          "next": "kg21k7pq1enbv3rrj76tb57ye18gsadz",
+          "optimizedBytes": 88939,
+          "previous": "kg2cb2dbaamhatfzfjsmfeen298gq0sy",
+          "sourceBytes": 97543
+        },
+        {
+          "next": "kg2d5censa323wkw32wemfd50h8gsn79",
+          "optimizedBytes": 59502,
+          "previous": "kg2d8e6y43sh39gtf89e9cp8k58gpke5",
+          "sourceBytes": 65062
+        }
+      ],
+      "name": "Lab Fridge"
+    },
+    {
+      "assetId": "kd77syc27jsj32h3t64n4k99hd8gq9n7",
+      "files": [
+        {
+          "next": "kg2dxn0sp98abd73ms5kan71en8gsnkt",
+          "optimizedBytes": 165335,
+          "previous": "kg27see2me63qfkcf8jkwnf16d8gqke1",
+          "sourceBytes": 179068
+        },
+        {
+          "next": "kg289h9k79y427gv05cn2fef098grrqv",
+          "optimizedBytes": 158552,
+          "previous": "kg23v5nr3x5354v5bbhs3zc8th8gpg87",
+          "sourceBytes": 171711
+        },
+        {
+          "next": "kg2f467xsz00w66yr81m33kgxh8gs1rr",
+          "optimizedBytes": 162021,
+          "previous": "kg263fgwmcj737s1tnw061pd458gpwwb",
+          "sourceBytes": 176430
+        },
+        {
+          "next": "kg25fycbjcsznn4gy04557f2r98gs1zz",
+          "optimizedBytes": 168183,
+          "previous": "kg2dww584y3j3mbmsfgc74hwqn8gqzwc",
+          "sourceBytes": 181741
+        }
+      ],
+      "name": "Glass Office Desk"
+    },
+    {
+      "assetId": "kd7bvvxz9jd1qd48gjckvr0ssh8gp37p",
+      "files": [
+        {
+          "next": "kg26gwpfa0ge29tng03skgj09h8gsrcx",
+          "optimizedBytes": 15395,
+          "previous": "kg2ak3m9qfe5x7q97azgmhd76d8gppjj",
+          "sourceBytes": 16973
+        }
+      ],
+      "name": "Oak side table"
+    },
+    {
+      "assetId": "kd77knbhctdxm23158ktgx1cw58gqgkb",
+      "files": [
+        {
+          "next": "kg2710amnzh1tv9fkq8ptssdg18gryrr",
+          "optimizedBytes": 116874,
+          "previous": "kg2af3w18rst5kttnzvc8pssr58gqdd8",
+          "sourceBytes": 123128
+        }
+      ],
+      "name": "Lab Bench"
+    },
+    {
+      "assetId": "kd74cpzgyyzzwb66s4jcr1xvvd8gqmjs",
+      "files": [
+        {
+          "next": "kg29fdxs09h5mkf696ywsw67t98grm2p",
+          "optimizedBytes": 58062,
+          "previous": "kg22jsn6d2vz6yr81v85tf97h18gqvcx",
+          "sourceBytes": 62778
+        },
+        {
+          "next": "kg2ettna3v8c7ew11y4pbj9vg98grvne",
+          "optimizedBytes": 69026,
+          "previous": "kg24p6rh5jsjm4feqprpren12h8gph5v",
+          "sourceBytes": 75375
+        },
+        {
+          "next": "kg220593jsvh5ksce6fk77dvj98gs73f",
+          "optimizedBytes": 68735,
+          "previous": "kg25pqqy4x03xv0m87zaq4mbjh8gqwte",
+          "sourceBytes": 75131
+        },
+        {
+          "next": "kg2ad5mkg1w5nxpytzb36h1ng98gskfr",
+          "optimizedBytes": 58250,
+          "previous": "kg23sb5vtz9gs39t4ead808fgh8gpexz",
+          "sourceBytes": 62904
+        }
+      ],
+      "name": "Black Office Chair"
+    },
+    {
+      "assetId": "kd71r88gmzg6wg8b0hgsbc257h8gqzkf",
+      "files": [
+        {
+          "next": "kg2552yv6ect0991jcnvj9weg58gr500",
+          "optimizedBytes": 170969,
+          "previous": "kg287f3qxbfmywz522jkkszpxn8gqpk0",
+          "sourceBytes": 187938
+        },
+        {
+          "next": "kg28v2spbyxafc2jbqeh1w4ya18grddr",
+          "optimizedBytes": 165322,
+          "previous": "kg22s2akry00mn25d087aymsfn8gpts3",
+          "sourceBytes": 182271
+        },
+        {
+          "next": "kg24ytmbc46jjsqeb2f683xwys8grhyq",
+          "optimizedBytes": 170314,
+          "previous": "kg26d0s7y1hjzfba1mrqkm7ke98gq8em",
+          "sourceBytes": 185837
+        },
+        {
+          "next": "kg2cd5rvqbkn71aq66dmkwy4cn8grxhe",
+          "optimizedBytes": 172486,
+          "previous": "kg2e6vqj141gg00rqcz48y7bph8gqfyj",
+          "sourceBytes": 189414
+        }
+      ],
+      "name": "Reception Desk"
+    },
+    {
+      "assetId": "kd7b90r5rx88k5nkpxsa9wmag58gpd7c",
+      "files": [
+        {
+          "next": "kg23m4f7p0vgnbq1kp49pfknzx8gr88v",
+          "optimizedBytes": 77198,
+          "previous": "kg2fr7k84nrr8h6b5dhgyw1n818gpafa",
+          "sourceBytes": 86365
+        }
+      ],
+      "name": "Arc de Triomphe"
+    },
+    {
+      "assetId": "kd79svrddryvfdnj2e8jrqwczs8gpr41",
+      "files": [
+        {
+          "next": "kg24h60rhhhf0rme4a9xb8fv2s8gszyy",
+          "optimizedBytes": 71684,
+          "previous": "kg2crn5m15h52ng0kf9bs9j5yx8gqvc6",
+          "sourceBytes": 81332
+        }
+      ],
+      "name": "Stargate"
+    },
+    {
+      "assetId": "kd73z360a8jyet3fjeekyypj018gqg1p",
+      "files": [
+        {
+          "next": "kg2fxhb2hv04ejdqwz9re11h298grfvj",
+          "optimizedBytes": 148609,
+          "previous": "kg23151jfspyndyzxkp559fjds8gq379",
+          "sourceBytes": 158973
+        },
+        {
+          "next": "kg2a7nytbc8g08y0w2xves65an8grw4p",
+          "optimizedBytes": 145091,
+          "previous": "kg29f03sa8z6ywkcfwzpscy5798gph88",
+          "sourceBytes": 155868
+        },
+        {
+          "next": "kg2cntnx1nyqk9frdzc0jqhbw98gsj9p",
+          "optimizedBytes": 145689,
+          "previous": "kg2fbmsjtrbkjbrtkaj669908n8gq40x",
+          "sourceBytes": 156342
+        },
+        {
+          "next": "kg2b6kxmpe4j3nkm0snpr6qj7h8grzwm",
+          "optimizedBytes": 147627,
+          "previous": "kg23zed8hq1kvdfejdggjet7pd8gqzgd",
+          "sourceBytes": 159327
+        }
+      ],
+      "name": "Pale Oak Design Table"
+    },
+    {
+      "assetId": "kd77vg5r12hb2bgbgy6r1bheas8gq56y",
+      "files": [
+        {
+          "next": "kg2594ctq3vj8hq5snrce8xfvh8grb3q",
+          "optimizedBytes": 13472,
+          "previous": "kg26kf10jjmkqxva4kzgrx63g98gp0pd",
+          "sourceBytes": 14209
+        },
+        {
+          "next": "kg2b9mn6dqrry037ywfh47jz058gr8sq",
+          "optimizedBytes": 15107,
+          "previous": "kg2a45wr5xc5pwsebk2896f1r18gqbjf",
+          "sourceBytes": 16747
+        },
+        {
+          "next": "kg27t2m0nysgmc2kmx0fg3pt118gsgjy",
+          "optimizedBytes": 15354,
+          "previous": "kg2et7ta60fe79xm7ymn423bth8gpqyw",
+          "sourceBytes": 16740
+        },
+        {
+          "next": "kg29cms2e43fs7xg5wj4gxydmd8grk6p",
+          "optimizedBytes": 13647,
+          "previous": "kg208pexh9vzcc648w60jpy80d8gq8rm",
+          "sourceBytes": 14442
+        }
+      ],
+      "name": "Aluminium Chair"
+    },
+    {
+      "assetId": "kd7adrvpx0wy78apsvhcmzjm218gq6xq",
+      "files": [
+        {
+          "next": "kg2c0y8d2fbt5g2rxgm2gq49258gr6ev",
+          "optimizedBytes": 5455,
+          "previous": "kg2cvjynt80465brv9xz5zymy98gp5yk",
+          "sourceBytes": 5778
+        },
+        {
+          "next": "kg22fwy1s4g2w0zgfa3c08qx158gsjgn",
+          "optimizedBytes": 5214,
+          "previous": "kg2as2kfx2ah7e218p7zpev0w18gpx0s",
+          "sourceBytes": 5564
+        }
+      ],
+      "name": "Phone Prototype Stand"
+    },
+    {
+      "assetId": "kd72rs7rq5cpr7vdxar7tjg4r18gqz7x",
+      "files": [
+        {
+          "next": "kg2dm1sm6c7ssvg8y77hqqg6ad8gsy4r",
+          "optimizedBytes": 17125,
+          "previous": "kg2e45xszv1xq1cxmj3cq3hhh98gqajy",
+          "sourceBytes": 22289
+        },
+        {
+          "next": "kg2dwg85j1x94ttzwsn4w40hds8gsd3t",
+          "optimizedBytes": 31281,
+          "previous": "kg2d3jkmnbs26yn9h90b8es7498gqvy8",
+          "sourceBytes": 36358
+        },
+        {
+          "next": "kg240ngs3zyvybbhdjgebx094d8grdh0",
+          "optimizedBytes": 24965,
+          "previous": "kg25eeb3qkp8qdtsphyh6ad19n8gq3db",
+          "sourceBytes": 27687
+        }
+      ],
+      "name": "Think Different Poster"
+    },
+    {
+      "assetId": "kd70exw7d62v6c52faeq9545qs8gp7v5",
+      "files": [
+        {
+          "next": "kg2fa9qygbjwgm7f9d2kyxavex8gs6mw",
+          "optimizedBytes": 56567,
+          "previous": "kg24ep60pm5j3mahqwhpwvvr7n8gqmk7",
+          "sourceBytes": 62191
+        },
+        {
+          "next": "kg20s2nwvc865qr2f9bwc6056s8grsz8",
+          "optimizedBytes": 99983,
+          "previous": "kg2c5ya3z2dpc3va7qt0e6qg158gqdzk",
+          "sourceBytes": 106854
+        },
+        {
+          "next": "kg24wdhwzwmrjddncw98g5wgs58gsjb1",
+          "optimizedBytes": 104830,
+          "previous": "kg2fe04pegn2zvrn39mzw2c3rn8gpb5c",
+          "sourceBytes": 114821
+        },
+        {
+          "next": "kg2bn887k2zcr8vah4521ts3nh8grytc",
+          "optimizedBytes": 54873,
+          "previous": "kg298drkqy48vqdhemymawxf598gpzyk",
+          "sourceBytes": 60719
+        }
+      ],
+      "name": "Prototype Shelf"
+    },
+    {
+      "assetId": "kd74wtn5jbfxn2wtn40zp8ward8gp9t2",
+      "files": [
+        {
+          "next": "kg2bm4t23rgpmththpf8c5fqrs8gsq46",
+          "optimizedBytes": 18158,
+          "previous": "kg260ry0ges04z8796182vdgc58gp12c",
+          "sourceBytes": 19368
+        },
+        {
+          "next": "kg272h1wy2sb5pyd2bc0f6m7458gr7aj",
+          "optimizedBytes": 18301,
+          "previous": "kg2acjwha1ra5a14vt8dndq3yn8gq0nb",
+          "sourceBytes": 19617
+        }
+      ],
+      "name": "Studio Display"
+    },
+    {
+      "assetId": "kd78fwa5bnbve41w9gb8ag1s4h8gpf94",
+      "files": [
+        {
+          "next": "kg2cknrcena8jdgqbtxrd8bmn18gs948",
+          "optimizedBytes": 72161,
+          "previous": "kg29fm2zbywmyyzxa7m26y5ky18gp67r",
+          "sourceBytes": 75972
+        }
+      ],
+      "name": "Window onto Paris"
+    },
+    {
+      "assetId": "kd7aze102ecmchr317y2kfwn758gqgrv",
+      "files": [
+        {
+          "next": "kg2ags7g2qq34njj5zjp3chr5n8grrq5",
+          "optimizedBytes": 63693,
+          "previous": "kg2dbbw8v30jdcb18qfacd25fh8gq5wd",
+          "sourceBytes": 73089
+        }
+      ],
+      "name": "The Void"
+    },
+    {
+      "assetId": "kd7ec83g57xwt0hm02bdws9yw58gqpmk",
+      "files": [
+        {
+          "next": "kg26nf5h3xsx6epre993s7tpzh8grf5x",
+          "optimizedBytes": 41056,
+          "previous": "kg2cj99aqca5rvn1paqb68mfqn8gqkz9",
+          "sourceBytes": 44021
+        }
+      ],
+      "name": "Rick's Portal"
+    },
+    {
+      "assetId": "kd73k8zf9stqs3fgzskyjh06r18gp94b",
+      "files": [
+        {
+          "next": "kg26kj0wd87yp6jjafnqp51rkd8gsepb",
+          "optimizedBytes": 47604,
+          "previous": "kg28f42c0x183a1vh2m7zbexs58gp3mm",
+          "sourceBytes": 50205
+        }
+      ],
+      "name": "Rick's Space Cruiser"
+    },
+    {
+      "assetId": "kd7bz0zvhvkbwtvqmnm5v7azb18gpn30",
+      "files": [
+        {
+          "next": "kg23cevr56fa4h86nycgkzvx0s8grvc8",
+          "optimizedBytes": 57436,
+          "previous": "kg25e01fjtrc62pp6tepp3mzd98gqg4h",
+          "sourceBytes": 62187
+        }
+      ],
+      "name": "Rick's Garage Workbench"
+    },
+    {
+      "assetId": "kd7erans6ks5qp24kzy0kwsp1d8gq2cr",
+      "files": [
+        {
+          "next": "kg24stz0xrymkqdfr26nq5hqsn8grnnv",
+          "optimizedBytes": 37177,
+          "previous": "kg2498wt2w2yyg68ph6e5vm79d8gpcqs",
+          "sourceBytes": 43422
+        }
+      ],
+      "name": "Engawa Bench"
+    },
+    {
+      "assetId": "kd7c6xwv6eeqgehe1gf0pwj9558gqrxe",
+      "files": [
+        {
+          "next": "kg25bdztfpwyxmvcr99f327dhs8grvq2",
+          "optimizedBytes": 67967,
+          "previous": "kg2b03jm4mqrw8xkwbhfgsf5kn8gptcx",
+          "sourceBytes": 71730
+        }
+      ],
+      "name": "Ryoan-ji Stones"
+    },
+    {
+      "assetId": "kd78ndf1t7prp7gw6g8kjrfnnx8gpttq",
+      "files": [
+        {
+          "next": "kg28yt06c8sw16pq8w4qjzw0a18gsp1f",
+          "optimizedBytes": 21720,
+          "previous": "kg26sab7rk4a66gja4f6jfxd358gqc1q",
+          "sourceBytes": 23425
+        }
+      ],
+      "name": "Standing Stone"
+    },
+    {
+      "assetId": "kd7ecv0m8sjvkef7dek5n4dhnd8gp1xv",
+      "files": [
+        {
+          "next": "kg20kpxzkqfr6vs0avn5na13an8gst2a",
+          "optimizedBytes": 95604,
+          "previous": "kg26n8yfj8j0w6t43wacd0tnjs8gprjv",
+          "sourceBytes": 109537
+        }
+      ],
+      "name": "Granite Boulder"
+    },
+    {
+      "assetId": "kd76fq6w33sjaqqbwkbjq7cx418gp797",
+      "files": [
+        {
+          "next": "kg2102zh6ma6ps7jydyvz75vdh8gr18t",
+          "optimizedBytes": 332721,
+          "previous": "kg2bdzza6wgptcn0mg0xsz9js58gqar3",
+          "sourceBytes": 360924
+        }
+      ],
+      "name": "Flickering Rainbow Apple"
+    },
+    {
+      "assetId": "kd72rt8tf7y5s0k2e19pz2wamd8gs55b",
+      "files": [
+        {
+          "next": "kg2fjkp8vcqe9223v2bz4vjby18gskk9",
+          "optimizedBytes": 113881,
+          "previous": "kg28abydzm00f8fttw5aa5137d8gr5f8",
+          "sourceBytes": 127973
+        },
+        {
+          "next": "kg29jf6t2wcwswdb7fzgzfaymx8grkxv",
+          "optimizedBytes": 115477,
+          "previous": "kg2dvrd5ns3m925043hakcqc0d8gr3ac",
+          "sourceBytes": 129721
+        }
+      ],
+      "name": "Two-Tier Sauna Bench"
+    },
+    {
+      "assetId": "kd7czfqq0e7ehpm3ckzmjt3m0s8grbqn",
+      "files": [
+        {
+          "next": "kg2aaktp0nn86gs2v7kh34zkyn8gstj2",
+          "optimizedBytes": 28103,
+          "previous": "kg24nsscpd7zft0t6abdnr40zh8grmzq",
+          "sourceBytes": 32831
+        },
+        {
+          "next": "kg2ehy5rx8awzaepm0hx751qcx8gsap1",
+          "optimizedBytes": 31333,
+          "previous": "kg206v0g2m5a3afmwj82zpppbx8gs2yh",
+          "sourceBytes": 35721
+        },
+        {
+          "next": "kg2end7z4s0677s5vcgv7g4eg58gs996",
+          "optimizedBytes": 31110,
+          "previous": "kg26j7smab21866b70xhswa3zs8gs1sc",
+          "sourceBytes": 35576
+        },
+        {
+          "next": "kg2dyj64ep860sppxh14a0tnmn8gsy9v",
+          "optimizedBytes": 28400,
+          "previous": "kg25sd3wcscvwga8ahv3pe4bx58grg6f",
+          "sourceBytes": 33207
+        }
+      ],
+      "name": "Sauna Stove"
+    },
+    {
+      "assetId": "kd77hyhkae7t2w85m5ddp7bgrs8gr3b2",
+      "files": [
+        {
+          "next": "kg2c2ceczdf19bgg6fbmpj4vss8gsv6s",
+          "optimizedBytes": 148434,
+          "previous": "kg20nsa9mk06772w3vhvm7swph8gsfg4",
+          "sourceBytes": 158925
+        },
+        {
+          "next": "kg21ddhyq2sb09zjvagvqkqsw98gr6e9",
+          "optimizedBytes": 147461,
+          "previous": "kg2693bk6km42f45jmqqkbwqj18gs4j9",
+          "sourceBytes": 157183
+        },
+        {
+          "next": "kg2920csbev86q8rd34cq5gyy18gsm2s",
+          "optimizedBytes": 146672,
+          "previous": "kg27mg56vtsfz5mjnwncxygy4d8gsxh4",
+          "sourceBytes": 156683
+        },
+        {
+          "next": "kg28wvf269xyea0wsm9qfwy7hs8grmcc",
+          "optimizedBytes": 147111,
+          "previous": "kg2abj5xtfecgf7zakhgmbh6h18gsxjx",
+          "sourceBytes": 157421
+        }
+      ],
+      "name": "Cedar Duckboard Mat"
+    },
+    {
+      "assetId": "kd755yrwc442zs91xdjz9tede58gse3k",
+      "files": [
+        {
+          "next": "kg247qvd5t2ty0mzq1fkmntdah8gsp3v",
+          "optimizedBytes": 68878,
+          "previous": "kg265qaadrm9jxswabvgxgf5fx8gss2f",
+          "sourceBytes": 73667
+        },
+        {
+          "next": "kg2agxyrd0zrnzvac3m2bvvvwn8grjm9",
+          "optimizedBytes": 73195,
+          "previous": "kg2csn6f0kws0w3d68ds8050q18gr3rt",
+          "sourceBytes": 78919
+        },
+        {
+          "next": "kg2dyvz22aqythb2mv89c847658grspv",
+          "optimizedBytes": 71004,
+          "previous": "kg23nkm9afps8wk2rhq0tyw4mn8gr6c5",
+          "sourceBytes": 76885
+        },
+        {
+          "next": "kg23sex409a0h7vqd0g70r0nv58grmpx",
+          "optimizedBytes": 66702,
+          "previous": "kg29dkkrepykf9cd6c4m4n0xs98grbap",
+          "sourceBytes": 71923
+        }
+      ],
+      "name": "Pine Relaxation Daybed"
+    },
+    {
+      "assetId": "kd78ctdyzx7srnps3edat9jhzn8gsrgt",
+      "files": [
+        {
+          "next": "kg29pq5p4fde0wxv35426qk3j98gs32c",
+          "optimizedBytes": 76056,
+          "previous": "kg282yyxyy5ek882wqapev9q5h8gsn4d",
+          "sourceBytes": 94101
+        },
+        {
+          "next": "kg2961ayff9awcs13d04xjmqa18gs77b",
+          "optimizedBytes": 72160,
+          "previous": "kg265w0yyp6qnxzw8vfrepp2458grh9b",
+          "sourceBytes": 88288
+        },
+        {
+          "next": "kg29zxhjf4srn1h6aj0r4ctek98gr621",
+          "optimizedBytes": 73325,
+          "previous": "kg23wntfrkcgjgeype57pejq858grc4h",
+          "sourceBytes": 90155
+        },
+        {
+          "next": "kg2eqa65qpb8edgj6f4j5aqr258grj5c",
+          "optimizedBytes": 77134,
+          "previous": "kg27b7sjdkhxad533cgr0mghqx8gr71b",
+          "sourceBytes": 95336
+        }
+      ],
+      "name": "DJ booth"
+    },
+    {
+      "assetId": "kd77m0k9vdb0k4che8kjq7v7sx8gr82j",
+      "files": [
+        {
+          "next": "kg2chtfpgsa4mm0hjg680z4h598gs02c",
+          "optimizedBytes": 40110,
+          "previous": "kg21ffbfcf68yyy3egz0n5wcwd8gszhy",
+          "sourceBytes": 44753
+        },
+        {
+          "next": "kg26rz5npf4xj937h878qmrcvn8grpcb",
+          "optimizedBytes": 40173,
+          "previous": "kg2bgw67zb74r3faj3h544yy5h8gsp1b",
+          "sourceBytes": 45093
+        },
+        {
+          "next": "kg2enqz16v6wk2zmqae2mzre0n8gr15t",
+          "optimizedBytes": 38982,
+          "previous": "kg24k61rtvf8701h82sva04nbs8gs6d3",
+          "sourceBytes": 43533
+        },
+        {
+          "next": "kg2c51fqfcsv0vkyzqcyt94vv58gsr2m",
+          "optimizedBytes": 38341,
+          "previous": "kg22jpp3ja0tka3hvtzymwadvx8grf2q",
+          "sourceBytes": 42393
+        }
+      ],
+      "name": "Strobe light"
+    },
+    {
+      "assetId": "kd737chqcn1q60dk60dr8grggs8gspb3",
+      "files": [
+        {
+          "next": "kg2b37w420pqwz5e53736460h98greeh",
+          "optimizedBytes": 74470,
+          "previous": "kg29q0n71zws4e68kw17e8k33n8gr5d4",
+          "sourceBytes": 112252
+        },
+        {
+          "next": "kg2d63w3zpxg935cvza892ywdn8grrdw",
+          "optimizedBytes": 69094,
+          "previous": "kg2ayfzf2241fppzjrm5t04r1x8gr158",
+          "sourceBytes": 120126
+        },
+        {
+          "next": "kg2es0k5nmze197a90m16saz4x8gs5vn",
+          "optimizedBytes": 69782,
+          "previous": "kg23nxk8efha6dwxx2b00n50918gr6rn",
+          "sourceBytes": 121323
+        },
+        {
+          "next": "kg2brzz00x4a1kzd5r1m3kf4dd8grm9y",
+          "optimizedBytes": 77449,
+          "previous": "kg220k3jenbmk2a2d8exp7wmjx8grstv",
+          "sourceBytes": 115260
+        }
+      ],
+      "name": "Club speaker"
+    },
+    {
+      "assetId": "kd7eana8bwv74xrxnwr6n90y7h8gsamd",
+      "files": [
+        {
+          "next": "kg28ya8n4pdgxfmn84h2ec1ea98gr9ad",
+          "optimizedBytes": 110101,
+          "previous": "kg2f7qsx34ewpqh2x40afgjbkx8gsjdy",
+          "sourceBytes": 123287
+        },
+        {
+          "next": "kg2exd9s03ygt2exzs5ew0a5e58gsdg3",
+          "optimizedBytes": 114409,
+          "previous": "kg26xgr7bnf7san0xwv5nftss18gr5eq",
+          "sourceBytes": 128612
+        },
+        {
+          "next": "kg24ep4zt90wfv50fsv3fwdgs98grdwp",
+          "optimizedBytes": 116812,
+          "previous": "kg201ed6gk4b4y0v8d3ydace818gsn74",
+          "sourceBytes": 130907
+        },
+        {
+          "next": "kg2ayyh63c0044xmjk67tj09498gs05f",
+          "optimizedBytes": 111162,
+          "previous": "kg22f1haze7b55a2vrkzhr35zh8gr93a",
+          "sourceBytes": 124160
+        }
+      ],
+      "name": "Club bar"
+    },
+    {
+      "assetId": "kd7akp6scq8tr3rg8qv7gf993s8gsp1g",
+      "files": [
+        {
+          "next": "kg27j9j0ypdf6qfrg4etjdhvvx8grjg8",
+          "optimizedBytes": 73240,
+          "previous": "kg2bv8qjhkkjd8gyf8ek0g0b2h8gskeb",
+          "sourceBytes": 102044
+        },
+        {
+          "next": "kg24ah94s9jpndfhtryzx7txbs8grnac",
+          "optimizedBytes": 75315,
+          "previous": "kg215fq5x6ax40e768jpqsjmxx8gsda2",
+          "sourceBytes": 104006
+        },
+        {
+          "next": "kg2fvhbfva6x7qrc3xvgd7a41d8gspyq",
+          "optimizedBytes": 75406,
+          "previous": "kg2dqyh0vacj09vty1r2aj3qjd8gszes",
+          "sourceBytes": 103169
+        },
+        {
+          "next": "kg26sjwbzhddj7zhgsb38rpyns8gsz2x",
+          "optimizedBytes": 75893,
+          "previous": "kg2114q4kakd9zc3ttwzf6betd8grxyt",
+          "sourceBytes": 104920
+        }
+      ],
+      "name": "Steel barrier"
+    },
+    {
+      "assetId": "kd71zn43p9hzmd9svmyk3tyny58grd9y",
+      "files": [
+        {
+          "next": "kg20pyskzztweck2dhmx00zvs58grwbg",
+          "optimizedBytes": 202740,
+          "previous": "kg2f5bx210weygsrmz2r39yyzx8grpv3",
+          "sourceBytes": 220466
+        },
+        {
+          "next": "kg2bf8e7n21wdsjj4aewkjef418gs1ah",
+          "optimizedBytes": 203660,
+          "previous": "kg20thq5zndykajs4x6fvd4gf18gs9d5",
+          "sourceBytes": 220674
+        },
+        {
+          "next": "kg2fj674qsyyx1mk1q9ms4qexx8gskyh",
+          "optimizedBytes": 203183,
+          "previous": "kg2dzdfvhcgx8c4denbxr483558gsbp8",
+          "sourceBytes": 220384
+        },
+        {
+          "next": "kg29e9x8aa7137b8zm8c5mav2n8grtee",
+          "optimizedBytes": 203359,
+          "previous": "kg2d41rp7f77exn7g6yt2ajaph8gs47n",
+          "sourceBytes": 220656
+        }
+      ],
+      "name": "Void Portal"
+    },
+    {
+      "assetId": "kd72bq89kkryz49vj9sppcsmq58grafe",
+      "files": [
+        {
+          "next": "kg24bme6wfazpk6g2vfb6bkem18gs2tk",
+          "optimizedBytes": 69289,
+          "previous": "kg225eh8931tq6nq9b02m933798gsz9j",
+          "sourceBytes": 75910
+        }
+      ],
+      "name": "Strobe light"
+    },
+    {
+      "assetId": "kd73key6syzvv5s86ny654km018gr8r1",
+      "files": [
+        {
+          "next": "kg25gvnr6zqx1cx4pfef6hw5ks8gsd1w",
+          "optimizedBytes": 65448,
+          "previous": "kg215jt048t9kgd9rz8cb0cw6s8gr8p4",
+          "sourceBytes": 178997
+        }
+      ],
+      "name": "Strobe light"
+    },
+    {
+      "assetId": "kd7d977keqw50vqssagkmw2h4h8grnvh",
+      "files": [
+        {
+          "next": "kg26wh1c98qvqctbfqv3ggj4398grp38",
+          "optimizedBytes": 281757,
+          "previous": "kg24wk9wtnvxg9gxp0478r71158gscdj",
+          "sourceBytes": 940526
+        }
+      ],
+      "name": "Silver F1 Car"
+    },
+    {
+      "assetId": "kd743hhj04c3zsfahex5mtt7ks8gs5ed",
+      "files": [
+        {
+          "next": "kg250fqq5wp269fbg6jt0nj8e58gss93",
+          "optimizedBytes": 66166,
+          "previous": "kg26jsyg6aq4zt4nnsb94hr1wn8gr34k",
+          "sourceBytes": 221938
+        }
+      ],
+      "name": "The Void (Gazes Back)"
+    },
+    {
+      "assetId": "kd7ecwakz1kk2b9wcqvh5h94ss8gr3pr",
+      "files": [
+        {
+          "next": "kg2f5dp3pva3r8sxrgth698abn8gr9n0",
+          "optimizedBytes": 92892,
+          "previous": "kg2744ay9m497yf07be0ek98zx8grc3x",
+          "sourceBytes": 98619
+        },
+        {
+          "next": "kg20pdnm5y2ykqr7q3dhw5ksms8grpz8",
+          "optimizedBytes": 92892,
+          "previous": "kg21zncngshd1ya4wq1k2sfc7x8gss7r",
+          "sourceBytes": 98619
+        }
+      ],
+      "name": "Club bar"
+    },
+    {
+      "assetId": "kd765k650t1esd6xh6mdejrbah8gsw3w",
+      "files": [
+        {
+          "next": "kg20rh56ry2q8zydyz869h2a458grpaq",
+          "optimizedBytes": 16366,
+          "previous": "kg23bt58yk8cv5hhqknqvbw9w18grnqm",
+          "sourceBytes": 17744
+        }
+      ],
+      "name": "Starman Mic Stand"
+    },
+    {
+      "assetId": "kd7avytq1n37s8yj5hg9jh16cn8grzdz",
+      "files": [
+        {
+          "next": "kg21gfjz32qe7mra0gr61xdnsn8grgxb",
+          "optimizedBytes": 12953,
+          "previous": "kg20e5bdm2bkm2m2rgnc1qhqnn8gswsj",
+          "sourceBytes": 15554
+        }
+      ],
+      "name": "The Monolith"
+    },
+    {
+      "assetId": "kd7aqsxvb7yjca0q3fa44wd9k58grckb",
+      "files": [
+        {
+          "next": "kg2f3j34ytzc20npzyfx0wa2n18gr45v",
+          "optimizedBytes": 18977,
+          "previous": "kg2btaszyr5skt4mw24k07z8x58gsgtz",
+          "sourceBytes": 20501
+        }
+      ],
+      "name": "Djinn Lounge Chair"
+    },
+    {
+      "assetId": "kd7fnj91f65c360dhnzt1yqgmn8gskkp",
+      "files": [
+        {
+          "next": "kg29d8fy72wag2vb79arbhw49x8gsvmz",
+          "optimizedBytes": 56657,
+          "previous": "kg27vpe3zz1ecvh1vvnfhw031s8gr3c9",
+          "sourceBytes": 61421
+        }
+      ],
+      "name": "EVA Pod"
+    },
+    {
+      "assetId": "kd78p7xqae8y474jyf9xg6cx9h8gsevt",
+      "files": [
+        {
+          "next": "kg24skx5xpya1rxynxdg0sjak98gsyzz",
+          "optimizedBytes": 6318,
+          "previous": "kg2ac0rpcns09d9gj58ykxm0c98gr7sv",
+          "sourceBytes": 7110
+        }
+      ],
+      "name": "HAL 9000"
+    },
+    {
+      "assetId": "kd78mxccpgtj789a22c9hmkyjn8gskek",
+      "files": [
+        {
+          "next": "kg2cjhsnkc3kejnjc3kz4khdqx8gs2nk",
+          "optimizedBytes": 44664,
+          "previous": "kg22h80p7qsdhbwv67a9arfnz98gr5ks",
+          "sourceBytes": 50075
+        },
+        {
+          "next": "kg29p0nbnpbveqxkh51v7cd6s98gswm7",
+          "optimizedBytes": 57213,
+          "previous": "kg20m68zv24s9htv147z9g01118graxh",
+          "sourceBytes": 64014
+        },
+        {
+          "next": "kg21er6e2257znam3k0b70kbmh8gs95n",
+          "optimizedBytes": 59232,
+          "previous": "kg279g00cmydfbm2kmg6kxz86n8gr4t6",
+          "sourceBytes": 66666
+        },
+        {
+          "next": "kg26fwh6tf7mh8cy4q19jfxqmh8gsfr6",
+          "optimizedBytes": 43417,
+          "previous": "kg25qaj9dsspnj5428ehxacq4s8gsdem",
+          "sourceBytes": 48850
+        }
+      ],
+      "name": "Pablo's Porch Swing"
+    },
+    {
+      "assetId": "kd7f09f5r8avpaza2fmw9kwmqn8gshtv",
+      "files": [
+        {
+          "next": "kg2bzkah3pxq9e97335zhyhmrx8gsnj1",
+          "optimizedBytes": 73017,
+          "previous": "kg2e4n8jse0h2w30d5e9w0ff9x8gr585",
+          "sourceBytes": 88593
+        },
+        {
+          "next": "kg27whgf4g0svtaxa51jdsv8k18gryf0",
+          "optimizedBytes": 88554,
+          "previous": "kg27mr1rng7ckp2ep1kxcq4gsd8grq1h",
+          "sourceBytes": 104068
+        },
+        {
+          "next": "kg28x12x3kct2ghe5vb576y7f18gs8rr",
+          "optimizedBytes": 99644,
+          "previous": "kg27atpbckpnnywh4ze5qpsdax8gs6yx",
+          "sourceBytes": 119607
+        },
+        {
+          "next": "kg29adn9cbsvg2gddd9qsbtpxn8gsgeg",
+          "optimizedBytes": 64811,
+          "previous": "kg24mf0n9zvdr6z825h4wadbrd8gr51n",
+          "sourceBytes": 76762
+        }
+      ],
+      "name": "Hacienda Nápoles Arch"
+    },
+    {
+      "assetId": "kd7ee3z932wt4dzd7kb1pxy2d58gs2rr",
+      "files": [
+        {
+          "next": "kg2b80mqmjwa43rhqztswfj7818grzrm",
+          "optimizedBytes": 23390,
+          "previous": "kg221jd41r9042akts3je1763s8grn13",
+          "sourceBytes": 29378
+        },
+        {
+          "next": "kg262a060qh60wry7rb0as050d8graf4",
+          "optimizedBytes": 23064,
+          "previous": "kg25vtax4rge3b3kwx11mb68n98gshzf",
+          "sourceBytes": 29021
+        },
+        {
+          "next": "kg2fdgdw1wgx454n2syxvrwkpd8gsd2r",
+          "optimizedBytes": 23112,
+          "previous": "kg2dettzhmrc2mq9qd572x0dtn8gr8v5",
+          "sourceBytes": 28904
+        },
+        {
+          "next": "kg23zp9ykagawx9cr0kk6yjca98gr3na",
+          "optimizedBytes": 23308,
+          "previous": "kg2chkqbm5v6cm12wwyd06bxrh8gsehr",
+          "sourceBytes": 28867
+        }
+      ],
+      "name": "Powder Bale Stack"
+    },
+    {
+      "assetId": "kd76qw86gxzww2gv666bg9pegn8gs3rp",
+      "files": [
+        {
+          "next": "kg28z9t96rj4173qz68wg8z12s8gs5ft",
+          "optimizedBytes": 15939,
+          "previous": "kg200zndmd1fjdbfk1e79851r58gr55g",
+          "sourceBytes": 19703
+        },
+        {
+          "next": "kg2ahpc7aad0h24r0fk37984718gr5ka",
+          "optimizedBytes": 15633,
+          "previous": "kg272sbta68arvrm3kmamec4798gr0qb",
+          "sourceBytes": 19386
+        },
+        {
+          "next": "kg2dcwhxxeafq6a67rpf3v9yjd8gsx42",
+          "optimizedBytes": 15939,
+          "previous": "kg2e7rpfka2ga4asrezzxrvh9s8grg8w",
+          "sourceBytes": 19703
+        },
+        {
+          "next": "kg277cbzbbk5nybdcqed6m1g9h8gs044",
+          "optimizedBytes": 15633,
+          "previous": "kg27171bh59frc88cfnddcpbc18grh43",
+          "sourceBytes": 19386
+        }
+      ],
+      "name": "Powder Brick Pile"
+    },
+    {
+      "assetId": "kd73mgdr5x7w4a2fk10pcp56kh8gr28m",
+      "files": [
+        {
+          "next": "kg2dw65bna26zkft3981tfsmv58gsn9k",
+          "optimizedBytes": 101540,
+          "previous": "kg2f2e6dnvjkhtkt4kzm77a33n8gs1fz",
+          "sourceBytes": 119056
+        },
+        {
+          "next": "kg27nndmrxp2xc1qwnyesr7v3x8gs3we",
+          "optimizedBytes": 101540,
+          "previous": "kg2arys5zdmyh60mk7k8vfe9mx8gryjp",
+          "sourceBytes": 119056
+        },
+        {
+          "next": "kg2691884947x9rsxn92jeyhkx8gsa9m",
+          "optimizedBytes": 101540,
+          "previous": "kg2ebpnw8s42shd46gsef56nr98gr4vp",
+          "sourceBytes": 119056
+        },
+        {
+          "next": "kg22w1ndke3qx14avg4w31nkch8gskvm",
+          "optimizedBytes": 101540,
+          "previous": "kg22z18n1fhfx5dd31f38astys8gsy7e",
+          "sourceBytes": 119056
+        }
+      ],
+      "name": "Empty Pool (back-left)"
+    },
+    {
+      "assetId": "kd71qhzxw7jyjxg5w624bqmhpx8gr7z7",
+      "files": [
+        {
+          "next": "kg24hkvctjt4jemt2pedbsdhmd8gss48",
+          "optimizedBytes": 99468,
+          "previous": "kg22r9096bjb0zzgmj6mk7ykn98gr8ca",
+          "sourceBytes": 119569
+        },
+        {
+          "next": "kg2fqa3h5q9bj7x1cpvryaenxd8gr7fr",
+          "optimizedBytes": 99468,
+          "previous": "kg22bv9fxrvwh9a5rptddjtqf18gszn3",
+          "sourceBytes": 119569
+        },
+        {
+          "next": "kg250hbe2jmxp6ak8aw88m3dex8gsdgg",
+          "optimizedBytes": 99468,
+          "previous": "kg28hvatakqnjg1yxtrjjyg8818grw5h",
+          "sourceBytes": 119569
+        },
+        {
+          "next": "kg2c2k9pas603k9y368s8wgrdh8gr8xf",
+          "optimizedBytes": 99468,
+          "previous": "kg21pkm53g465qgsbeteyvr1758gr3ss",
+          "sourceBytes": 119569
+        }
+      ],
+      "name": "Empty Pool (front-left)"
+    },
+    {
+      "assetId": "kd7d6k7jjq82tk13k2eyzxx06x8grjnj",
+      "files": [
+        {
+          "next": "kg23gtqb4n33emp67jz9dtjqph8gsjea",
+          "optimizedBytes": 107509,
+          "previous": "kg24qr3hv6nn07qqpx7hrjppgs8grjh1",
+          "sourceBytes": 133107
+        },
+        {
+          "next": "kg295afhvp5qy5me8q96hd23y18gr6q1",
+          "optimizedBytes": 107509,
+          "previous": "kg2dt8qkjcrnzk18cq7pw3nv6d8gs93a",
+          "sourceBytes": 133107
+        },
+        {
+          "next": "kg2awatytwq16gz37vb5pma4bd8gsmcj",
+          "optimizedBytes": 107509,
+          "previous": "kg268r77ajbs6tfcwavxjz7as98gr78m",
+          "sourceBytes": 133107
+        },
+        {
+          "next": "kg240t48zqpya3px3xfc3g9dkh8gsbzc",
+          "optimizedBytes": 107509,
+          "previous": "kg21hm558cpjs18q33prk042h58gspww",
+          "sourceBytes": 133107
+        }
+      ],
+      "name": "Empty Pool (back-right)"
+    },
+    {
+      "assetId": "kd748qpqd693kh1t3yven0w3sn8gs0r8",
+      "files": [
+        {
+          "next": "kg271k5gjbbh2artcz5975jh6s8gs2ak",
+          "optimizedBytes": 106224,
+          "previous": "kg21ch38r3pa8ttzjk72kfwgg58grd0d",
+          "sourceBytes": 138578
+        },
+        {
+          "next": "kg2f3gywtmk3r9e60nv5f83j4h8gsdy4",
+          "optimizedBytes": 106224,
+          "previous": "kg2fax1qhzq22hq880wyvfny6d8grzh6",
+          "sourceBytes": 138578
+        },
+        {
+          "next": "kg24wcdgka5p4hxcx4z84w6pn58grfhg",
+          "optimizedBytes": 106224,
+          "previous": "kg23n9t8bf04777e6y635skg958gs8ga",
+          "sourceBytes": 138578
+        },
+        {
+          "next": "kg2ftccy89n32a4mb9jtp7fq9x8grbtx",
+          "optimizedBytes": 106224,
+          "previous": "kg2atfxxqe3j9823myhvehq54n8grg0k",
+          "sourceBytes": 138578
+        }
+      ],
+      "name": "Empty Pool (front-right)"
+    },
+    {
+      "assetId": "kd778aztjvycvbwnxtvmakj2qh8gse2m",
+      "files": [
+        {
+          "next": "kg265s2nt1jphhbb6tw1gnq9y18gs6nf",
+          "optimizedBytes": 138835,
+          "previous": "kg2333c8ahecy6cwcvadzgwfh58grtvr",
+          "sourceBytes": 161052
+        }
+      ],
+      "name": "Black Leather Sofa"
+    },
+    {
+      "assetId": "kd7drmqbe0n1460sfdxnjy81gs8gs2x7",
+      "files": [
+        {
+          "next": "kg253w42tgvcw74f23f766xqed8gstbb",
+          "optimizedBytes": 167200,
+          "previous": "kg2f4rav5gdb1zcmc4gz1n5m8x8grws5",
+          "sourceBytes": 186254
+        }
+      ],
+      "name": "Long White Sofa"
+    },
+    {
+      "assetId": "kd76yewczp7wjpy24wy4vv0ewx8grzwj",
+      "files": [
+        {
+          "next": "kg26qt6gedcfmz54hmpv19yx718grar5",
+          "optimizedBytes": 102966,
+          "previous": "kg2c5ya137236sarp5eqsepbqh8gs4ew",
+          "sourceBytes": 115911
+        }
+      ],
+      "name": "Hi-Fi Stack and Speakers"
+    },
+    {
+      "assetId": "kd76tk1ha33jfj6qcksqr1p5rx8grwjr",
+      "files": [
+        {
+          "next": "kg2ahw1wksrk0q9xffap6qnywx8grr3b",
+          "optimizedBytes": 95968,
+          "previous": "kg2cdjtrztc6m6wh3n2c5xzydh8gr5gs",
+          "sourceBytes": 101869
+        }
+      ],
+      "name": "White Record Rack"
+    },
+    {
+      "assetId": "kd70nar0e49n0cjrk0xfge6w3h8grmw6",
+      "files": [
+        {
+          "next": "kg21df0q4hynphs8tnf1mw410x8gs5kp",
+          "optimizedBytes": 187275,
+          "previous": "kg271mxchz9mqy2gz1s0x3v87d8gs2yx",
+          "sourceBytes": 217208
+        }
+      ],
+      "name": "Marble Kitchen Island"
+    },
+    {
+      "assetId": "kd74pfmfjg82058zam8dyk9mkd8gsdq7",
+      "files": [
+        {
+          "next": "kg27avy8fb5p1nj926xn9mvj5s8gr03w",
+          "optimizedBytes": 69279,
+          "previous": "kg2axzdd14echjna1wb1pz90rx8grpj8",
+          "sourceBytes": 73330
+        }
+      ],
+      "name": "Black Lacquer Desk"
+    },
+    {
+      "assetId": "kd7cpart67r6efy0wvev07kst58gse0b",
+      "files": [
+        {
+          "next": "kg263nm0nf3f21wgjm9tev98ts8grsw6",
+          "optimizedBytes": 52730,
+          "previous": "kg2ehg91p9emg6yj6xssvwvxjx8grpbr",
+          "sourceBytes": 55691
+        }
+      ],
+      "name": "Tall Chrome Mirror"
+    },
+    {
+      "assetId": "kd7ar10b3sp24dsnh1eap8kgms8gsr49",
+      "files": [
+        {
+          "next": "kg2702dc0r9v1ayek9edvjykvn8gscq3",
+          "optimizedBytes": 47677,
+          "previous": "kg24g8ykxp8eykbhnx16etdzfd8grr1m",
+          "sourceBytes": 51251
+        }
+      ],
+      "name": "Chrome Arc Lamp"
+    },
+    {
+      "assetId": "kd76g1jrz316k0jcwh4jgwn12h8gryb8",
+      "files": [
+        {
+          "next": "kg24mtdpj0czzw0ts3t7va2dzx8grhdk",
+          "optimizedBytes": 56923,
+          "previous": "kg2aq090az06f0tjs4kywkava58grwwe",
+          "sourceBytes": 60642
+        }
+      ],
+      "name": "Abstract Art on Easel"
+    },
+    {
+      "assetId": "kd78dz22cazz454m3k3xpx62h98grgsf",
+      "files": [
+        {
+          "next": "kg24j54ch2yfdp9maedpvdt0zd8grypd",
+          "optimizedBytes": 143699,
+          "previous": "kg28ge626drmhadvcsj8bp3rg58gsvrv",
+          "sourceBytes": 462980
+        }
+      ],
+      "name": "80s CRT TV and VCR"
+    }
+  ]
+}

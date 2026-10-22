@@ -184,5 +184,29 @@ node tools/backfill-sprites.mjs --deployment-name perfect-peacock-308 --apply > 
 Keep the JSONL output: each committed asset lists old/new storage IDs and byte
 counts. Re-running skips files that no longer meet the savings threshold. Tests
 cover dry-run behavior, exact pixels and dimensions, animation/foreground
-metadata, retained originals, reruns and concurrent edits. The migration has
-been prepared locally; it has not been deployed or applied to live files.
+metadata, retained originals, reruns and concurrent edits.
+
+### Applied rollout
+
+The owner approved deployment and merging to main. The latest main-branch
+presence fix was preserved (away after five minutes, departure after fifteen).
+Backend code was deployed to `perfect-peacock-308` before the frontend release.
+By the pre-migration snapshot, the catalogue had grown to 162 assets / 490 sprite
+files totaling 34,156,568 bytes. The migration replaced 271 files across 96 assets,
+saving 4,151,401 bytes (12.15% of that full sprite set). The resulting set totals
+30,005,167 bytes. Selected files alone changed from 21,346,371 to 17,194,970 bytes.
+
+All 271 replacement references, byte counts, retained originals and unchanged
+part metadata/density were verified against the pre-release snapshot. Three
+live downloads, including the largest savings, were decoded and matched every
+original RGBA pixel and dimension. The action checks every replacement before
+writing. The permanent [migration inventory](sprite-migration-2026-10-22.json)
+records old/new storage IDs for recovery; originals remain stored.
+
+Code commit `caabf922076a6c84ecabce6709ebb02c5112c0d2` passed 241 Vitest tests
+and the production build; two PNG encoding tests also passed. Vercel deployment
+`dpl_Br8Ei8J6SEPS91JfxScLJi1UmJzE` was checked and promoted to
+`https://chat.grantm.ac`. The live tool list includes `room_overview` and
+`preview_asset`, omits `room_picture`, and former calls receive text guidance.
+The live backend rejects screenshot creation and returns an empty legacy queue.
+The deployment's error-log scan returned zero records at verification time.
