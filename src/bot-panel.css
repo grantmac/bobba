@@ -1,0 +1,17 @@
+.resident-bot-toggle{font:bold 10px Verdana,sans-serif;color:#eee;text-shadow:1px 1px #000}
+.resident-bot-panel{position:fixed;z-index:1100;top:64px;right:24px;bottom:auto;left:auto;width:min(390px,calc(100vw - 24px));max-height:calc(100dvh - 140px);box-sizing:border-box;color:#222}
+.resident-bot-panel[hidden]{display:none}
+.resident-bot-panel header{display:flex;justify-content:center;align-items:center;position:relative}
+.resident-bot-panel h1{margin:0}
+.resident-bot-body{max-height:calc(100dvh - 190px);overflow:auto;background:#eee;border:1px solid #111;border-radius:6px;padding:12px;line-height:1.5;overscroll-behavior:contain}
+.resident-bot-body p{margin:0 0 9px}
+.bot-summary{font-weight:bold}.bot-disclosure{color:#444}.bot-admin[hidden]{display:none}
+.resident-bot-body label{display:block;margin:8px 0 5px;font-weight:bold}
+.resident-bot-body input:not([type=checkbox]),.resident-bot-body textarea,.resident-bot-body select{display:block;box-sizing:border-box;width:100%;margin-top:4px;padding:7px;border:1px solid #888;border-radius:3px;background:#fff;color:#222;font:11px Verdana,sans-serif}
+.resident-bot-body textarea{resize:vertical;min-height:54px}
+.resident-bot-body .bot-checks{display:flex;flex-wrap:wrap;gap:4px 16px}.bot-checks label{font-weight:normal}
+.resident-bot-body button{margin:5px 5px 3px 0;padding:5px 10px;min-height:28px;border:1px solid #111;border-radius:4px;background:#fff;color:#222;font:10px Verdana,sans-serif;cursor:pointer}
+.resident-bot-body button:disabled{opacity:.5}.resident-bot-body h2{font-size:11px;margin:18px 0 7px;border-top:1px solid #bbb;padding-top:12px}
+.resident-bot-body ul{padding:0;margin:8px 0;list-style:none;max-height:220px;overflow:auto}.resident-bot-body li{padding:8px 0;border-bottom:1px solid #ccc;overflow-wrap:anywhere}
+.resident-bot-body li{display:block}.resident-bot-body li p{margin-bottom:4px}.resident-bot-body small{display:block;color:#555;font-size:9px;overflow-wrap:anywhere}.bot-feedback{margin-top:9px!important;color:#473000}
+@media(max-width:640px){.resident-bot-panel{top:16px;right:12px;max-height:calc(100dvh - 100px)}.resident-bot-body{max-height:calc(100dvh - 146px)}.resident-bot-body input:not([type=checkbox]),.resident-bot-body textarea,.resident-bot-body select{font-size:16px}.resident-bot-body button{min-height:36px}}

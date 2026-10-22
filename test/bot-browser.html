@@ -1,0 +1,9 @@
+<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Room bot controls preview</title></head><body style="background:#333"><div class="bar-icons" style="position:fixed;bottom:16px;right:16px"></div><script type="module">
+import '/src/style.css';
+import {createBotPanel} from '/src/bot-panel.js';
+const data={settings:{name:'Lobby',personality:'A friendly, observant host. Welcome newcomers and keep replies brief.',enabled:true,roaming:true,moderation:'kick'},ready:true,model:'accounts/fireworks/models/glm-5p3-flash',memories:[{_id:'memory-1',text:'Grant built this room as a place for friends to hang out.',locked:true,source:'Grant',updatedAt:Date.now()},{_id:'memory-2',text:'Visitor likes jazz and is building a record shop.',locked:false,source:'Visitor: Remember that I like jazz.',updatedAt:Date.now()}],moderation:[{playerId:'visitor',name:'Visitor',decision:'warn',reason:'Please avoid profanity.',evidence:'Example message for this preview.',createdAt:Date.now()}]};
+let listener;
+const publish=()=>listener?.(structuredClone(data));
+const api={status:callback=>{callback({name:data.settings.name,state:data.settings.enabled?'listening':'paused'});return()=>{};},watch:callback=>{listener=callback;publish();return()=>{listener=null};},configure:async settings=>{data.settings=settings;publish();},saveMemory:async(text,id)=>{const old=data.memories.find(m=>m._id===id);if(old)Object.assign(old,{text,locked:true,source:'Grant',updatedAt:Date.now()});else data.memories.unshift({_id:crypto.randomUUID(),text,locked:true,source:'Grant',updatedAt:Date.now()});publish();},forgetMemory:async id=>{data.memories=data.memories.filter(m=>m._id!==id);publish();},restore:async()=>{}};
+createBotPanel({api,admin:!new URLSearchParams(location.search).has('guest')}).open();
+</script></body></html>

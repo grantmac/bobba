@@ -6,6 +6,7 @@ import {isPlaced,isWallItem} from '../../shared/furniture-model.js';
 import {zoneAt,MAIN_ZONE} from '../../shared/room-layout.js';
 import {fail,layoutFor,validateFurniture,healOrphans,ownSpaceCheck,freePosition,blocked,atTime,zonePlayers} from './rules.js';
 import {definitionsFor,assertOwnedChanges} from './assets.js';
+import {discardRemovedPrograms} from './programs.js';
 export const INVENTORY='inventory';
 export const ZONE_CHANGE_LIMIT=250;
 const FIELDS=['id','type','rotation','x','z','supportId','on','u','height','owner'];
@@ -92,7 +93,7 @@ export async function applyChanges(ctx,room,player,changes){
   for(const id of ids){
     const old=before.get(id),item=after.get(id);
     if(old&&onFloor(docItem(old),old.zone))floorChanged.add(old.zone);
-    if(old&&!item){await ctx.db.delete(old._id);continue;}
+    if(old&&!item){await discardRemovedPrograms(ctx,[docItem(old)],[]);await ctx.db.delete(old._id);continue;}
     if(!item)continue;
     const next=record(layout,item);
     if(onFloor(item,next.zone))floorChanged.add(next.zone);
@@ -138,7 +139,7 @@ export async function replaceAll(ctx,room,items){
   const existing=await ctx.db.query('furniture').collect(),keep=new Map(items.map(item=>[item.id,item]));
   for(const doc of existing){
     const item=keep.get(doc.id);
-    if(!item){await ctx.db.delete(doc._id);continue;}
+    if(!item){await discardRemovedPrograms(ctx,[docItem(doc)],[]);await ctx.db.delete(doc._id);continue;}
     const next=record(layout,item);keep.delete(doc.id);
     if(sameItem(docItem(doc),item)&&doc.zone===next.zone)continue;
     await ctx.db.patch(doc._id,fields(next));

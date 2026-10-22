@@ -18,7 +18,7 @@ export function seatSpots(asset){
 }
 export function assetDefinition(asset){
   return {category:asset.category,width:asset.width,depth:asset.depth,views:asset.views,surfaceHeight:asset.surfaceHeight,
-    ...(asset.wallWidth!==undefined?{wallWidth:asset.wallWidth}:{}),...(asset.seat?{seat:seatSpots(asset)}:{}),...(asset.switchable?{switchable:true}:{}),owner:asset.ownerId};
+    ...(asset.wallWidth!==undefined?{wallWidth:asset.wallWidth}:{}),...(asset.seat?{seat:seatSpots(asset)}:{}),...(asset.switchable||asset.program?{switchable:true}:{}),owner:asset.ownerId};
 }
 // Static catalogue plus the built pieces a set of items actually uses, for placement checks:
 // each `asset_<id>` type is one document read, never a scan of every piece ever built.
@@ -36,7 +36,7 @@ export async function assetCatalogueEntry(ctx,asset){
   for(const id of [asset.icon,...asset.parts.map(p=>p.storageId)])if(!files.has(id))files.set(id,await ctx.storage.getUrl(id));
   return {id:assetType(asset),name:asset.name,category:asset.category,width:asset.width,depth:asset.depth,surfaceHeight:asset.surfaceHeight,spriteDensity:asset.spriteDensity,
     ...(asset.wallWidth!==undefined?{wallWidth:asset.wallWidth}:{}),...(asset.tableOffsetY!==undefined?{tableOffsetY:asset.tableOffsetY}:{}),...(asset.seat?{seat:seatSpots(asset)}:{}),
-    ...(asset.frameDuration?{frameDuration:asset.frameDuration,...(asset.switchable?{switchable:true}:{})}:{}),
+    ...(asset.frameDuration?{frameDuration:asset.frameDuration}:{}),...(asset.switchable||asset.program?{switchable:true}:{}),...(asset.program?{program:asset.program}:{}),
     icon:files.get(asset.icon),owner:asset.ownerId,ownerName:asset.ownerName,createdAt:asset.createdAt,
     // Frame cells are already cut to one box, so the client must not trim them again.
     parts:asset.parts.map(p=>({file:files.get(p.storageId),layer:'a',direction:p.direction,reg:p.reg,width:p.width,height:p.height,z:0,ink:8,alphaPrepared:true,...(p.frames?{frames:p.frames,trimFrames:false}:{})})),

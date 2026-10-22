@@ -9,6 +9,8 @@
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
+    "@simplewebauthn/browser": "^13.3.0",
+    "@simplewebauthn/server": "^13.3.3",
     "convex": "^1.47.0",
     "jimp": "^1.6.0",
     "livekit-client": "^2.23.0",

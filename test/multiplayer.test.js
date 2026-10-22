@@ -19,6 +19,19 @@ const admin=()=>t.mutation(api.room.join,{token:adminToken,name:'Grant',look,ent
 // Every piece in the world, wherever it stands, in the order it was added.
 const everywhere=()=>t.run(async ctx=>(await ctx.db.query('furniture').collect()).map(docItem));
 describe('room access and persistence',()=>{
+  it('checks a name without creating a player and rejects reserved or recently used names',async()=>{
+    await t.query(api.room.checkName,{name:'NewVisitor'});
+    expect(await t.run(ctx=>ctx.db.query('players').collect())).toHaveLength(0);
+    await expect(t.query(api.room.checkName,{name:'1'})).rejects.toThrow('2–20');
+    await expect(t.query(api.room.checkName,{name:'Ｇｒａｎｔ'})).rejects.toThrow('reserved');
+    await t.query(api.room.checkName,{name:'Grant',entryCode:secret});
+    await expect(t.query(api.room.checkName,{name:'Grant',entryCode:'wrong'})).rejects.toThrow('not valid');
+    const me=await guest();
+    await expect(t.query(api.room.checkName,{name:' visitor '})).rejects.toThrow('already taken');
+    await t.run(ctx=>ctx.db.patch(me.id,{lastSeen:Date.now()-4*60*60*1000-1}));
+    await t.query(api.room.checkName,{name:'Visitor'});
+  });
+
   it('does not rewrite players or scan visits on an idle heartbeat',async()=>{
     const me=await guest(),connectionId='d'.repeat(64);
     await t.mutation(api.room.heartbeat,{token,connectionId});
@@ -324,7 +337,7 @@ describe('room access and persistence',()=>{
       await expect(t.mutation(api.room.join,{token:otherToken,name:'Grant',look})).rejects.toThrow('reserved');
       const fresh=structuredClone(look);fresh.top.color='#b34c43';
       const taken=await t.mutation(api.room.join,{token:otherToken,name:'visitor',look:fresh});
-      expect(taken.name).toBe('Visitor');expect(taken.look).toEqual(fresh);
+      expect(taken.name).toBe('visitor');expect(taken.look).toEqual(fresh);
       expect((await t.query(api.room.me,{token:otherToken})).look).toEqual(fresh);
       await expect(t.query(api.room.state,{token})).rejects.toThrow('session');
     }finally{clock.mockRestore();}
@@ -589,6 +602,19 @@ describe('agents building pieces',()=>{
     expect((await t.query(api.agents.status,{agentToken})).placed).toHaveLength(120);
     for(let i=0;i<60;i++)await t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId,{name:`Piece ${i}`})});
     expect((await t.query(api.agents.status,{agentToken})).assets).toHaveLength(61);
+  });
+  it('reports connection only after authenticated agent contact, and clears it on revoke',async()=>{
+    await guest();
+    const {agentToken}=await t.mutation(api.agents.createKey,{token});
+    expect((await t.query(api.agents.attached,{token}))[0].connectedAt).toBeNull();
+    await expect(t.mutation(api.agents.connected,{agentToken:'f'.repeat(64)})).rejects.toThrow('not attached');
+    await t.mutation(api.agents.connected,{agentToken});
+    const [connected]=await t.query(api.agents.attached,{token});
+    expect(connected.connectedAt).toBeTypeOf('number');
+    await t.mutation(api.agents.connected,{agentToken});
+    expect((await t.query(api.agents.attached,{token}))[0].connectedAt).toBe(connected.connectedAt);
+    await t.mutation(api.agents.revoke,{token});
+    expect(await t.query(api.agents.attached,{token})).toEqual([]);
   });
   it('hands the player a key for the hosted endpoint and reads uploads back through it',async()=>{
     await guest();

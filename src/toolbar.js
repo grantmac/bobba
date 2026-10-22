@@ -1,4 +1,4 @@
-export function createToolbar({onRoomEdit,onFurniture,onChat,onTyping,onVoice,onAppearance,onGesture,admin=true}) {
+export function createToolbar({onRoomEdit,onFurniture,onChat,onTyping,onVoice,onAppearance,onGesture,onMusicMute,onMusicVolume,admin=true}) {
   const bar=document.createElement('div');bar.className='room-toolbar';
   bar.innerHTML=`<form class="room-chat">
     <div class="speech-picker"><button type="button" id="speech-mode" aria-label="Speech mode: Say" aria-haspopup="menu" aria-expanded="false"><span>Say</span><img src="/assets/bar/dropdown-arrow.png" alt=""></button>
@@ -6,24 +6,66 @@ export function createToolbar({onRoomEdit,onFurniture,onChat,onTyping,onVoice,on
     <label class="sr-only" for="chat-message">Chat message</label>
     <div class="chat-field"><input id="chat-message" maxlength="400" autocomplete="off" spellcheck="false" enterkeyhint="send"></div>
     <div class="bar-hint" role="status">Click to walk. Drag to pan. Scroll to zoom.</div>
-  </form><div class="bar-icons"></div>`;
+  </form><button type="button" class="toolbar-menu-toggle" aria-label="Room controls" aria-expanded="false" aria-controls="toolbar-controls"><span aria-hidden="true"></span></button><div class="bar-icons" id="toolbar-controls" role="group" aria-label="Room controls"><div class="toolbar-menu-heading"><span>Room controls</span><button type="button" class="toolbar-menu-close" aria-label="Close room controls">×</button></div></div>`;
   const icons=bar.querySelector('.bar-icons');
+  const toolsToggle=bar.querySelector('.toolbar-menu-toggle'),compact=matchMedia('(max-width:640px), (pointer:coarse)');
+  function setToolsOpen(open){
+    open=open&&compact.matches;bar.classList.toggle('toolbar-menu-open',open);toolsToggle.setAttribute('aria-expanded',String(open));
+    if(open){setMusicOpen(false);setActionsOpen(false);setOpen(false);}
+  }
+  function positionPopup(panel,trigger){
+    panel.style.right=`${compact.matches?8:Math.max(8,innerWidth-trigger.getBoundingClientRect().right)}px`;
+  }
+  const focusTrigger=trigger=>(compact.matches?toolsToggle:trigger).focus();
+  toolsToggle.onclick=()=>setToolsOpen(!bar.classList.contains('toolbar-menu-open'));
+  bar.querySelector('.toolbar-menu-close').onclick=()=>{setToolsOpen(false);toolsToggle.focus();};
+  toolsToggle.addEventListener('keydown',event=>{if(event.key==='ArrowDown'){event.preventDefault();setToolsOpen(true);icons.querySelector('.bar-icon:not(:disabled):not([hidden])')?.focus();}});
+  bar.addEventListener('keydown',event=>{if(event.key==='Escape'&&bar.classList.contains('toolbar-menu-open')){setToolsOpen(false);toolsToggle.focus();event.stopPropagation();}});
+  document.addEventListener('pointerdown',event=>{if(!icons.contains(event.target)&&!toolsToggle.contains(event.target))setToolsOpen(false);});
+  icons.addEventListener('focusout',event=>{if(!icons.contains(event.relatedTarget)&&!toolsToggle.contains(event.relatedTarget))setToolsOpen(false);});
+  const music=document.createElement('div');music.className='music-picker';
+  music.innerHTML='<button type="button" class="bar-icon music-toggle" title="Music volume" aria-label="Music volume" aria-haspopup="dialog" aria-expanded="false" aria-controls="music-controls"><img src="/assets/bar/music.png" width="32" height="40" alt=""></button><div id="music-controls" class="music-controls" role="dialog" aria-labelledby="music-title" hidden><header><h1 id="music-title">Music</h1><button type="button" class="appearance-close" aria-label="Close music controls">×</button></header><div class="music-body"><label for="music-volume">Volume <output for="music-volume">79%</output></label><input id="music-volume" type="range" min="0" max="100" value="79"><button type="button" class="music-mute" aria-pressed="false">Mute music</button></div></div>';
+  const musicToggle=music.querySelector('.music-toggle'),musicPanel=music.querySelector('.music-controls'),musicVolume=music.querySelector('input'),musicMute=music.querySelector('.music-mute');
+  // Popups live outside the mobile drawer so choosing a control can close the drawer.
+  bar.append(musicPanel);
+  const inMusic=target=>music.contains(target)||musicPanel.contains(target);
+  let musicMuted=false;
+  function setMusicOpen(open){musicPanel.hidden=!open;musicToggle.setAttribute('aria-expanded',String(open));if(open){positionPopup(musicPanel,musicToggle);setToolsOpen(false);musicVolume.focus();}}
+  function setMusicState({muted,volume}){
+    musicMuted=muted;musicVolume.value=Math.round(volume*100);musicPanel.querySelector('output').textContent=`${Math.round(volume*100)}%`;
+    musicMute.textContent=muted?'Unmute music':'Mute music';musicMute.setAttribute('aria-pressed',String(muted));
+    musicToggle.title=muted||volume===0?'Music volume · muted':'Music volume';musicToggle.setAttribute('aria-label',musicToggle.title);
+  }
+  musicToggle.onclick=()=>setMusicOpen(musicPanel.hidden);
+  musicPanel.querySelector('.appearance-close').onclick=()=>{setMusicOpen(false);focusTrigger(musicToggle);};
+  musicMute.onclick=()=>onMusicMute?.(!musicMuted);
+  musicVolume.oninput=()=>onMusicVolume?.(Number(musicVolume.value)/100);
+  for(const element of [music,musicPanel]){
+    element.addEventListener('keydown',event=>{if(event.key==='Escape'){setMusicOpen(false);focusTrigger(musicToggle);event.stopPropagation();}});
+    element.addEventListener('focusout',event=>{if(!inMusic(event.relatedTarget))setMusicOpen(false);});
+  }
+  document.addEventListener('pointerdown',event=>{if(!inMusic(event.target))setMusicOpen(false);});
+  if(onMusicMute||onMusicVolume)icons.append(music);
   // The original hand icon opens the actions menu: Wave and Dance.
   const actions=document.createElement('div');actions.className='actions-picker';
   actions.innerHTML='<button type="button" class="bar-icon actions-toggle" title="Actions" aria-label="Actions" aria-haspopup="menu" aria-expanded="false"><img src="/assets/bar/inventory.png" alt=""></button><div class="speech-menu actions-menu" role="menu" aria-label="Actions" hidden><button type="button" role="menuitem" data-gesture="wave">Wave</button><button type="button" role="menuitemcheckbox" aria-checked="false" data-gesture="dance">Dance</button><button type="button" role="menuitemcheckbox" aria-checked="false" data-gesture="breakdance">Breakdance</button></div>';
   const actionsToggle=actions.querySelector('.actions-toggle'),actionsMenu=actions.querySelector('.actions-menu');
-  const setActionsOpen=open=>{actionsMenu.hidden=!open;actionsToggle.setAttribute('aria-expanded',String(open));};
+  bar.append(actionsMenu);
+  const inActions=target=>actions.contains(target)||actionsMenu.contains(target);
+  const setActionsOpen=open=>{actionsMenu.hidden=!open;actionsToggle.setAttribute('aria-expanded',String(open));if(open){positionPopup(actionsMenu,actionsToggle);setToolsOpen(false);actionsMenu.querySelector('button').focus();}};
   actionsToggle.onclick=()=>setActionsOpen(actionsMenu.hidden);
-  actionsMenu.querySelectorAll('button').forEach(button=>button.onclick=()=>{setActionsOpen(false);onGesture?.(button.dataset.gesture);});
-  actions.addEventListener('keydown',event=>{if(event.key==='Escape'){setActionsOpen(false);actionsToggle.focus();event.stopPropagation();}});
-  document.addEventListener('pointerdown',event=>{if(!actions.contains(event.target))setActionsOpen(false);});
-  actions.addEventListener('focusout',event=>{if(!actions.contains(event.relatedTarget))setActionsOpen(false);});
+  actionsMenu.querySelectorAll('button').forEach(button=>button.onclick=()=>{setActionsOpen(false);focusTrigger(actionsToggle);onGesture?.(button.dataset.gesture);});
+  for(const element of [actions,actionsMenu]){
+    element.addEventListener('keydown',event=>{if(event.key==='Escape'){setActionsOpen(false);focusTrigger(actionsToggle);event.stopPropagation();}});
+    element.addEventListener('focusout',event=>{if(!inActions(event.relatedTarget))setActionsOpen(false);});
+  }
+  document.addEventListener('pointerdown',event=>{if(!inActions(event.target))setActionsOpen(false);});
   if(onGesture)icons.append(actions);
   const voice=document.createElement('button');voice.type='button';voice.className='bar-icon voice-toggle';voice.disabled=true;voice.title='Voice chat';voice.setAttribute('aria-label','Voice chat');
-  voice.innerHTML='<img src="/assets/bar/microphone.svg" width="32" height="40" alt="">';
+  voice.innerHTML='<img src="/assets/bar/microphone.png" width="32" height="40" alt="">';
   voice.onclick=onVoice;if(onVoice)icons.append(voice);
   const appearance=document.createElement('button');appearance.type='button';appearance.className='bar-icon appearance-toggle';appearance.disabled=true;appearance.title='Change appearance';appearance.setAttribute('aria-label','Change appearance');
-  const portrait=document.createElement('canvas');portrait.width=32;portrait.height=40;portrait.setAttribute('aria-hidden','true');appearance.append(portrait);
+  const portrait=document.createElement('canvas');portrait.width=96;portrait.height=120;portrait.setAttribute('aria-hidden','true');appearance.append(portrait);
   appearance.onclick=onAppearance;if(onAppearance)icons.append(appearance);
   const room=document.createElement('button');room.type='button';room.className='bar-icon';
   room.title='Edit room';room.setAttribute('aria-label','Edit room');
@@ -33,6 +75,16 @@ export function createToolbar({onRoomEdit,onFurniture,onChat,onTyping,onVoice,on
   const furniture=document.createElement('button');furniture.type='button';furniture.className='bar-icon';
   furniture.title='Furniture';furniture.setAttribute('aria-label','Furniture');furniture.onclick=()=>onFurniture();
   furniture.innerHTML='<img src="/assets/bar/catalogue.png" alt="">';icons.append(furniture);
+  for(const [button,label] of [[musicToggle,'Music'],[actionsToggle,'Actions'],[voice,'Voice chat'],[appearance,'My look'],[room,'Edit room'],[furniture,'Furniture']]){
+    const text=document.createElement('span');text.className='toolbar-icon-label';text.textContent=label;button.append(text);
+  }
+  icons.addEventListener('click',event=>{if(event.target.closest('.bar-icon'))setToolsOpen(false);});
+  compact.addEventListener('change',()=>{
+    const focusedControl=icons.contains(document.activeElement);
+    setToolsOpen(false);setMusicOpen(false);setActionsOpen(false);
+    if(compact.matches&&focusedControl)toolsToggle.focus();
+    else if(!compact.matches&&document.activeElement===toolsToggle)icons.querySelector('.bar-icon:not(:disabled):not([hidden])')?.focus();
+  });
   const form=bar.querySelector('form'),input=bar.querySelector('input');
   // The indicator shows whenever there is an unsent message in the field, not just while
   // keys are moving: a heartbeat keeps the server's short typing window alive until the
@@ -82,7 +134,7 @@ export function createToolbar({onRoomEdit,onFurniture,onChat,onTyping,onVoice,on
     button.addEventListener('pointerleave',()=>bar.querySelector('.bar-hint').textContent='Click to walk. Drag to pan. Scroll to zoom.');
   });
   document.body.append(bar);
-  return {setDancing(action){actionsMenu.querySelectorAll('[role=menuitemcheckbox]').forEach(button=>button.setAttribute('aria-checked',String(button.dataset.gesture===action)));},setAvatar(canvas){const ctx=portrait.getContext('2d');ctx.clearRect(0,0,32,40);ctx.imageSmoothingEnabled=false;ctx.drawImage(canvas,24,16,48,60,0,0,32,40);},setAppearanceEnabled(value){appearance.disabled=!value;},setVoiceEnabled(value){voice.disabled=!value;},setVoiceState({connected,microphone,blocked=false}){voice.classList.toggle('voice-connected',connected);voice.classList.toggle('voice-microphone',microphone);
+  return {setMusicState,setDancing(action){actionsMenu.querySelectorAll('[role=menuitemcheckbox]').forEach(button=>button.setAttribute('aria-checked',String(button.dataset.gesture===action)));},setAvatar(canvas){const ctx=portrait.getContext('2d');ctx.clearRect(0,0,portrait.width,portrait.height);ctx.imageSmoothingEnabled=false;ctx.drawImage(canvas,24,16,48,60,0,0,portrait.width,portrait.height);},setAppearanceEnabled(value){appearance.disabled=!value;},setVoiceEnabled(value){voice.disabled=!value;},setVoiceState({connected,microphone,blocked=false}){voice.classList.toggle('voice-connected',connected);voice.classList.toggle('voice-microphone',microphone);
     // Playback blocked until a gesture: say so in the hint strip, since the voice panel is usually closed.
     const hint=bar.querySelector('.bar-hint');if(blocked)hint.textContent='Tap anywhere to hear voice.';else if(hint.textContent==='Tap anywhere to hear voice.')hint.textContent='Click to walk. Drag to pan. Scroll to zoom.';voice.title=microphone?'Voice chat · microphone on':connected?'Voice chat · listening':'Voice chat';voice.setAttribute('aria-label',voice.title);},setAdmin(value){adminButtons.forEach(button=>button.hidden=!value);},status(message){bar.querySelector('.bar-hint').textContent=message;}};
 }

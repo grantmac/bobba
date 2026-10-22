@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="40" viewBox="0 0 32 40" shape-rendering="crispEdges">
+  <!-- Broad front face and a shallow side, at the toolbar's native pixel size. -->
+  <path fill="#171713" d="M8 4h20v1h2v28h-2v2h-3v2H3V9h2V6h3z"/>
+  <path fill="#f4dfb0" d="M8 5h19v1h-2v2H5V7h3z"/>
+  <path fill="#ad895c" d="M26 8h2V7h1v25h-2v2h-2V10h1z"/>
+  <path fill="#796044" d="M27 10h2v22h-2v2h-2v-2h1V11h1z"/>
+  <path fill="#c6a16d" d="M4 9h20v26H4z"/>
+  <path fill="#ffe6b6" d="M4 9h20v1H5v24H4z"/>
+  <path fill="#8e704e" d="M23 10h1v25H5v-1h18z"/>
+  <path fill="#282825" d="M7 12h14v20H7z"/>
+  <path fill="#454640" d="M8 13h12v18H8z"/>
+  <!-- Tweeter. -->
+  <path fill="#141613" d="M12 13h4v1h1v3h-1v1h-4v-1h-1v-3h1z"/>
+  <path fill="#93958a" d="M12 14h3v1h-2v2h-1z"/>
+  <path fill="#64695e" d="M14 15h2v2h-2z"/>
+  <!-- Woofer: a light rim, recessed cone, and dark centre. -->
+  <path fill="#111411" d="M11 20h6v1h2v2h1v5h-1v2h-2v1h-6v-1H9v-2H8v-5h1v-2h2z"/>
+  <path fill="#a6aa99" d="M11 21h6v1h2v6h-1v2h-7v-1H9v-6h1v-1h1z"/>
+  <path fill="#e4e5cc" d="M11 21h5v1h-5v1h-1v4H9v-4h1v-1h1z"/>
+  <path fill="#555d50" d="M12 22h4v1h2v5h-2v1h-4v-1h-2v-4h1v-1h1z"/>
+  <path fill="#262e27" d="M13 23h3v1h1v3h-1v1h-3v-1h-1v-3h1z"/>
+  <path fill="#788573" d="M13 23h2v1h-2v2h-1v-2h1z"/>
+</svg>

@@ -8,12 +8,14 @@ import { createFurniture } from './furniture.js';
 import { createInfoStand } from './info-stand.js';
 import { createChat } from './chat.js';
 import { createMultiplayer, samplePlayer } from './multiplayer.js';
+import {createRoomKey} from './room-key.js';
 import {createAwayPoster} from './away-poster.js';
 import {createAgentLink} from './agent-link.js';
 import {createStickies} from './stickies.js';
 import {installTouchNavigation} from './touch-navigation.js';
 import {createVoice} from './voice.js';
-import {roomLayout,tileDrop,walkingDrop,tileAtPoint,isPoolWater,pitSeat,backWallTiles,onWalkway,STEP_DOWN,DANCE_ROWS,zonesIn,zoneBounds,MAIN_ZONE} from '../shared/room-layout.js';
+import {createBotPanel} from './bot-panel.js';
+import {roomLayout,tileDrop,walkingDrop,tileAtPoint,isPoolWater,pitSeat,backWallTiles,onWalkway,STEP_DOWN,DANCE_ROWS,zonesIn,zoneBounds,zoneAt,MAIN_ZONE} from '../shared/room-layout.js';
 import {floorSampler,createSpaceFloor,createMetalWalkway,picturePixels,pictureSampler,wallSegment} from './spaces.js';
 import {renderPicture,startSnapshots} from './snapshot.js';
 import {createDanceFloor} from './dance-floor.js';
@@ -23,12 +25,12 @@ import {createDiscoLights} from './disco-lights.js';
 import {loadDeckSign,SIGN_LIFT,SIGN_DENSITY} from './deck-sign.js';
 import {createRoomRadio} from './room-radio.js';
 import {installAutoUpdate,saveUpdateSession,takeUpdateSession,peekUpdateSession} from './auto-update.js';
-// The update veil hides the cold start after a deployment reload. It lifts once the room is
-// ready (or if the join flow needs the screen), and drops again just before the next reload.
+// Cover every cold start until the furnished room and entry UI are ready together.
+// Slow connections must not reveal unfinished rooms after an arbitrary timeout.
 const veil=document.querySelector('#update-veil');
-let veilTimer=setTimeout(liftVeil,6000);
-function liftVeil(){clearTimeout(veilTimer);if(!veil||veil.hidden)return;veil.classList.add('lifting');setTimeout(()=>{veil.hidden=true;veil.classList.remove('lifting');},450);}
-function dropVeil(){if(!veil)return;clearTimeout(veilTimer);veil.classList.remove('lifting');veil.hidden=false;}
+function liftVeil(){document.body.removeAttribute('data-loading');document.body.removeAttribute('aria-busy');if(veil)veil.hidden=true;}
+function dropVeil(){if(!veil)return;veil.textContent='Updating the room…';veil.hidden=false;}
+const nextPaint=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
 import {createPool,createWoodDeck,loadPoolAssets} from './pool.js';
 import {createPlantWall} from './plant-wall.js';
 import {createLoungeFloor,loadSunkenSofa} from './lounge.js';
@@ -47,6 +49,7 @@ let renderer;
 try {
   renderer = new THREE.WebGLRenderer({ antialias: false });
 } catch (error) {
+  liftVeil();
   document.querySelector('#load-error').hidden = false;
   throw error;
 }
@@ -108,7 +111,7 @@ function centreViewOnAvatar(){
 }
 const iso = (x, z) => ({ x: (x-z)*32-roomCenterX, y: (x+z)*16 });
 const valid = (x, z) => walkable.has(`${x},${z}`);
-let furniture,network,toolbar,selfPlayer,infoStand,stickies,voice;
+let furniture,network,toolbar,selfPlayer,infoStand,stickies,voice,botPanel;
 let grantOnline=false,awayPoster,deckSign=null,deckSignImages=null,leftWallSet=new Set(),rightWallSet=new Set();
 let danceFloorOn=true,danceControls,discoBall,discoMesh,radio;
 let fridgeSeen=0,stickiesKey='';
@@ -495,7 +498,7 @@ function peerAt(event){
     return point.x>=p.x-26&&point.x<=p.x+26&&point.y>=p.y-90&&point.y<=p.y+10;
   });
 }
-function selectPeer(peer){furniture.close();infoStand.select(peer.data);container.focus({preventScroll:true});}
+function selectPeer(peer){furniture.close();infoStand.select(peer.data);if(peer.data.kind==='bot')botPanel?.open();else container.focus({preventScroll:true});}
 
 const position={x:3.5,z:4.5};
 let path=[],direction=2,walkTime=0,avatar,lastFrame='',hoverCell=null,target=null,down=null,ready=false,seated=null,seatTarget=null;
@@ -754,6 +757,7 @@ function positionCharacter(mesh,point,seat){
   return p;
 }
 function characterFrame(player,point,time,seat){
+  if(seat?.programDirection!==undefined)point={...point,direction:seat.programDirection};
   if(point.moving)return `${point.direction}:${Math.floor(time/1000*9)%4}`;
   const age=time-(player.actionStarted??0);
   if(player.action==='wave'&&age<3000)return `${point.direction}:${seat?'sit-wave':'wave'}:${Math.floor(age/180)%2}`;
@@ -821,11 +825,13 @@ function animate(now){
 }
 requestAnimationFrame(animate);
 try{
-  toolbar=createToolbar({admin:false,onTyping:typing=>{if(ready){localTyping=typing;void network.typing(typing).catch(()=>{});}},onAppearance:()=>{if(ready)appearance.open();},onVoice:()=>{if(ready)voice.open();},onRoomEdit:()=>{if(ready&&network.me?.role==='admin')roomEditor.open();},onFurniture:()=>{if(ready)furniture.open();},onChat:(body,mode)=>{if(ready)return network.chat(body,mode);},onGesture:action=>{if(ready)network.gesture(action).catch(error=>toolbar.status(error.message));}});
+  toolbar=createToolbar({admin:false,onMusicMute:muted=>radio?.setMuted(muted),onMusicVolume:volume=>{radio?.setVolume(volume);radio?.setMuted(false);},onTyping:typing=>{if(ready){localTyping=typing;void network.typing(typing).catch(()=>{});}},onAppearance:()=>{if(ready)appearance.open();},onVoice:()=>{if(ready)voice.open();},onRoomEdit:()=>{if(ready&&network.me?.role==='admin')roomEditor.open();},onFurniture:()=>{if(ready)furniture.open();},onChat:(body,mode)=>{if(ready)return network.chat(body,mode);},onGesture:action=>{if(ready)network.gesture(action).catch(error=>toolbar.status(error.message));}});
   network=createMultiplayer();
+  const characterKey=createRoomKey({identity:network.identity});
   danceControls=createDanceFloorControls({onChange:on=>network.danceFloor(on),onError:message=>toolbar.status(message)});
   voice=createVoice({credentials:tab=>network.voiceCredentials(tab),onState:state=>toolbar.setVoiceState(state),onSpeaking:speaking=>radio?.duck(speaking)});
-  radio=createRoomRadio();
+  radio=createRoomRadio({onState:state=>toolbar.setMusicState(state)});
+  toolbar.setMusicState(radio.snapshot());
   for(const event of ['pointerdown','keydown'])document.addEventListener(event,()=>{if(ready)void radio.unlock();});
   window.addEventListener('pagehide',()=>radio.close());
   const [catalogResponse,paletteResponse,initialRoom]=await Promise.all([fetch('/assets/room-options/catalog.json'),fetch('/assets/room-options/source-palette.json'),network.loadPreview()]);
@@ -866,7 +872,7 @@ try{
   discoBall=await createDiscoBall();discoMesh=sprite(discoBall.canvas,0,0,900);
   discoMesh.scale.setScalar(1/3);discoMesh.material.map.minFilter=THREE.LinearFilter;
   infoStand=await createInfoStand(prepareImage);
-  appearance=await createAppearance({prepareImage,onApply:async(frames,look,context)=>{if(!context.entry)await network.appearance(look);setAppearance(frames);},onOpen:()=>{stopWalking();furniture?.close();}});
+  appearance=await createAppearance({prepareImage,onApply:async(frames,look,context)=>{if(!context.entry)await network.appearance(look);setAppearance(frames);},onOpen:()=>{stopWalking();furniture?.close();},onRoomKey:()=>characterKey.open()});
   setAppearance(appearance.initial);
   stickies=await createStickies({network,prepareImage,worldPoint:groundPoint,getTiles:()=>new Set([...layout.mainTiles,...layout.danceTiles].map(cell=>cell.join(','))),
     makeVisual:canvas=>sprite(canvas,0,0,95),
@@ -877,8 +883,17 @@ try{
   stickies.receive(initialRoom.room.stickies??[]);
   const furnitureMarks=new THREE.Group();scene.add(furnitureMarks);
   const agentLink=createAgentLink({network,focusRoom:()=>container.focus({preventScroll:true})});
-  const initialAssets=await network.assets.list().catch(()=>[]);
+  const initialAssets=await network.assets.list();
   furniture=await createFurniture({initialItems:initialRoom.room.furniture,initialAssets,onAttachAgent:()=>agentLink.open(),
+    // Who may host a piece's program: the players in its zone, else the lobby's, else everyone in view (convex/programs.js agrees).
+    programPlayers:item=>{
+      const all=[...(selfPlayer?[selfPlayer]:[]),...[...peers.values()].map(peer=>peer.data)].map(player=>({...player,...samplePlayer(player,network.now())}));
+      if(!item||!layout||!Number.isInteger(item.x))return all;
+      for(const zone of new Set([zoneAt(layout,item.x,item.z),MAIN_ZONE])){const near=all.filter(p=>p.zone===zone);if(near.some(p=>p.kind!=='bot'))return near;}
+      return all;
+    },
+    programMe:()=>network.me?.id??null,onProgramSave:(itemId,version,revision,state)=>network.programs.save(itemId,version,revision,state),onProgramUse:itemId=>network.programs.interact(itemId),
+    programNow:()=>network.now(),programReducedMotion:()=>reducedMotion.matches,
     prepareImage,worldPoint:iso,isTile:(x,z)=>valid(x,z)&&!isPoolWater(layout,x,z)&&!onWalkway(layout,x,z),floorHeight,getAvatar:()=>position,stopWalking,onChanged:()=>{ensureFreeTile();positionAwayPoster();positionDeckSign();},onSit:sitOn,onUse:useItem,
     // Clicking a player-built piece names it and its builder on the info stand; stock pieces clear it.
     onInspect:(item,def)=>{if(def?.ownerName)infoStand.inspect({name:def.name,by:def.ownerName,icon:def.icon});else infoStand.hide();},
@@ -912,16 +927,20 @@ try{
         const rk=JSON.stringify([state.room.options,state.room.spaces??[]]),fk=JSON.stringify(state.room.furniture);
         if(rk!==roomKey){roomKey=rk;roomSpaces=state.room.spaces??[];roomEditor.receive(state.room.options);}
         if(fk!==furnitureKey){furnitureKey=fk;furniture.receive(state.room.furniture);positionAwayPoster();positionDeckSign();}
+        // The welcome screen waits until the lobby's pieces are drawn, so the room behind it is furnished.
+        furniture.whenReady().then(()=>{if(furnitureKey===fk)resolve();}).catch(reject);
         receiveStickies(state.room.stickies);
-        updatePeers(state.players);resolve();
+        updatePeers(state.players);
       },message=>reject(new Error(message)));
     });
     if(network.adminEntry){const saved=await network.entryAppearance();if(saved)setAppearance(await appearance.useLook(saved));}
-    liftVeil();
-    await appearance.enter({admin:network.adminEntry,onEnter:(name,look,options)=>network.join(name,look,options)});
+    // The room has rendered before the welcome dialog and room are revealed in one task.
+    await nextPaint();liftVeil();
+    await appearance.enter({admin:network.adminEntry,onCheckName:name=>network.checkName(name),agents:network.agents,onEnter:(name,look,options)=>network.join(name,look,options),onReturn:async()=>await characterKey.open('return')?network.me:null});
     stopPreview();
   }
   const admin=network.me.role==='admin';
+  botPanel=createBotPanel({api:network.bot,admin});
   const previousUpdate=takeUpdateSession(network.me.id);
   if(previousUpdate){
     radio.restore(previousUpdate.music);
@@ -934,15 +953,20 @@ try{
   furniture.connect({admin,me:network.me.id,onSave:changes=>network.furniture(changes),onPower:(id,on)=>network.deckPower(id,on),onError:message=>toolbar.status(message)});
   if(import.meta.env.DEV)window.__room={get centerY(){return CENTER_Y;},iso,get zones(){return {subscribed:network.zones,visible:[...visibleZoneIds],drawn:[...spaceVisuals.keys()]};},get visuals(){return furniture.debugVisuals();},get avatar(){return {order:avatar.renderOrder,x:position.x,z:position.z};},get peers(){return [...peers.values()].map(p=>({name:p.data.name,order:p.mesh.renderOrder,seat:p.data.seatId?.slice(0,6)??null}));}};
   network.assets.watch(list=>furniture.setAssets(list),message=>toolbar.status(message));
+  window.addEventListener('pagehide',()=>furniture.disposePrograms());
+  window.addEventListener('pageshow',event=>{if(event.persisted)furniture.redraw();});
   startSnapshots({captures:network.captures,capture:takePicture,onStatus:message=>toolbar.status(message)});
   toolbar.setAdmin(admin);
   let roomKey='',ownLook=JSON.stringify(network.me.look),lookVersion=0,ownZone=network.me.zone;
   const seenMessages=new Set();
   await new Promise((resolve,reject)=>{
-    let first=true;
+    let first=true,roomPrepared=false,furniturePrepared=false,playerPrepared=false;
+    // The veil lifts once the map, the first furniture and the player have all arrived and drawn.
+    const finishInitialLoad=()=>{if(first&&roomPrepared&&furniturePrepared&&playerPrepared){first=false;resolve();}};
     // The map (shape, spaces, notes), the lobby switches and the furniture of the zones in view
     // each arrive on their own subscription, so movement never carries any of them.
     const onMap=map=>{
+      roomPrepared=true;finishInitialLoad();
       const nextRoom=JSON.stringify([map.options,map.spaces??[]]);
       if(nextRoom!==roomKey){roomKey=nextRoom;roomSpaces=map.spaces??[];roomEditor.receive(map.options);}
       receiveStickies(map.stickies);
@@ -951,6 +975,7 @@ try{
     const onFurniture=({zones,inventory})=>{
       const items=[...[...zones.values()].flat(),...inventory];
       furniture.receive(items);positionAwayPoster();positionDeckSign();radio.receive(items,true);
+      if(!furniturePrepared)furniture.whenReady().then(()=>{furniturePrepared=true;finishInitialLoad();}).catch(error=>{if(first)reject(error);else toolbar.status(error.message);});
     };
     network.watch({onState:state=>{
       selfPlayer=state.me;updatePeers(state.players);
@@ -967,12 +992,12 @@ try{
       // Bound deduplication memory to the server's current message window.
       const recentIds=new Set(state.messages.map(m=>m.id));for(const id of seenMessages)if(!recentIds.has(id))seenMessages.delete(id);
       avatar.visible=true;ready=true;toolbar.setVoiceEnabled(true);toolbar.setAppearanceEnabled(true);centreViewOnAvatar();
-      // Two frames later the restored avatar and furniture have been drawn at least once.
-      requestAnimationFrame(()=>requestAnimationFrame(liftVeil));
-      if(first){first=false;resolve();}
-    },onError:message=>{voice.leave();radio.close();toolbar.setVoiceEnabled(false);toolbar.status(message);if(first)reject(new Error(message));},onMap,onSignals,onFurniture,onPong:state=>pong?.receive(state)});
+      playerPrepared=true;finishInitialLoad();
+    },onError:message=>{ready=false;voice.leave();radio.close();toolbar.setVoiceEnabled(false);toolbar.setAppearanceEnabled(false);toolbar.status(message);if(message.includes('removed from the room')){network.close();const notice=document.querySelector('#load-error');notice.textContent=message;notice.hidden=false;}if(first)reject(new Error(message));},onMap,onSignals,onFurniture,onPrograms:list=>furniture.receivePrograms(list),onPong:state=>pong?.receive(state)});
     lastZoneKey='';updateVisibleZones();
   });
+  // Both subscriptions and the restored avatar have rendered before returning visitors see it.
+  await nextPaint();liftVeil();
   // Everyone hears the room: connect listen-only unless a pre-reload snapshot says they had left.
   if(previousUpdate?.voice)void voice.restore(previousUpdate.voice);else void voice.listen();
   if(import.meta.env.PROD){

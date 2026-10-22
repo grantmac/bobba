@@ -7,6 +7,7 @@ import {seatFor,isWallItem,canHang} from '../shared/furniture-model.js';
 import {openVisit,closeVisits,closeStaleVisits} from './lib/visits.js';
 import {definitionsFor} from './lib/assets.js';
 import {loadZones,zoneItems,inventoryItems,itemDoc,applyChanges,changesFromList,allItems,replaceAll,ZONE_CHANGE_LIMIT} from './lib/furnitureStore.js';
+import {queueBotEvent} from './lib/bot_events.js';
 const SESSION_AGE=30*24*60*60*1000,ADMIN_AGE=12*60*60*1000;
 // A guest name frees up this long after its holder was last seen; Grant is reserved for good.
 const NAME_REUSE_AFTER=4*60*60*1000;
@@ -14,10 +15,11 @@ const CHAT_WINDOW=30;
 async function hash(value){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))].map(b=>b.toString(16).padStart(2,'0')).join('');}
 function equal(a,b){if(a.length!==b.length)return false;let diff=0;for(let i=0;i<a.length;i++)diff|=a.charCodeAt(i)^b.charCodeAt(i);return diff===0;}
 function validToken(token){if(!/^[a-f0-9]{64}$/.test(token))fail('Please enter the room again.');}
-async function sessionFor(ctx,token){
+export async function sessionFor(ctx,token){
   validToken(token);const digest=await hash(token);
   const session=await ctx.db.query('sessions').withIndex('by_token',q=>q.eq('tokenHash',digest)).unique();
   if(!session||session.expiresAt<Date.now())fail('Your session has ended. Please enter the room again.');
+  if((session.blockedUntil??0)>Date.now())fail('You have been removed from the room for 10 minutes. Please return later.');
   return session;
 }
 export async function playerFor(ctx,token,admin=false){
@@ -62,8 +64,8 @@ async function patchSignals(ctx,patch){
 const publicSignals=s=>({danceFloorOn:s.danceFloorOn??true,fridge:s.fridge??null});
 // What others see of a player. Movement updates leave the appearance out: it travels once, by
 // `look`, whenever `lookVersion` changes. Legacy callers still get it inline.
-function publicPlayer(p,withLook=false){
-  return {id:p._id,name:p.name,role:p.role,...(withLook?{look:p.look}:{}),lookVersion:p.lookVersion??0,zone:playerZone(p),route:p.route,startedAt:p.startedAt,direction:p.direction,seatId:p.seatId,action:p.action??null,actionStarted:p.actionStarted??0,drink:p.drink??null,typingUntil:p.typingUntil??0};
+export function publicPlayer(p,withLook=false){
+  return {id:p._id,name:p.name,role:p.role,...(p.kind?{kind:p.kind}:{}),...(withLook?{look:p.look}:{}),lookVersion:p.lookVersion??0,zone:playerZone(p),route:p.route,startedAt:p.startedAt,direction:p.direction,seatId:p.seatId,action:p.action??null,actionStarted:p.actionStarted??0,drink:p.drink??null,typingUntil:p.typingUntil??0};
 }
 const publicMessage=({_id,name,color,body,mode,x,z,sentAt,playerId,zone})=>({id:_id,name,color,body,mode,x,z,sentAt,playerId,zone:zone??MAIN_ZONE});
 async function checkEntryCode(code){
@@ -73,6 +75,17 @@ export const entryAppearance=query({args:{entryCode:v.string()},handler:async(ct
   await checkEntryCode(entryCode);
   const player=await ctx.db.query('players').withIndex('by_name',q=>q.eq('nameKey','grant')).unique();
   return player?.look??null;
+}});
+// This is a preview; join checks again atomically before assigning the name.
+export const checkName=query({args:{name:v.string(),entryCode:v.optional(v.string())},handler:async(ctx,{name,entryCode})=>{
+  const named=validName(name);
+  if(entryCode){await checkEntryCode(entryCode);return;}
+  if(named.key==='grant')fail('That name is reserved. Please choose another name.');
+  const player=await ctx.db.query('players').withIndex('by_name',q=>q.eq('nameKey',named.key)).unique();
+  if(player?.kind==='bot')fail('That name is reserved for the room bot.');
+  if(player?.savedAt&&!entryCode)fail('That name belongs to a saved character. Use your room key or choose another name.');
+  if((player?.blockedUntil??0)>Date.now())fail('You have been removed from the room for 10 minutes. Please return later.');
+  if(player&&(isOnline(player)||Date.now()-player.lastSeen<NAME_REUSE_AFTER))fail('That name is already taken. Please choose another name.');
 }});
 export const join=mutation({args:{token:v.string(),name:v.string(),look:v.any(),entryCode:v.optional(v.string()),replaceLook:v.optional(v.boolean()),pageOrigin:v.optional(v.string())},handler:async(ctx,args)=>{
   validToken(args.token);validateLook(args.look);const named=validName(args.name),digest=await hash(args.token);
@@ -86,14 +99,19 @@ export const join=mutation({args:{token:v.string(),name:v.string(),look:v.any(),
   if(!admin&&named.key==='grant')fail('That name is reserved. Please choose another name.');
   const key=admin?'grant':named.key;
   let player=await ctx.db.query('players').withIndex('by_name',q=>q.eq('nameKey',key)).unique();
-  const now=Date.now();let takeover=false;
+  if(player?.kind==='bot')fail('That name is reserved for the room bot.');
+  if((player?.blockedUntil??0)>Date.now())fail('You have been removed from the room for 10 minutes. Please return later.');
+  if(player?.savedAt&&!admin)fail('That name belongs to a saved character. Use your room key or choose another name.');
+  const now=Date.now();
   if(player&&!admin){
     if(isOnline(player,now)||now-player.lastSeen<NAME_REUSE_AFTER)fail('That name is already taken. It frees up four hours after its last visit.');
-    // The name's previous holder has been away long enough: hand the record to the newcomer and
-    // end the old holder's sessions and connections, so they re-enter under a fresh name.
-    for(const s of await ctx.db.query('sessions').withIndex('by_expiry',q=>q.gt('expiresAt',0)).filter(q=>q.eq(q.field('playerId'),player._id)).collect())await ctx.db.delete(s._id);
+    // Retire the unsaved identity; never transfer its belongings or memories to a newcomer.
+    for(const s of await ctx.db.query('sessions').withIndex('by_player',q=>q.eq('playerId',player._id)).collect())await ctx.db.delete(s._id);
     for(const c of await ctx.db.query('connections').withIndex('by_player',q=>q.eq('playerId',player._id)).collect())await ctx.db.delete(c._id);
-    takeover=true;
+    for(const link of await ctx.db.query('agentLinks').withIndex('by_player',q=>q.eq('playerId',player._id)).collect())await ctx.db.delete(link._id);
+    await closeVisits(ctx,player._id,now);
+    await ctx.db.patch(player._id,{nameKey:`retired:${player._id}`,online:false,identityVersion:(player.identityVersion??0)+1});
+    player=null;
   }
   // Everyone enters through the lobby, which holds a bounded crowd like any other zone.
   const lobby=await zonePlayers(ctx,MAIN_ZONE,now);
@@ -102,16 +120,17 @@ export const join=mutation({args:{token:v.string(),name:v.string(),look:v.any(),
   const occupied=playerTiles(lobby,now,player?._id);
   const position=freePosition(room,player&&playerZone(player)===MAIN_ZONE?atTime(player,now):undefined,occupied,MAIN_ZONE);
   let playerId;
-  const newLook=!player||takeover||args.replaceLook;
+  const newLook=!player||args.replaceLook;
   if(player){
     playerId=player._id;
-    await ctx.db.patch(playerId,{online:undefined,zone:MAIN_ZONE,look:newLook?args.look:player.look,...(newLook?{lookVersion:(player.lookVersion??0)+1}:{}),lastSeen:now,route:[position],startedAt:now,seatId:null,drink:null,typingUntil:0,action:null,...(takeover?{lastJoinAlertAt:undefined}:{})});
+    await ctx.db.patch(playerId,{online:undefined,zone:MAIN_ZONE,look:newLook?args.look:player.look,...(newLook?{lookVersion:(player.lookVersion??0)+1}:{}),lastSeen:now,route:[position],startedAt:now,seatId:null,drink:null,typingUntil:0,action:null});
   }else playerId=await ctx.db.insert('players',{name:admin?'Grant':named.name,nameKey:key,role:admin?'admin':'guest',look:args.look,lookVersion:0,zone:MAIN_ZONE,route:[position],startedAt:now,direction:2,seatId:null,drink:null,lastSeen:now,lastChat:0});
   await ctx.db.insert('sessions',{role:admin?'admin':'guest',tokenHash:digest,playerId,expiresAt:now+(admin?ADMIN_AGE:SESSION_AGE)});
   await ctx.scheduler.runAfter(45000,internal.room.expireArrival,{playerId,seenAt:now});
   const joined=await ctx.db.get(playerId);
   await openVisit(ctx,joined,now);
   await notifyArrival(ctx,joined,now,args.pageOrigin);
+  await queueBotEvent(ctx,joined,'arrival');
   return publicPlayer(joined,true);
 }});
 // Spaces as clients see them: uploaded pictures become URLs and the storage ids stay server-side.
@@ -156,6 +175,15 @@ export const voiceIdentity=internalQuery({args:{token:v.string()},handler:async(
   if(!isOnline(player))fail('Enter the room before joining voice.');
   return {playerId:player._id,zone:playerZone(player)};
 }});
+// Remember every issued tab identity, including disconnected tabs, so moderation can revoke them.
+export const registerVoice=internalMutation({args:{token:v.string(),identity:v.string()},handler:async(ctx,{token,identity})=>{
+  const player=await playerFor(ctx,token);
+  if(!isOnline(player))fail('Enter the room before joining voice.');
+  if(identity!==player._id&&!identity.startsWith(`${player._id}#`))fail('Invalid voice identity.');
+  const old=await ctx.db.query('voiceGrants').withIndex('by_identity',q=>q.eq('identity',identity)).unique();
+  const expiresAt=Date.now()+12*3600000;
+  if(old)await ctx.db.patch(old._id,{expiresAt});else await ctx.db.insert('voiceGrants',{playerId:player._id,identity,expiresAt});
+}});
 // The map on its own subscription: it changes only when the room is reshaped or a space is
 // added, restyled or resized, so neither movement nor furniture re-sends it.
 export const roomMap=query({args:{token:v.string()},handler:async(ctx,{token})=>{
@@ -199,6 +227,7 @@ export const heartbeat=mutation({args:{token:v.string(),connectionId:v.string(),
   let positionUpdate={};
   if(!isOnline(p,now)){
     await openVisit(ctx,p,now);await notifyArrival(ctx,p,now,pageOrigin);
+    await queueBotEvent(ctx,p,'arrival');
     // Coming back after a drop: a free tile near where they were, in the zone they were in.
     const zone=playerZone(p),room=await getRoom(ctx,[zone]),around=await zonePlayers(ctx,zone,now);
     positionUpdate={route:[freePosition(room,atTime(p,now),playerTiles(around,now,p._id),zone)],startedAt:now,seatId:null,zone};
@@ -250,7 +279,11 @@ export const appearance=mutation({args:{token:v.string(),look:v.any()},handler:a
 // A walk loads only the zones it can pass through: where the player is, where they are going,
 // and the lobby that joins everything. Entering a zone counts against its cap.
 export const move=mutation({args:{token:v.string(),x:v.number(),z:v.number(),seatId:v.optional(v.string()),direction:v.optional(v.union(v.literal(0),v.literal(2),v.literal(4),v.literal(6)))},handler:async(ctx,args)=>{
-  const p=await playerFor(ctx,args.token),now=Date.now();
+  return await movePlayer(ctx,await playerFor(ctx,args.token),args);
+}});
+// Both human and bot movement use the same server-checked paths, seat reservations and zone caps.
+export async function movePlayer(ctx,p,args){
+  const now=Date.now();
   if(!Number.isInteger(args.x)||!Number.isInteger(args.z))fail('Choose a floor tile.');
   const map=await roomFor(ctx),layout=layoutFor(map.options,map.spaces??[]);
   if(!layout.tileSet.has(`${args.x},${args.z}`))fail('That tile cannot be reached.');
@@ -271,7 +304,7 @@ export const move=mutation({args:{token:v.string(),x:v.number(),z:v.number(),sea
   const seatId=seat?.id??(pit?'pit':null);
   await ctx.db.patch(p._id,{route,startedAt:now,seatId,direction,zone:to,lastSeen:now,action:!seatId&&(p.action==='dance'||p.action==='breakdance')?p.action:null});
   return {route,startedAt:now,seatId,direction,zone:to};
-}});
+}
 // Fridges serve nearby players; the bar serves a player after they reach a stool.
 export const takeDrink=mutation({args:{token:v.string(),id:v.string()},handler:async(ctx,{token,id})=>{
   const p=await playerFor(ctx,token),now=Date.now(),room=await getRoom(ctx,[playerZone(p)]);
@@ -309,8 +342,9 @@ export const chat=mutation({args:{token:v.string(),body:v.string(),mode:v.union(
   if(!text||text.length>400)fail('Messages must contain 1–400 characters.');
   if(now-p.lastChat<350)fail('Please wait a moment before sending another message.');
   const position=atTime(p,now);
-  await ctx.db.insert('messages',{playerId:p._id,zone:playerZone(p),name:p.name,color:p.look.top.color,body:text,mode,...position,sentAt:now});
+  const messageId=await ctx.db.insert('messages',{playerId:p._id,zone:playerZone(p),name:p.name,color:p.look.top.color,body:text,mode,...position,sentAt:now});
   await ctx.db.patch(p._id,{lastChat:now,lastSeen:now,typingUntil:0});
+  await queueBotEvent(ctx,p,'chat',text,messageId);
 }});
 // Furniture changes arrive as the pieces that changed (each whole, or {id, removed: true}); the
 // zones they touch are checked as complete lists and only those rows are written.
@@ -395,6 +429,7 @@ export const deleteSticky=mutation({args:{token:v.string(),id:v.string(),revisio
   await ctx.db.patch(room._id,{stickies:room.stickies.filter(n=>n.id!==id)});
 }});
 export const cleanup=internalMutation({args:{},handler:async ctx=>{
+  for(const grant of await ctx.db.query('voiceGrants').withIndex('by_expiry',q=>q.lt('expiresAt',Date.now())).take(100))await ctx.db.delete(grant._id);
   const expired=await ctx.db.query('sessions').withIndex('by_expiry',q=>q.lt('expiresAt',Date.now())).take(100);
   for(const s of expired)await ctx.db.delete(s._id);
   const oldMessages=await ctx.db.query('messages').withIndex('by_time',q=>q.lt('sentAt',Date.now()-7*86400000)).take(200);

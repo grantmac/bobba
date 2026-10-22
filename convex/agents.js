@@ -20,8 +20,10 @@ export async function agentFor(ctx,agentToken){
   const digest=await hash(agentToken);
   const link=await ctx.db.query('agentLinks').withIndex('by_token',q=>q.eq('tokenHash',digest)).unique();
   if(!link)fail('This agent is not attached. Attach it with a pairing code from the room.');
+  if(link.connectedAt===undefined&&link.expiresAt!==undefined&&link.expiresAt<=Date.now())fail('This agent connection expired. Open a new connection from Codex.');
   const player=await ctx.db.get(link.playerId);
   if(!player)fail('The player this agent belonged to has left. Attach it again.');
+  if((player.blockedUntil??0)>Date.now())fail('This player is temporarily removed from the room.');
   return {player,link};
 }
 // The map; with `zones`, those zones' furniture and the definitions it needs come too.
@@ -37,7 +39,7 @@ const ownSpaceIds=(room,player)=>(room.spaces??[]).filter(s=>s.owner===player._i
 export const attached=query({args:{token:v.string()},handler:async(ctx,{token})=>{
   const player=await playerFor(ctx,token);
   const links=await ctx.db.query('agentLinks').withIndex('by_player',q=>q.eq('playerId',player._id)).collect();
-  return links.filter(l=>l.tokenHash).map(l=>({id:l._id,label:l.label??'Agent',attachedAt:l.createdAt}));
+  return links.filter(l=>l.tokenHash).map(l=>({id:l._id,label:l.label??'Agent',attachedAt:l.createdAt,connectedAt:l.connectedAt??null}));
 }});
 // A key for the hosted endpoint: a long-lived agent token handed to the player directly
 // (shown once) to paste into their agent's key prompt.
@@ -45,6 +47,11 @@ export const createKey=mutation({args:{token:v.string(),label:v.optional(v.strin
   const player=await playerFor(ctx,token),now=Date.now(),agentToken=hex(32);
   await ctx.db.insert('agentLinks',{playerId:player._id,createdAt:now,tokenHash:await hash(agentToken),label:(label??'Plugin').slice(0,40)});
   return {agentToken};
+}});
+// A copied key is not a connection: record the first authenticated MCP contact.
+export const connected=mutation({args:{agentToken:v.string()},handler:async(ctx,{agentToken})=>{
+  const {link}=await agentFor(ctx,agentToken);
+  if(link.connectedAt===undefined)await ctx.db.patch(link._id,{connectedAt:Date.now()});
 }});
 export const revoke=mutation({args:{token:v.string()},handler:async(ctx,{token})=>{
   const player=await playerFor(ctx,token);
@@ -56,7 +63,7 @@ export const status=query({args:{agentToken:v.string()},handler:async(ctx,{agent
   const {player}=await agentFor(ctx,agentToken);
   const assets=await ctx.db.query('assets').withIndex('by_owner',q=>q.eq('ownerId',player._id)).collect();
   const room=await getRoom(ctx),placed=(await ownedItems(ctx,player._id)).filter(isPlaced);
-  return {playerName:player.name,playerId:player._id,assets:assets.map(a=>({id:a._id,type:assetType(a),name:a.name,category:a.category,width:a.width,depth:a.depth,...(a.category==='Seating'?{seat:a.seat??null}:{}),...(a.frameDuration?{animated:true,frameMs:a.frameDuration,switchable:!!a.switchable}:{}),createdAt:a.createdAt})),
+  return {playerName:player.name,playerId:player._id,assets:assets.map(a=>({id:a._id,type:assetType(a),name:a.name,category:a.category,width:a.width,depth:a.depth,...(a.category==='Seating'?{seat:a.seat??null}:{}),...(a.frameDuration?{animated:true,frameMs:a.frameDuration,switchable:!!a.switchable}:{}),programRevision:a.programRevision??0,programmable:!!a.program,createdAt:a.createdAt})),
     placed:placed.map(({id,type,x,z,rotation})=>({id,type,x,z,rotation})),categories:ASSET_CATEGORIES,
     spaces:(room.spaces??[]).filter(s=>s.owner===player._id).map(s=>({id:s.id,name:s.name,width:s.width,depth:s.depth,...spaceStyle(s)})),
     spaceOptions:{perPlayer:SPACES_PER_PLAYER,limit:SPACE_LIMIT,size:`${SPACE_SIZE} by ${SPACE_SIZE} tiles to start; resize_space makes it ${SPACE_MIN_WIDTH} to ${SPACE_MAX_WIDTH} tiles wide`,floors:SPACE_FLOORS,walls:SPACE_WALLS,colors:'any hex colour like #b59232 (floorColors are the room palette)',floorColors,pictures:`PNG, JPEG, WebP or GIF up to ${SPACE_IMAGE_MAX/1024/1024} MB, uploaded through upload_url; fit 'tile' repeats it on every tile or wall segment, 'cover' stretches one copy over the whole floor or wall`}};
@@ -139,6 +146,7 @@ export const deleteAsset=mutation({args:{agentToken:v.string(),id:v.id('assets')
   // Every copy goes, wherever it stands; a piece that sat on one of them is healed back to its owner's hands when that zone next changes.
   for(const doc of await ctx.db.query('furniture').withIndex('by_type',q=>q.eq('type',assetType(asset))).collect())await ctx.db.delete(doc._id);
   for(const storageId of new Set([asset.icon,...asset.parts.map(p=>p.storageId)]))await ctx.storage.delete(storageId);
+  for(const row of await ctx.db.query('programInstances').withIndex('by_asset',q=>q.eq('assetId',id)).collect())await ctx.db.delete(row._id);
   await ctx.db.delete(id);
 }});
 // The floor as the agent sees it: which tiles exist, which are taken, and where walls are. Every

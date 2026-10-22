@@ -13,6 +13,10 @@ export function createMultiplayer(){
   const zones=new Map(),pinned=new Set(),loaded=new Map(),looks=new Map();let wanted=null,lastZones=[];
   const RELEASE_AFTER=2500;
   try{token=localStorage.getItem(KEY)||'';}catch{}
+  let remembered=!!token;
+  function remember(){try{localStorage.setItem(KEY,token);remembered=localStorage.getItem(KEY)===token;}catch{remembered=false;}}
+  function acceptSession(result){if(result.token){token=result.token;me=result.player;entryCode='';remember();}return result;}
+  async function identityCall(kind,fn,args){try{return await client[kind](fn,args);}catch(error){throw new Error(errorMessage(error));}}
   function errorMessage(error){return typeof error?.data==='string'?error.data:error?.message?.replace(/\[CONVEX[^\]]*\]\s*/,'').split('\n')[0]||'The room could not be reached.';}
   async function mutatePong(name,args={}){try{return await client.mutation(api.pong[name],{token,...args});}catch(error){throw new Error(errorMessage(error));}}
   async function mutate(name,args={}){
@@ -31,12 +35,42 @@ export function createMultiplayer(){
   window.addEventListener('pageshow',event=>{if(event.persisted&&me)mutate('heartbeat',{connectionId,pageOrigin:location.origin}).catch(()=>{});});
   return {
     get adminEntry(){return !!entryCode;},get me(){return me;},get state(){return state;},now:()=>Date.now()+offset,
-    async resume(){if(entryCode||!token)return null;try{me=await client.query(api.room.me,{token});return me;}catch(error){if(error?.data){token='';try{localStorage.removeItem(KEY);}catch{}return null;}throw new Error('The room server could not be reached. Please try again.');}},
+    async resume(){
+      if(entryCode||!token)return null;
+      try{
+        try{me=await client.mutation(api.identity.resume,{token});}
+        catch(error){
+          // A local client can be ahead of the shared deployment during development.
+          if(!error?.message?.includes("Could not find public function for 'identity:resume'"))throw error;
+          me=await client.query(api.room.me,{token});
+        }
+        return me;
+      }catch(error){
+        if(errorMessage(error).includes('removed from the room'))throw new Error(errorMessage(error));
+        if(error?.data){token='';try{localStorage.removeItem(KEY);}catch{}return null;}
+        throw new Error('The room server could not be reached. Please try again.');
+      }
+    },
     async entryAppearance(){if(!entryCode)return null;try{return await client.query(api.room.entryAppearance,{entryCode});}catch(error){throw new Error(errorMessage(error));}},
+    async checkName(name){try{return await client.query(api.room.checkName,{name,...(entryCode?{entryCode}:{})});}catch(error){throw new Error(errorMessage(error));}},
     async join(name,look,{appearanceChanged=false}={}){
       if(!token||entryCode)token=randomToken();
       try{me=await client.mutation(api.room.join,{token,name,look,pageOrigin:location.origin,...(entryCode?{entryCode,replaceLook:appearanceChanged}:{})});}catch(error){throw new Error(errorMessage(error));}
-      entryCode='';try{localStorage.setItem(KEY,token);}catch{}return me;
+      entryCode='';remember();return me;
+    },
+    identity:{
+      get remembered(){return remembered;},
+      status:()=>identityCall('query',api.identity.status,{token}),
+      registrationOptions:()=>identityCall('action',api.passkeys.registrationOptions,{token,origin:location.origin}),
+      register:(id,response)=>identityCall('action',api.passkeys.register,{token,id,response}),
+      authenticationOptions:()=>identityCall('action',api.passkeys.authenticationOptions,{origin:location.origin}),
+      authenticate:async(id,response)=>acceptSession(await identityCall('action',api.passkeys.authenticate,{id,response})),
+      makeBackup:()=>identityCall('mutation',api.identity.makeBackup,{token}),
+      useBackup:async code=>{
+        const result=await identityCall('mutation',api.identity.useBackup,{code});
+        if(result.error)throw new Error(result.error);
+        return acceptSession(result);
+      },
     },
     async loadPreview(){const value=await client.query(api.room.preview,{});offset=value.serverTime-Date.now();return value;},
     preview(onState,onError){
@@ -49,7 +83,7 @@ export function createMultiplayer(){
     // lobby switches, what the player holds and the pong table; `setZones` adds and drops a
     // presence, chat and furniture subscription per zone as the camera moves. Only the zones in
     // view cost anything, however many exist.
-    async watch({onState,onError,onMap,onSignals,onFurniture,onPong}){
+    async watch({onState,onError,onMap,onSignals,onFurniture,onPrograms,onPong}){
       try{await mutate('heartbeat',{connectionId,pageOrigin:location.origin});}catch(error){onError(error.message);return;}
       unsubscribe?.();unsubscribeRoom?.();
       const error=e=>onError(errorMessage(e));
@@ -68,6 +102,11 @@ export function createMultiplayer(){
           state={serverTime:serverTime||Date.now()+offset,me,players:[...players.values()],messages};onState(state);
         });
       };
+      let programsQueued=false;
+      const emitPrograms=()=>{
+        if(programsQueued)return;programsQueued=true;
+        queueMicrotask(()=>{programsQueued=false;onPrograms?.([...zones.values()].flatMap(z=>z.programs??[]));});
+      };
       let furnitureQueued=false;
       const emitFurniture=()=>{
         if(furnitureQueued)return;furnitureQueued=true;
@@ -85,16 +124,17 @@ export function createMultiplayer(){
       unsubscribeRoom=null;
       function addZone(id){
         if(zones.has(id)){const zone=zones.get(id);clearTimeout(zone.release);zone.release=null;return;}
-        const zone={presence:null,messages:null,furniture:null,release:null,stops:[]};zones.set(id,zone);
+        const zone={presence:null,messages:null,furniture:null,programs:null,release:null,stops:[]};zones.set(id,zone);
         zone.stops=[
           client.onUpdate(api.room.presence,{zone:id},value=>{zone.presence=value;emit();},error),
+          client.onUpdate(api.programs.list,{zone:id},value=>{zone.programs=value;emitPrograms();},error),
           client.onUpdate(api.room.chatFeed,{token,zone:id},value=>{zone.messages=value;emit();},error),
           client.onUpdate(api.room.zoneFurniture,{token,zone:id},value=>{zone.furniture=value;emitFurniture();loaded.get(id)?.forEach(resolve=>resolve());loaded.delete(id);},error)
         ];
       }
       function dropZone(id){
         const zone=zones.get(id);if(!zone)return;
-        clearTimeout(zone.release);zone.stops.forEach(stop=>stop());zones.delete(id);emit();emitFurniture();
+        clearTimeout(zone.release);zone.stops.forEach(stop=>stop());zones.delete(id);emit();emitFurniture();emitPrograms();
       }
       wanted=ids=>{
         const keep=new Set([...ids,...pinned,...(me?[me.zone]:[])]);
@@ -147,6 +187,14 @@ export function createMultiplayer(){
     },
     pong:{join:()=>mutatePong('join'),leave:()=>mutatePong('leave'),paddle:(side,y)=>mutatePong('paddle',{side,y}),hit:(side,y,serial)=>mutatePong('hit',{side,y,serial}),miss:(side,serial)=>mutatePong('miss',{side,serial})},
     chat:(body,mode)=>mutate('chat',{body,mode}),
+    bot:{
+      status:(onValue,onError)=>client.onUpdate(api.bot.status,{},onValue,error=>onError(errorMessage(error))),
+      watch:(onValue,onError)=>client.onUpdate(api.bot.manage,{token},onValue,error=>onError(errorMessage(error))),
+      configure:settings=>client.mutation(api.bot.configure,{token,...settings}).catch(error=>{throw new Error(errorMessage(error));}),
+      saveMemory:(text,id)=>client.mutation(api.bot.saveMemory,{token,text,...(id?{id}:{})}).catch(error=>{throw new Error(errorMessage(error));}),
+      forgetMemory:id=>client.mutation(api.bot.forgetMemory,{token,id}).catch(error=>{throw new Error(errorMessage(error));}),
+      restore:playerId=>client.mutation(api.bot.restore,{token,playerId}).catch(error=>{throw new Error(errorMessage(error));}),
+    },
     typing:typing=>mutate('setTyping',{typing}),
     // Furniture saves carry only the pieces that changed (each whole, or {id, removed: true}).
     furniture:changes=>mutate('editFurniture',{changes}),
@@ -159,6 +207,10 @@ export function createMultiplayer(){
     deleteSticky:(id,revision)=>mutate('deleteSticky',{id,revision}),
     seed:(options,items)=>mutate('seed',{options,items}),
     // Player-built catalogue pieces, live: a new piece reaches every open room at once.
+    programs:{
+      save:(itemId,version,revision,state)=>client.mutation(api.programs.save,{token,itemId,version,revision,state}).catch(error=>{throw new Error(errorMessage(error));}),
+      interact:itemId=>client.mutation(api.programs.interact,{token,itemId}).catch(error=>{throw new Error(errorMessage(error));}),
+    },
     assets:{
       list:()=>client.query(api.assets.list,{}).catch(error=>{throw new Error(errorMessage(error));}),
       watch:(onList,onError)=>client.onUpdate(api.assets.list,{},onList,error=>onError(errorMessage(error))),

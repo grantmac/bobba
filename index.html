@@ -5,16 +5,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#121212" />
     <title>Private room</title>
+    <style>
+      /* Cover the first paint, before the app stylesheet or scripts arrive. */
+      html,body{margin:0;background:#121212}
+      #update-veil{position:fixed;inset:0;z-index:30;display:grid;place-items:center;background:#121212;color:#ccc;font:12px Verdana,sans-serif}
+      #update-veil[hidden]{display:none}
+      body[data-loading]>:not(#update-veil):not(#load-error){visibility:hidden}
+      body[data-loading] dialog::backdrop{visibility:hidden}
+    </style>
   </head>
-  <body>
+  <body data-loading aria-busy="true">
     <main id="scene" tabindex="0" role="application" aria-label="Click an empty floor tile to walk there. You can also use the arrow keys."></main>
     <div id="load-error" role="alert" hidden>We couldn’t open the room. Please try a browser with WebGL enabled.</div>
-    <div id="update-veil" hidden aria-hidden="true"></div>
-    <script>
-      // A deployment reload fades out and back in: keep the veil up from the very first paint
-      // when this tab is returning from an update, before the app has loaded.
-      try{const s=JSON.parse(sessionStorage.getItem('habbo-room-update-v1'));if(s&&Date.now()-s.savedAt<120000)document.getElementById('update-veil').hidden=false;}catch{}
-    </script>
+    <div id="update-veil" role="status">Getting the room ready…</div>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>
