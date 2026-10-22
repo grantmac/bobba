@@ -21,7 +21,9 @@ test('a strip splits into equal frames cut to one shared box',async()=>{
 test('an animated piece packs its frames into one sheet with cells, a frame time and a switch',async()=>{
   const uploads=[],upload=async buffer=>{uploads.push(buffer);return `id${uploads.length}`;};
   const {spec,summary}=await prepareAsset({name:'Lamp',kind:'lamp',width:1,depth:1,frames:3,frame_ms:400,switchable:true},{2:splitStrip(strip(3),3)},upload);
-  assert.equal(uploads.length,1);
+  assert.equal(uploads.length,2);
+  const icon=await Jimp.read(uploads[1]);
+  assert.ok(icon.width<=72&&icon.height<=72);assert.notEqual(spec.icon,spec.parts[0].storageId);
   const sheet=await Jimp.read(uploads[0]);
   assert.equal(spec.parts.length,1);assert.equal(spec.parts[0].frames.length,3);
   assert.equal(sheet.width,spec.parts[0].frames.reduce((w,c)=>w+c.width,0));

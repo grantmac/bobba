@@ -1,6 +1,6 @@
 import {createShare} from './share.js';
 
-export function createToolbar({onRoomEdit,onFurniture,onChat,onTyping,onVoice,onAppearance,onGesture,onMusicMute,onMusicVolume,admin=true}) {
+export function createToolbar({onRoomEdit,onFurniture,onChat,onTyping,onAppearance,onGesture,onMusicMute,onMusicVolume,admin=true}) {
   const bar=document.createElement('div');bar.className='room-toolbar';
   bar.innerHTML=`<form class="room-chat">
     <div class="speech-picker"><button type="button" id="speech-mode" aria-label="Speech mode: Say" aria-haspopup="menu" aria-expanded="false"><span>Say</span><img src="/assets/bar/dropdown-arrow.png" alt=""></button>
@@ -63,9 +63,6 @@ export function createToolbar({onRoomEdit,onFurniture,onChat,onTyping,onVoice,on
   }
   document.addEventListener('pointerdown',event=>{if(!inActions(event.target))setActionsOpen(false);});
   if(onGesture)icons.append(actions);
-  const voice=document.createElement('button');voice.type='button';voice.className='bar-icon voice-toggle';voice.disabled=true;voice.title='Voice chat';voice.setAttribute('aria-label','Voice chat');
-  voice.innerHTML='<img src="/assets/bar/microphone.png" width="32" height="40" alt="">';
-  voice.onclick=onVoice;if(onVoice)icons.append(voice);
   const appearance=document.createElement('button');appearance.type='button';appearance.className='bar-icon appearance-toggle';appearance.disabled=true;appearance.title='Change appearance';appearance.setAttribute('aria-label','Change appearance');
   const portrait=document.createElement('canvas');portrait.width=96;portrait.height=120;portrait.setAttribute('aria-hidden','true');appearance.append(portrait);
   appearance.onclick=onAppearance;if(onAppearance)icons.append(appearance);
@@ -82,7 +79,7 @@ export function createToolbar({onRoomEdit,onFurniture,onChat,onTyping,onVoice,on
   const shareDialog=createShare({onClose:()=>focusTrigger(share)});
   share.onclick=()=>{setToolsOpen(false);setMusicOpen(false);setActionsOpen(false);setOpen(false);shareDialog.open();};
   icons.append(share);
-  for(const [button,label] of [[musicToggle,'Music'],[actionsToggle,'Actions'],[voice,'Voice chat'],[appearance,'My look'],[room,'Edit room'],[furniture,'Furniture'],[share,'Share']]){
+  for(const [button,label] of [[musicToggle,'Music'],[actionsToggle,'Actions'],[appearance,'My look'],[room,'Edit room'],[furniture,'Furniture'],[share,'Share']]){
     const text=document.createElement('span');text.className='toolbar-icon-label';text.textContent=label;button.append(text);
   }
   icons.addEventListener('click',event=>{if(event.target.closest('.bar-icon'))setToolsOpen(false);});
@@ -141,7 +138,5 @@ export function createToolbar({onRoomEdit,onFurniture,onChat,onTyping,onVoice,on
     button.addEventListener('pointerleave',()=>bar.querySelector('.bar-hint').textContent='Click to walk. Drag to pan. Scroll to zoom.');
   });
   document.body.append(bar);
-  return {setMusicState,setDancing(action){actionsMenu.querySelectorAll('[role=menuitemcheckbox]').forEach(button=>button.setAttribute('aria-checked',String(button.dataset.gesture===action)));},setAvatar(canvas){const ctx=portrait.getContext('2d');ctx.clearRect(0,0,portrait.width,portrait.height);ctx.imageSmoothingEnabled=false;ctx.drawImage(canvas,24,16,48,60,0,0,portrait.width,portrait.height);},setAppearanceEnabled(value){appearance.disabled=!value;},setVoiceEnabled(value){voice.disabled=!value;},setVoiceState({connected,microphone,blocked=false}){voice.classList.toggle('voice-connected',connected);voice.classList.toggle('voice-microphone',microphone);
-    // Playback blocked until a gesture: say so in the hint strip, since the voice panel is usually closed.
-    const hint=bar.querySelector('.bar-hint');if(blocked)hint.textContent='Tap anywhere to hear voice.';else if(hint.textContent==='Tap anywhere to hear voice.')hint.textContent='Click to walk. Drag to pan. Scroll to zoom.';voice.title=microphone?'Voice chat · microphone on':connected?'Voice chat · listening':'Voice chat';voice.setAttribute('aria-label',voice.title);},setAdmin(value){adminButtons.forEach(button=>button.hidden=!value);},status(message){bar.querySelector('.bar-hint').textContent=message;}};
+  return {setMusicState,setDancing(action){actionsMenu.querySelectorAll('[role=menuitemcheckbox]').forEach(button=>button.setAttribute('aria-checked',String(button.dataset.gesture===action)));},setAvatar(canvas){const ctx=portrait.getContext('2d');ctx.clearRect(0,0,portrait.width,portrait.height);ctx.imageSmoothingEnabled=false;ctx.drawImage(canvas,24,16,48,60,0,0,portrait.width,portrait.height);},setAppearanceEnabled(value){appearance.disabled=!value;},setAdmin(value){adminButtons.forEach(button=>button.hidden=!value);},status(message){bar.querySelector('.bar-hint').textContent=message;}};
 }

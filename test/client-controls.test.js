@@ -184,7 +184,7 @@ describe('deployment updates',()=>{
     let resolve;const late=setup({fetchVersion:()=>new Promise(done=>resolve=done)});late.updater.stop();resolve('build-b');await Promise.resolve();expect(late.reload).not.toHaveBeenCalled();
   });
   it('restores state only once, for the same player and a recent update',()=>{
-    const data=new Map(),storage={setItem:(k,v)=>data.set(k,v),getItem:k=>data.get(k),removeItem:k=>data.delete(k)},snapshot={playerId:'grant',voice:{connected:true,microphone:false},music:{muted:true,volume:.2}};
+    const data=new Map(),storage={setItem:(k,v)=>data.set(k,v),getItem:k=>data.get(k),removeItem:k=>data.delete(k)},snapshot={playerId:'grant',music:{muted:true,volume:.2}};
     saveUpdateSession(snapshot,storage,1000);expect(takeUpdateSession('grant',storage,2000)).toMatchObject(snapshot);expect(takeUpdateSession('grant',storage,2000)).toBeNull();
     saveUpdateSession(snapshot,storage,1000);expect(takeUpdateSession('visitor',storage,2000)).toBeNull();
     saveUpdateSession(snapshot,storage,1000);expect(takeUpdateSession('grant',storage,121000)).toBeNull();

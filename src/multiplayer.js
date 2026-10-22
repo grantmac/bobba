@@ -10,7 +10,7 @@ export function createMultiplayer(){
   const pairingStorage='habbo-room-pairing';let pairingCode=fragment.get('pair')||'';
   try{if(pairingCode)sessionStorage.setItem(pairingStorage,pairingCode);else pairingCode=sessionStorage.getItem(pairingStorage)||'';}catch{}
   if(entryCode||fragment.has('pair'))history.replaceState(null,'',location.pathname+location.search);
-  let token='',me=null,state=null,room=null,inventory=null,unsubscribe=null,unsubscribeRoom=null,unsubscribePong=null,heartbeat=null,offset=0;
+  let token='',me=null,state=null,room=null,inventory=null,unsubscribe=null,unsubscribeRoom=null,heartbeat=null,heartbeatInterval=15000,offset=0;
   // Per-zone subscriptions, keyed by zone id; `pinned` zones stay while a picture needs them.
   const zones=new Map(),pinned=new Set(),loaded=new Map(),looks=new Map();let wanted=null,lastZones=[];
   const RELEASE_AFTER=2500;
@@ -20,21 +20,29 @@ export function createMultiplayer(){
   function acceptSession(result){if(result.token){token=result.token;me=result.player;entryCode='';remember();}return result;}
   async function identityCall(kind,fn,args){try{return await client[kind](fn,args);}catch(error){throw new Error(errorMessage(error));}}
   function errorMessage(error){return typeof error?.data==='string'?error.data:error?.message?.replace(/\[CONVEX[^\]]*\]\s*/,'').split('\n')[0]||'The room could not be reached.';}
-  async function mutatePong(name,args={}){try{return await client.mutation(api.pong[name],{token,...args});}catch(error){throw new Error(errorMessage(error));}}
   async function mutate(name,args={}){
     const sent=Date.now();
     try{
       const result=await client.mutation(api.room[name],{token,...args});
       // Presence can stay cached for hours while the room is idle; time comes from a fresh heartbeat.
-      if(name==='heartbeat'&&Number.isFinite(result?.serverTime))offset=result.serverTime-(sent+Date.now())/2;
+      if(name==='heartbeat'&&Number.isFinite(result?.serverTime)){
+        offset=result.serverTime-(sent+Date.now())/2;
+        // Older backends still need the 15-second pulse until their leases are upgraded.
+        heartbeatInterval=result.heartbeatInterval===30000?30000:15000;
+      }
       return result;
     }catch(error){throw new Error(errorMessage(error));}
   }
   function randomToken(){return [...crypto.getRandomValues(new Uint8Array(32))].map(b=>b.toString(16).padStart(2,'0')).join('');}
   const connectionId=randomToken();
+  let pendingHeartbeat=null;
+  function pulse(){
+    if(!pendingHeartbeat)pendingHeartbeat=mutate('heartbeat',{connectionId,pageOrigin:location.origin}).finally(()=>{pendingHeartbeat=null;});
+    return pendingHeartbeat;
+  }
   const depart=()=>{if(token&&me)navigator.sendBeacon(import.meta.env.VITE_CONVEX_SITE_URL+'/disconnect',JSON.stringify({token,connectionId}));};
   window.addEventListener('pagehide',depart);
-  window.addEventListener('pageshow',event=>{if(event.persisted&&me)mutate('heartbeat',{connectionId,pageOrigin:location.origin}).catch(()=>{});});
+  window.addEventListener('pageshow',event=>{if(event.persisted&&me)pulse().catch(()=>{});});
   return {
     get adminEntry(){return !!entryCode;},get me(){return me;},get state(){return state;},now:()=>Date.now()+offset,
     async resume(){
@@ -82,11 +90,11 @@ export function createMultiplayer(){
       return ()=>stops.forEach(stop=>stop());
     },
     // The live room, one zone at a time. Fixed subscriptions carry the player, the map, the
-    // lobby switches, what the player holds and the pong table; `setZones` adds and drops a
+    // lobby switches and what the player holds; `setZones` adds and drops a
     // presence, chat and furniture subscription per zone as the camera moves. Only the zones in
     // view cost anything, however many exist.
-    async watch({onState,onError,onMap,onSignals,onFurniture,onPrograms,onPong}){
-      try{await mutate('heartbeat',{connectionId,pageOrigin:location.origin});}catch(error){onError(error.message);return;}
+    async watch({onState,onError,onMap,onSignals,onFurniture,onPrograms}){
+      try{await pulse();}catch(error){onError(error.message);return;}
       unsubscribe?.();unsubscribeRoom?.();
       const error=e=>onError(errorMessage(e));
       let queued=false;
@@ -96,7 +104,7 @@ export function createMultiplayer(){
           queued=false;if(!me)return;
           const players=new Map(),messages=[];let serverTime=0;
           for(const zone of zones.values()){
-            if(zone.presence){serverTime=Math.max(serverTime,zone.presence.serverTime);for(const p of zone.presence.players)players.set(p.id,p);}
+            if(zone.presence){serverTime=Math.max(serverTime,zone.presence.serverTime??0);for(const p of zone.presence.players)players.set(p.id,p);}
             if(zone.messages)messages.push(...zone.messages);
           }
           players.delete(me.id);
@@ -115,28 +123,37 @@ export function createMultiplayer(){
         queueMicrotask(()=>{furnitureQueued=false;onFurniture?.({zones:new Map([...zones].filter(([,z])=>z.furniture).map(([id,z])=>[id,z.furniture])),inventory:inventory??[]});});
       };
       const stops=[
-        client.onUpdate(api.room.session,{token},()=>{},error),
         client.onUpdate(api.room.me,{token},value=>{me=value;emit();},error),
         client.onUpdate(api.room.roomMap,{token},value=>{room=value;onMap?.(value);},error),
         client.onUpdate(api.room.signals,{},value=>onSignals?.(value),error),
-        client.onUpdate(api.room.inventory,{token},value=>{inventory=value;emitFurniture();},error),
-        client.onUpdate(api.pong.state,{},value=>onPong?.(value),error)
+        client.onUpdate(api.room.inventory,{token},value=>{inventory=value;emitFurniture();},error)
       ];
       unsubscribe=()=>{stops.forEach(stop=>stop());for(const id of [...zones.keys()])dropZone(id);};
       unsubscribeRoom=null;
       function addZone(id){
         if(zones.has(id)){const zone=zones.get(id);clearTimeout(zone.release);zone.release=null;return;}
-        const zone={presence:null,messages:null,furniture:null,programs:null,release:null,stops:[]};zones.set(id,zone);
+        const zone={presence:null,messages:null,furniture:null,programs:null,stopPrograms:null,programEpoch:0,release:null,stops:[]};zones.set(id,zone);
+        function watchPrograms(items){
+          const needed=items.some(item=>item.type.startsWith('asset_'));
+          if(needed&&!zone.stopPrograms){
+            const epoch=++zone.programEpoch;
+            zone.stopPrograms=client.onUpdate(api.programs.list,{zone:id},value=>{
+              if(zones.get(id)!==zone||zone.programEpoch!==epoch)return;
+              zone.programs=value;emitPrograms();
+            },error);
+          }else if(!needed){
+            zone.programEpoch++;zone.stopPrograms?.();zone.stopPrograms=null;zone.programs=[];emitPrograms();
+          }
+        }
         zone.stops=[
-          client.onUpdate(api.room.presence,{zone:id},value=>{zone.presence=value;emit();},error),
-          client.onUpdate(api.programs.list,{zone:id},value=>{zone.programs=value;emitPrograms();},error),
+          client.onUpdate(heartbeatInterval===30000?api.room.livePresence:api.room.presence,{zone:id},value=>{zone.presence=value;emit();},error),
           client.onUpdate(api.room.chatFeed,{token,zone:id},value=>{zone.messages=value;emit();},error),
-          client.onUpdate(api.room.zoneFurniture,{token,zone:id},value=>{zone.furniture=value;emitFurniture();loaded.get(id)?.forEach(resolve=>resolve());loaded.delete(id);},error)
+          client.onUpdate(api.room.zoneFurniture,{token,zone:id},value=>{zone.furniture=value;watchPrograms(value);emitFurniture();loaded.get(id)?.forEach(resolve=>resolve());loaded.delete(id);},error)
         ];
       }
       function dropZone(id){
         const zone=zones.get(id);if(!zone)return;
-        clearTimeout(zone.release);zone.stops.forEach(stop=>stop());zones.delete(id);emit();emitFurniture();emitPrograms();
+        clearTimeout(zone.release);zone.stopPrograms?.();zone.stops.forEach(stop=>stop());zones.delete(id);emit();emitFurniture();emitPrograms();
       }
       wanted=ids=>{
         const keep=new Set([...ids,...pinned,...(me?[me.zone]:[])]);
@@ -146,7 +163,7 @@ export function createMultiplayer(){
       };
       // Zones asked for before the room was live are picked up now.
       wanted(lastZones);
-      clearInterval(heartbeat);heartbeat=setInterval(()=>mutate('heartbeat',{connectionId,pageOrigin:location.origin}).catch(error=>onError(error.message)),15000);
+      clearInterval(heartbeat);heartbeat=setInterval(()=>pulse().catch(error=>onError(error.message)),heartbeatInterval);
     },
     // The zones the camera can see; the player's own zone is always included.
     setZones(ids){lastZones=ids;wanted?.(ids);},
@@ -189,7 +206,6 @@ export function createMultiplayer(){
       page:before=>client.query(api.visits.page,{token,...(before?{before}:{})}).catch(error=>{throw new Error(errorMessage(error));}),
       watch:(onPage,onError)=>client.onUpdate(api.visits.page,{token},onPage,error=>onError(errorMessage(error))),
     },
-    pong:{join:()=>mutatePong('join'),leave:()=>mutatePong('leave'),paddle:(side,y)=>mutatePong('paddle',{side,y}),hit:(side,y,serial)=>mutatePong('hit',{side,y,serial}),miss:(side,serial)=>mutatePong('miss',{side,serial})},
     chat:(body,mode)=>mutate('chat',{body,mode}),
     bot:{
       status:(onValue,onError)=>client.onUpdate(api.bot.status,{},onValue,error=>onError(errorMessage(error))),
@@ -238,7 +254,7 @@ export function createMultiplayer(){
       finish:(id,storageId)=>client.mutation(api.captures.finish,{token,id,storageId}),
       failed:(id,reason)=>client.mutation(api.captures.failed,{token,id,reason}),
     },
-    close(){depart();window.removeEventListener('pagehide',depart);unsubscribe?.();unsubscribeRoom?.();unsubscribePong?.();clearInterval(heartbeat);client.close();},
+    close(){depart();window.removeEventListener('pagehide',depart);unsubscribe?.();unsubscribeRoom?.();clearInterval(heartbeat);client.close();},
   };
 }
 export function samplePlayer(player,now){

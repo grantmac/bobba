@@ -3,10 +3,10 @@
 import {installAutoUpdate,saveUpdateSession,takeUpdateSession} from '/src/auto-update.js';
 const version=new URLSearchParams(location.search).get('build')??'first',latestKey='fixture-release';
 const state=takeUpdateSession('fixture');document.querySelector('#build').textContent=`Running build: ${version}`;
-document.querySelector('#result').textContent=state?'PASS: automatic refresh restored the same player’s muted voice and music settings.':'Type a draft, simulate deployment, then clear the draft to allow the update.';
-if(state&&(!state.voice.connected||state.voice.microphone!==false||state.music.volume!==.2||!state.music.muted))throw Error('Reload settings lost');
+document.querySelector('#result').textContent=state?'PASS: automatic refresh restored the same player’s music settings.':'Type a draft, simulate deployment, then clear the draft to allow the update.';
+if(state&&(state.music.volume!==.2||!state.music.muted))throw Error('Reload settings lost');
 const updater=installAutoUpdate({version,fetchVersion:async()=>sessionStorage.getItem(latestKey)??version,canReload:()=>!document.querySelector('#draft').value,visible:()=>true,interval:5000,
- beforeReload:()=>saveUpdateSession({playerId:'fixture',voice:{connected:true,microphone:false},music:{volume:.2,muted:true}}),
+ beforeReload:()=>saveUpdateSession({playerId:'fixture',music:{volume:.2,muted:true}}),
  reload:()=>location.replace(location.pathname+'?build='+sessionStorage.getItem(latestKey))});
 document.querySelector('#deploy').onclick=()=>{sessionStorage.setItem(latestKey,version==='first'?'second':'first');void updater.check();};document.querySelector('#check').onclick=()=>updater.check();
 window.addEventListener('pagehide',updater.stop);

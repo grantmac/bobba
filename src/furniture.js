@@ -7,6 +7,7 @@ import {createBalloonMotion} from './balloon-motion.js';
 import {createSpeakerMotion} from './speaker-motion.js';
 import {createAssetPrograms} from './asset-program-runtime.js';
 import {furnitureControls} from '../shared/furniture-controls.js';
+import {createFurnitureViewLoader} from './furniture-view-loader.js';
 
 const ROOT='/assets/furniture/';
 // Built pieces reference their sprites by URL; the shipped catalogue by file name.
@@ -21,11 +22,9 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
   const response=await fetch(ROOT+'catalog.json');
   if(!response.ok)throw new Error('Furniture could not be loaded.');
   let catalog=[...await response.json(),...initialAssets];const definitions=new Map(catalog.map(d=>[d.id,d]));
-  const frames=new Map(),loading=new Map();
-  function loadDefinition(def){
-    if(loading.has(def.id))return loading.get(def.id);
-    const promise=(async()=>{
-    const parts=await Promise.all(def.parts.map(part=>new Promise((resolve,reject)=>{
+  const frames=new Map();
+  const loadDefinition=createFurnitureViewLoader(async(def,selectedParts,selectedViews)=>{
+    const parts=await Promise.all(selectedParts.map(part=>new Promise((resolve,reject)=>{
       const image=new Image();image.onload=async()=>{
         try{
           const cells=part.frames?spriteSheetFrames(image,part.frames,part.trimFrames!==false):null;
@@ -39,7 +38,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
         }catch(error){reject(error);}
       };image.onerror=()=>reject(new Error(`Could not load ${part.file}`));load(image,part.file);
     })));
-    for(const view of def.views){
+    for(const view of selectedViews){
       const layers=parts.filter(p=>p.direction===view.source).sort((a,b)=>a.z-b.z||a.layer.localeCompare(b.layer));
       let left=Math.min(...layers.map(p=>-p.reg.x)),top=Math.min(...layers.map(p=>-p.reg.y));
       let right=Math.max(...layers.map(p=>-p.reg.x+p.width)),bottom=Math.max(...layers.map(p=>-p.reg.y+p.height));
@@ -93,10 +92,8 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
       if(slices?.length){frame.slices=slices.map(slice=>({...frame,...slice}));if(frame.off)frame.off.slices=frame.slices.map(slice=>({...slice,...paint([slice.part],0),animate:undefined}));}
       frames.set(`${def.id}:${view.direction}`,frame);
     }
-    })();
-    loading.set(def.id,promise);return promise;
-  }
-  await Promise.all([...new Set(initialItems.filter(isPlaced).map(i=>i.type))].filter(id=>definitions.has(id)).map(id=>loadDefinition(definitions.get(id))));
+  });
+  await Promise.all(initialItems.filter(i=>isPlaced(i)&&definitions.has(i.type)).map(i=>loadDefinition(definitions.get(i.type),i.rotation)));
   let page=0;const pageSize=48;
   let viewItems=[],items=[],history=[],selected=null,pending=null,visuals=[],filter='',category='All',editable=true,networkSave=null,networkPower=null,onPowerError=()=>{},saving=false;
   // Grant edits anything; everyone else edits only the pieces they built (`owner`).
@@ -198,23 +195,26 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
   function originFor(item,frame){const origin=baseOriginFor(item,frame),effect=effectFor(item.id);return {...origin,x:origin.x+(effect.offsetX??0),y:origin.y+(effect.offsetY??0)};}
   // Meshes persist across redraws, keyed by item and slice; only pieces whose frame
   // changed, appeared or vanished are created or disposed.
-  const meshes=new Map();
+  const meshes=new Map(),lastFrames=new Map();
   const redrawLoads=new WeakSet();
   function redraw(){
     programs.sync(items.filter(visible),definitions);
-    const kept=new Set();visuals=[];
+    const kept=new Set(),visibleIds=new Set();visuals=[];
     viewItems=pending?moveWithContents(items,pending,definitions):items;
     for(const item of viewItems){
       if(!visible(item))continue;
-      const frame=frameFor(item);
+      visibleIds.add(item.id);
+      let frame=frameFor(item);
+      if(frame)lastFrames.set(item.id,frame);
       if(!frame){
-        const load=loadDefinition(definitions.get(item.type));
+        const load=loadDefinition(definitions.get(item.type),effectFor(item.id).direction??item.rotation);
         // Copies share a load: subscribing per piece multiplies redraws while other types load.
         if(!redrawLoads.has(load)){
           redrawLoads.add(load);
           load.then(redraw).catch(error=>{panel.querySelector('.furniture-description').textContent=error.message;});
         }
-        continue;
+        // Keep the previous angle visible while the newly requested source loads.
+        frame=lastFrames.get(item.id);if(!frame)continue;
       }
       (frame.slices??[frame]).forEach((slice,index)=>{
         const key=`${item.id}:${index}`;let entry=meshes.get(key);
@@ -232,6 +232,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
       });
     }
     for(const [key,entry] of meshes){if(!kept.has(key)){disposeVisual(entry.mesh);meshes.delete(key);}}
+    for(const id of lastFrames.keys())if(!visibleIds.has(id))lastFrames.delete(id);
     refreshPositions();
   }
   function refreshPositions(){
@@ -454,7 +455,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
   return {open,pointer,key,roomChanged,redraw,seat,animate,debugVisuals:()=>visuals.map(v=>({id:v.item.id.slice(0,6),type:v.item.type.slice(0,22),x:v.item.x,z:v.item.z,u:v.item.u,h:v.item.height,on:v.item.supportId?.slice(0,6)??null,order:v.mesh.renderOrder,meshX:v.mesh.position.x,meshY:v.mesh.position.y,w:v.frame.canvas.width/v.frame.density,height:v.frame.canvas.height/v.frame.density,top:v.frame.top,left:v.frame.left})),approach:(id,from,canWalk)=>{const item=items.find(i=>i.id===id);return item&&visible(item)?approachFor(item,items,definitions,from,canWalk):null;},blocks:(x,z)=>blocksTile(x,z,items,definitions),close:()=>{cancel();selected=null;panel.hidden=true;render();},get placing(){return !!pending;},
     getItems:()=>structuredClone(items),
     async whenReady(){
-      await Promise.all([...new Set(items.filter(isPlaced).map(item=>item.type))].filter(id=>definitions.has(id)).map(id=>loadDefinition(definitions.get(id))));
+      await Promise.all(items.filter(i=>isPlaced(i)&&definitions.has(i.type)).map(i=>loadDefinition(definitions.get(i.type),effectFor(i.id).direction??i.rotation)));
       redraw();
     },
     receivePrograms:list=>{programs.receive(list);redraw();},
@@ -469,10 +470,10 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     // Built pieces arrive live; placed items of a piece that was just built become visible.
     setAssets(list){
       const keep=new Set(list.map(d=>d.id));
-      for(const def of catalog.filter(d=>d.id.startsWith('asset_')&&!keep.has(d.id))){definitions.delete(def.id);loading.delete(def.id);for(const view of def.views)frames.delete(`${def.id}:${view.direction}`);}
+      for(const def of catalog.filter(d=>d.id.startsWith('asset_')&&!keep.has(d.id))){definitions.delete(def.id);loadDefinition.delete(def.id);for(const view of def.views)frames.delete(`${def.id}:${view.direction}`);}
       catalog=[...catalog.filter(d=>!d.id.startsWith('asset_')),...list];
       // Keep loaded sprites while seating, power capability and programs change live.
-      for(const def of list){const known=definitions.get(def.id);if(!known)definitions.set(def.id,def);else{known.seat=def.seat;known.program=def.program;known.switchable=def.switchable;known.controls=def.controls;}}
+      for(const def of list){const known=definitions.get(def.id);if(!known)definitions.set(def.id,def);else{known.icon=def.icon;known.seat=def.seat;known.program=def.program;known.switchable=def.switchable;known.controls=def.controls;}}
       items=restoreItems(rawItems,definitions);listStale=true;render();
     }
   };

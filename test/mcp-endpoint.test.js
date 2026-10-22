@@ -2,7 +2,8 @@
 // The hosted MCP endpoint's protocol handling, without a room server: handshake, tool
 // listing, key checks and malformed requests. Tool calls that reach Convex are covered by
 // the agent tests in multiplayer.test.js through the same backend functions.
-import {describe,it,expect} from 'vitest';
+import {describe,it,expect,vi} from 'vitest';
+import {ConvexHttpClient} from 'convex/browser';
 import {POST,GET} from '../api/mcp.js';
 const URL_='https://chat.example.test/api/mcp';
 const post=(body,headers={})=>POST(new Request(URL_,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:typeof body==='string'?body:JSON.stringify(body)}));
@@ -11,12 +12,14 @@ describe('hosted MCP endpoint',()=>{
   it('answers initialize with a supported protocol version and tool capability',async()=>{
     const reply=await (await post(rpc('initialize',{protocolVersion:'2025-03-26',capabilities:{},clientInfo:{name:'t',version:'0'}}))).json();
     expect(reply.result.protocolVersion).toBe('2025-03-26');expect(reply.result.capabilities).toEqual({tools:{}});expect(reply.result.serverInfo.name).toBe('habbo-room');
+    expect(reply.result.instructions).toContain('Use room_overview for routine room checks');
+    expect(reply.result.instructions).not.toContain('After any change, room_picture');
     const newer=await (await post(rpc('initialize',{protocolVersion:'2099-01-01'}))).json();
     expect(newer.result.protocolVersion).toBe('2025-06-18');
   });
   it('lists the tools and answers notifications with 202',async()=>{
     const {result}=await (await post(rpc('tools/list'))).json();
-    expect(result.tools.map(t=>t.name)).toEqual(['status','design_asset','upload_url','preview_asset','submit_asset','add_asset','my_assets','set_controls','program_api','get_program','set_program','set_seat','delete_asset','room_map','room_picture','place','remove','add_space','design_surface','style_space','resize_space','remove_space']);
+    expect(result.tools.map(t=>t.name)).toEqual(['status','design_asset','upload_url','preview_asset','submit_asset','add_asset','my_assets','set_controls','program_api','get_program','set_program','set_seat','delete_asset','room_map','room_overview','room_picture','place','remove','add_space','design_surface','style_space','resize_space','remove_space']);
     const space=result.tools.find(t=>t.name==='add_space');
     expect(space.inputSchema.required).toEqual(['name']);expect(space.inputSchema.properties).not.toHaveProperty('width');expect(space.inputSchema.properties.floor.enum).toEqual(['plain','wood','tiles','carpet']);
     for(const tool of result.tools)expect(tool.inputSchema.type).toBe('object');
@@ -33,6 +36,16 @@ describe('hosted MCP endpoint',()=>{
     expect(result.isError).toBe(true);expect(result.content[0].text).toMatch(/Build with your agent/);
     const bad=await (await post(rpc('tools/call',{name:'status',arguments:{}}),{Authorization:'Bearer not-a-key'})).json();
     expect(bad.result.isError).toBe(true);
+  });
+  it('returns a text overview with one query and no image renderer',async()=>{
+    vi.stubEnv('CONVEX_URL','https://example.convex.cloud');
+    const query=vi.spyOn(ConvexHttpClient.prototype,'query').mockResolvedValue({players:[{name:'Visitor'}],furniture:[]});
+    try{
+      const {result}=await (await post(rpc('tools/call',{name:'room_overview'}),{Authorization:`Bearer ${'a'.repeat(64)}`})).json();
+      expect(result.isError).toBeUndefined();expect(result.content.map(c=>c.type)).toEqual(['text']);
+      expect(JSON.parse(result.content[0].text).players[0].name).toBe('Visitor');
+      expect(query).toHaveBeenCalledTimes(1);expect(query.mock.calls[0][1]).toEqual({agentToken:'a'.repeat(64),focus:'room'});
+    }finally{query.mockRestore();vi.unstubAllEnvs();}
   });
   it('provides the executable furniture contract without contacting the backend',async()=>{
     const {result}=await (await post(rpc('tools/call',{name:'program_api'}),{Authorization:`Bearer ${'a'.repeat(64)}`})).json();

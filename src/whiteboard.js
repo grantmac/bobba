@@ -6,9 +6,9 @@ import {BOARD_WIDTH,BOARD_HEIGHT,COLORS,applyUpdate} from '../shared/whiteboard.
 // so everyone sees the line appear as it is made.
 export function createWhiteboard({send,onError=()=>{}}){
   // Wall sprite: a framed board with a marker tray, drawn at twice the room's pixel size so
-  // the frame stays crisp while the ink keeps smooth edges. The drawing surface is 90 by 56
+  // the frame stays crisp while the ink keeps smooth edges. The drawing surface is 114 by 56
   // room pixels inside a 3 px frame, with a 7 px tray below.
-  const D=2,FRAME=3,SURFACE_W=90,SURFACE_H=56,TRAY=7,WALL_W=SURFACE_W+FRAME*2,WALL_H=SURFACE_H+FRAME*2+TRAY;
+  const D=2,FRAME=3,SURFACE_W=114,SURFACE_H=56,TRAY=7,WALL_W=SURFACE_W+FRAME*2,WALL_H=SURFACE_H+FRAME*2+TRAY;
   const canvas=document.createElement('canvas');canvas.width=WALL_W*D;canvas.height=WALL_H*D;
   const ctx=canvas.getContext('2d');
   let strokes=[],known={serial:0,clearedSerial:0},current=null,pending=[],flushTimer=null,dirty=true,color=COLORS[0],size=4;

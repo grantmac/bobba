@@ -7,7 +7,7 @@ import {backWallTiles} from '../shared/room-layout.js';
 import {ASSET_CATEGORIES,assetType,assetCatalogueEntry,definitionsFor} from './lib/assets.js';
 import {loadZones,zoneItems,ownedItems,itemDoc,applyChanges,shiftItems} from './lib/furnitureStore.js';
 import {floorColors} from './lib/catalog.js';
-import {playerFor,publicPlayer,publicSpaces} from './room.js';
+import {playerFor,sessionFor,publicPlayer,publicSpaces} from './room.js';
 import {seatReport} from '../shared/asset-geometry.js';
 import {isWallItem} from '../shared/furniture-model.js';
 import {furnitureControls} from '../shared/furniture-controls.js';
@@ -39,8 +39,8 @@ const ownSpaceIds=(room,player)=>(room.spaces??[]).filter(s=>s.owner===player._i
 
 // Player side: make keys, see attached agents, cut them all off.
 export const attached=query({args:{token:v.string()},handler:async(ctx,{token})=>{
-  const player=await playerFor(ctx,token);
-  const links=await ctx.db.query('agentLinks').withIndex('by_player',q=>q.eq('playerId',player._id)).collect();
+  const session=await sessionFor(ctx,token);
+  const links=await ctx.db.query('agentLinks').withIndex('by_player',q=>q.eq('playerId',session.playerId)).collect();
   return links.filter(l=>l.tokenHash).map(l=>({id:l._id,label:l.label??'Agent',attachedAt:l.createdAt,connectedAt:l.connectedAt??null}));
 }});
 // A key for the hosted endpoint: a long-lived agent token handed to the player directly
@@ -180,13 +180,30 @@ export const place=mutation({args:{agentToken:v.string(),assetId:v.id('assets'),
   await applyChanges(ctx,room,player,[item]);
   return {itemId:item.id};
 }});
+// Routine agent observation needs records, not sprite URLs or a browser render.
+export const overview=query({args:{agentToken:v.string(),focus:v.union(v.literal('mine'),v.literal('space'),v.literal('room')),spaceId:v.optional(v.string())},handler:async(ctx,{agentToken,focus,spaceId})=>{
+  const {player}=await agentFor(ctx,agentToken),room=await getRoom(ctx),layout=layoutFor(room.options,room.spaces??[]);
+  const space=focus==='mine'?layout.spaces.find(s=>s.owner===player._id):layout.spaces.find(s=>s.id===spaceId);
+  if(focus!=='room'&&!space)fail('No matching space. Use focus room or add a space first.');
+  const spaces=focus==='room'?layout.spaces:[space],zones=focus==='room'?[MAIN_ZONE,...spaces.map(s=>s.id)]:[space.id];
+  const items=(await Promise.all(zones.map(zone=>zoneItems(ctx,zone)))).flat().filter(isPlaced),names=new Map();
+  for(const type of new Set(items.map(i=>i.type).filter(t=>t.startsWith('asset_')))){
+    const id=ctx.db.normalizeId('assets',type.slice(6)),asset=id&&await ctx.db.get(id);
+    if(asset)names.set(type,asset.name);
+  }
+  const now=Date.now(),players=await zonesPlayers(ctx,zones,now);
+  return {focus,spaces:spaces.map(s=>({id:s.id,name:s.name,mine:s.owner===player._id,x:s.x,z:s.z,width:s.width,depth:s.depth,...spaceStyle(s)})),
+    players:players.map(p=>({name:p.name,...atTime(p,now),...(p.seated?{seated:p.seated}:{})})),
+    furniture:items.map(i=>({...i,name:names.get(i.type)??i.type})),
+    note:'Current state, not a change log. Compare with the previous overview for changes. Use room_map for placement tiles; request room_picture only when visual inspection is needed.'};
+}});
 // Read-only scene for the server renderer. No session or avatar is created by taking a picture.
 export const renderScene=query({args:{agentToken:v.string(),focus:v.union(v.literal('mine'),v.literal('space'),v.literal('room')),spaceId:v.optional(v.string())},handler:async(ctx,{agentToken,focus,spaceId})=>{
   const {player}=await agentFor(ctx,agentToken),room=await getRoom(ctx),layout=layoutFor(room.options,room.spaces??[]);
   const space=focus==='mine'?layout.spaces.find(s=>s.owner===player._id):layout.spaces.find(s=>s.id===spaceId);
   if(focus!=='room'&&!space)fail('No matching space. Use focus room or add a space first.');
   const zones=focus==='room'?[MAIN_ZONE,...layout.spaces.map(s=>s.id)]:[space.id];
-  await loadZones(ctx,room,zones);
+  room.furniture=(await Promise.all(zones.map(zone=>zoneItems(ctx,zone)))).flat();
   const assets=[];
   for(const type of new Set(room.furniture.map(i=>i.type).filter(t=>t.startsWith('asset_')))){
     const id=ctx.db.normalizeId('assets',type.slice(6)),asset=id&&await ctx.db.get(id);
@@ -194,7 +211,13 @@ export const renderScene=query({args:{agentToken:v.string(),focus:v.union(v.lite
   }
   const now=Date.now(),players=await zonesPlayers(ctx,zones,now);
   const signals=await ctx.db.query('signals').withIndex('by_key',q=>q.eq('key','main')).unique();
-  return {serverTime:now,room:{options:room.options,spaces:await publicSpaces(ctx,room),furniture:room.furniture,stickies:room.stickies??[],danceFloorOn:signals?.danceFloorOn??room.danceFloorOn??true,fridge:signals?.fridge??room.fridge??null},players:players.map(p=>publicPlayer(p,true)),assets,
+  // Keep all space dimensions for layout, but do not resolve/download distant artwork.
+  const pictureRoom={...room,spaces:(room.spaces??[]).map(s=>{
+    if(zones.includes(s.id))return s;
+    const {floorImage,wallImage,...dimensionsAndStyle}=s;
+    return dimensionsAndStyle;
+  })};
+  return {serverTime:now,zones,room:{options:room.options,spaces:await publicSpaces(ctx,pictureRoom),furniture:room.furniture,stickies:room.stickies??[],danceFloorOn:signals?.danceFloorOn??room.danceFloorOn??true,fridge:signals?.fridge??room.fridge??null},players:players.map(p=>publicPlayer(p,true)),assets,
     region:space&&focus!=='room'?{x:space.x,z:space.z,width:space.width,depth:space.depth}:{x:0,z:0,width:layout.extentWidth,depth:layout.depth}};
 }});
 export const previewAsset=query({args:{agentToken:v.string(),assetId:v.id('assets')},handler:async(ctx,{agentToken,assetId})=>{

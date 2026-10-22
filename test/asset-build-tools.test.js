@@ -17,7 +17,8 @@ test('foreground mask is aligned through trimming and scaling and metadata descr
   const image=sheet(),mask=new Jimp({width:128,height:128,color:0});
   for(let row=0;row<2;row++)for(let col=0;col<2;col++)for(let y=45;y<54;y++)for(let x=12;x<52;x++)mask.setPixelColor(0xffffffff,col*64+x,row*64+y);
   const files=[];const {spec,summary}=await prepareAsset(args,splitSheet(image,mask),async b=>{files.push(b);return `file${files.length}`;});
-  assert.equal(files.length,8);assert.ok(spec.parts.every(p=>p.foregroundStorageId));
+  assert.equal(files.length,9);assert.ok(spec.parts.every(p=>p.foregroundStorageId));
+  const icon=await Jimp.read(files[8]);assert.ok(icon.width<=72&&icon.height<=72);
   const base=await Jimp.read(files[0]),front=await Jimp.read(files[1]);
   assert.equal(front.width,base.width);assert.equal(front.height,base.height);
   assert.equal(front.bitmap.data[3],0);assert.ok(front.bitmap.data.at(-1)>0);

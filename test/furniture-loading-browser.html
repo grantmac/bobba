@@ -1,0 +1,32 @@
+<!doctype html><meta charset="utf-8"><title>Furniture image loading verification</title>
+<style>body{font:16px system-ui;margin:30px}section,dialog{display:none}canvas{background:#ddd;image-rendering:pixelated}</style>
+<h1>Furniture image loading</h1><p id="result">Checking…</p><div id="pictures"></div>
+<script type="module">
+import {createFurniture} from '/src/furniture.js';
+import {prepareImage} from '/src/sprite-image.js';
+const result=document.querySelector('#result');
+try{
+  const catalog=await (await fetch('/assets/furniture/catalog.json')).json();
+  const def={...catalog.find(d=>d.id==='chair_plasto'),id:'asset_test',owner:'builder'};
+  const NativeImage=window.Image,loaded=[];
+  window.Image=class extends NativeImage{set src(value){loaded.push(value);super.src=value;}get src(){return super.src;}};
+  const visuals=new Set(),item={id:'chair',type:def.id,x:0,z:0,rotation:2};
+  const furniture=await createFurniture({prepareImage,initialItems:[item],initialAssets:[def],worldPoint:(x,z)=>({x:(x-z)*32,y:(x+z)*16}),isTile:()=>true,getAvatar:()=>({x:9,z:9}),stopWalking(){},onChanged(){},onSit(){},focusRoom(){},markTiles(){},makeVisual(canvas){const mesh={canvas,material:{map:{}}};visuals.add(mesh);return mesh;},disposeVisual(mesh){visuals.delete(mesh);},positionVisual(){}});
+  const assert=(ok,message)=>{if(!ok)throw Error(message);};
+  const expected=source=>def.parts.filter(p=>p.direction===source).length;
+  const source=def.views.find(v=>v.direction===2).source;
+  assert(loaded.length===expected(source),'Initial view fetched unused rotations');
+  const mirror=def.views.find(v=>v.source===source&&v.direction!==2);
+  furniture.receive([{...item,rotation:mirror.direction}]);await furniture.whenReady();
+  assert(loaded.length===expected(source),'Mirrored view fetched images twice');
+  for(const view of def.views){
+    furniture.receive([{...item,rotation:view.direction}]);assert(visuals.size>0,'Furniture disappears while loading another angle');await furniture.whenReady();
+    assert(visuals.size>0,'Rotation is invisible');
+    for(const v of visuals){const canvas=document.createElement('canvas');canvas.width=v.canvas.width;canvas.height=v.canvas.height;canvas.getContext('2d').drawImage(v.canvas,0,0);document.querySelector('#pictures').append(canvas);}
+  }
+  assert(loaded.length===def.parts.length,'Repeated views downloaded images again');
+  furniture.setAssets([]);await furniture.whenReady();assert(furniture.getItems().length===0,'Removed asset remains');
+  window.Image=NativeImage;
+  result.textContent=`PASS: only the displayed source loads; mirrored/repeated rotations reuse it; all ${def.views.length} views render; removal works.`;
+}catch(error){result.textContent='FAIL: '+error.message;throw error;}
+</script>

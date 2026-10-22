@@ -23,6 +23,38 @@ async function message(body='Lobby, hello!'){
 }
 const finish=(job,turn)=>t.mutation(internal.bot.finish,{run:job.run,revision:job.revision,turn});
 
+it('stops scheduled roaming when empty and restarts on arrival without an AI key',async()=>{
+  await setup();
+  await t.run(async ctx=>{for(const p of await ctx.db.query('players').collect())if(p.kind!=='bot')await ctx.db.patch(p._id,{online:false,lastSeen:0});});
+  let state=await t.run(ctx=>ctx.db.query('botState').first());
+  vi.setSystemTime(state.nextTickAt);
+  await t.mutation(internal.bot.tick,{scheduledAt:state.nextTickAt});
+  state=await t.run(ctx=>ctx.db.query('botState').first());expect(state.nextTickAt).toBeUndefined();
+  const arrival=await t.mutation(api.room.join,{token:otherToken,name:'New arrival',look});
+  await t.run(ctx=>ctx.db.patch(arrival.id,{online:true}));
+  state=await t.run(ctx=>ctx.db.query('botState').first());expect(state.nextTickAt).toBe(Date.now()+60000);
+  const at=state.nextTickAt;vi.setSystemTime(at);
+  await t.mutation(internal.bot.tick,{scheduledAt:at});
+  state=await t.run(ctx=>ctx.db.query('botState').first());expect(state.nextTickAt).toBe(at+60000);
+  await t.mutation(internal.bot.tick,{scheduledAt:at}); // Retired job cannot schedule a second loop.
+  expect((await t.run(ctx=>ctx.db.query('botState').first())).nextTickAt).toBe(state.nextTickAt);
+});
+
+it('watches an active lease and wakes recovery after expiry without the maintenance cron',async()=>{
+  await setup();const job=await message();
+  await t.run(async ctx=>{for(const p of await ctx.db.query('players').collect())await ctx.db.patch(p._id,{online:true});});
+  let state=await t.run(ctx=>ctx.db.query('botState').first());
+  expect(state.nextTickAt).toBeGreaterThan(Date.now());
+  // An earlier roaming timer must not recover a still-running action.
+  vi.setSystemTime(state.nextTickAt);
+  await t.mutation(internal.bot.tick,{scheduledAt:state.nextTickAt});
+  state=await t.run(ctx=>ctx.db.query('botState').first());
+  if(Date.now()<state.busyUntil){expect(state.nextTickAt).toBeGreaterThan(state.busyUntil);vi.setSystemTime(state.nextTickAt);await t.mutation(internal.bot.tick,{scheduledAt:state.nextTickAt});}
+  state=await t.run(ctx=>ctx.db.query('botState').first());expect(state.scheduled).toBe(true);
+  const recovered=await t.mutation(internal.bot.claim,{});expect(recovered.run).toBeGreaterThan(job.run);
+  await finish(job,emptyTurn());expect((await t.run(ctx=>ctx.db.query('botState').first())).run).toBe(recovered.run);
+});
+
 it('keeps a reserved bot present without browser heartbeats and protects its settings',async()=>{
   await setup();
   vi.setSystemTime(Date.now()+86400000);

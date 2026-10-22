@@ -7,7 +7,8 @@ import {seatFor,isWallItem,canHang} from '../shared/furniture-model.js';
 import {openVisit,closeVisits,closeStaleVisits} from './lib/visits.js';
 import {definitionsFor} from './lib/assets.js';
 import {loadZones,zoneItems,inventoryItems,itemDoc,applyChanges,changesFromList,allItems,replaceAll,ZONE_CHANGE_LIMIT} from './lib/furnitureStore.js';
-import {queueBotEvent} from './lib/bot_events.js';
+import {queueBotEvent,wakeBotRoaming} from './lib/bot_events.js';
+import {HEARTBEAT_INTERVAL,CONNECTION_TIMEOUT,connectionTimeout,connectionAlive} from '../shared/presence-policy.js';
 const SESSION_AGE=30*24*60*60*1000,ADMIN_AGE=12*60*60*1000;
 // A guest name frees up this long after its holder was last seen; Grant is reserved for good.
 const NAME_REUSE_AFTER=4*60*60*1000;
@@ -152,6 +153,12 @@ export const presence=query({args:{zone:v.optional(v.string())},handler:async(ct
   const now=Date.now(),players=await zonePlayers(ctx,zone??MAIN_ZONE,now);
   return {serverTime:now,zone:zone??MAIN_ZONE,players:players.map(p=>publicPlayer(p,zone===undefined))};
 }});
+// Connected clients already synchronize their clock with heartbeat. Scheduled connection
+// expiry maintains `online`, so this shared query needs neither a clock nor arrival leases.
+export const livePresence=query({args:{zone:v.string()},handler:async(ctx,{zone})=>{
+  const players=await ctx.db.query('players').withIndex('by_zone',q=>q.eq('zone',zone).eq('online',true)).take(ZONE_CAP+1);
+  return {zone,players:players.map(p=>publicPlayer(p))};
+}});
 // One player's appearance, fetched when their lookVersion changes rather than sent with every move.
 export const look=query({args:{id:v.id('players')},handler:async(ctx,{id})=>{
   const p=await ctx.db.get(id);if(!p)return null;
@@ -218,12 +225,12 @@ export const heartbeat=mutation({args:{token:v.string(),connectionId:v.string(),
   const old=await ctx.db.query('connections').withIndex('by_connection',q=>q.eq('connectionId',connectionId)).unique();
   if(old&&(old.playerId!==session.playerId||!equal(old.tokenHash,await hash(token))))fail('Invalid connection.');
   // The hot path touches only a tiny connection row, never players, visits or room data.
-  if(old&&old.expiryAt!==undefined&&old.lastSeen>now-45000){await ctx.db.patch(old._id,{lastSeen:now});return {serverTime:now};}
+  if(old&&old.expiryAt!==undefined&&old.timeoutMs===CONNECTION_TIMEOUT&&connectionAlive(old,now)){await ctx.db.patch(old._id,{lastSeen:now});return {serverTime:now,heartbeatInterval:HEARTBEAT_INTERVAL};}
   const p=await ctx.db.get(session.playerId);if(!p)fail('Please enter the room again.');
   if(session.role===undefined)await ctx.db.patch(session._id,{role:p.role});
-  const expiryAt=now+45000;
-  if(old)await ctx.db.patch(old._id,{lastSeen:now,expiryAt});
-  else await ctx.db.insert('connections',{connectionId,playerId:p._id,tokenHash:await hash(token),lastSeen:now,expiryAt});
+  const expiryAt=now+CONNECTION_TIMEOUT,timeoutMs=CONNECTION_TIMEOUT;
+  if(old)await ctx.db.patch(old._id,{lastSeen:now,expiryAt,timeoutMs});
+  else await ctx.db.insert('connections',{connectionId,playerId:p._id,tokenHash:await hash(token),lastSeen:now,expiryAt,timeoutMs});
   let positionUpdate={};
   if(!isOnline(p,now)){
     await openVisit(ctx,p,now);await notifyArrival(ctx,p,now,pageOrigin);
@@ -233,13 +240,13 @@ export const heartbeat=mutation({args:{token:v.string(),connectionId:v.string(),
     positionUpdate={route:[freePosition(room,atTime(p,now),playerTiles(around,now,p._id),zone)],startedAt:now,seatId:null,zone};
   }
   if(p.online!==true)await ctx.db.patch(p._id,{online:true,lastSeen:now,...positionUpdate});
-  await ctx.scheduler.runAfter(45000,internal.room.expireConnection,{connectionId,seenAt:now});
-  return {serverTime:now};
+  await ctx.scheduler.runAfter(CONNECTION_TIMEOUT,internal.room.expireConnection,{connectionId,seenAt:now});
+  return {serverTime:now,heartbeatInterval:HEARTBEAT_INTERVAL};
 }});
 async function removeConnection(ctx,connection){
   await ctx.db.delete(connection._id);
   const remaining=await ctx.db.query('connections').withIndex('by_player',q=>q.eq('playerId',connection.playerId)).collect();
-  if(remaining.some(c=>c.lastSeen>Date.now()-45000))return;
+  if(remaining.some(c=>connectionAlive(c,Date.now())))return;
   await ctx.db.patch(connection.playerId,{online:false,lastSeen:Date.now()});
   await closeVisits(ctx,connection.playerId,Date.now());
 }
@@ -257,11 +264,12 @@ export const expireConnection=internalMutation({args:{connectionId:v.string(),se
   const connection=await ctx.db.query('connections').withIndex('by_connection',q=>q.eq('connectionId',connectionId)).unique();
   if(!connection)return;
   // Ignore pre-upgrade jobs and superseded leases. One timer follows each connection.
-  if(connection.expiryAt!==undefined&&connection.expiryAt!==seenAt+45000)return;
+  const timeout=connectionTimeout(connection);
+  if(connection.expiryAt!==undefined&&connection.expiryAt!==seenAt+timeout)return;
   if(connection.expiryAt===undefined){if(connection.lastSeen===seenAt)await removeConnection(ctx,connection);return;}
-  const remaining=connection.lastSeen+45000-Date.now();
+  const remaining=connection.lastSeen+timeout-Date.now();
   if(remaining<=0){await removeConnection(ctx,connection);return;}
-  await ctx.db.patch(connection._id,{expiryAt:connection.lastSeen+45000});
+  await ctx.db.patch(connection._id,{expiryAt:connection.lastSeen+timeout});
   await ctx.scheduler.runAfter(remaining,internal.room.expireConnection,{connectionId,seenAt:connection.lastSeen});
 }});
 export const leave=mutation({args:{token:v.string()},handler:async(ctx,{token})=>{
@@ -269,7 +277,7 @@ export const leave=mutation({args:{token:v.string()},handler:async(ctx,{token})=
   await ctx.db.delete(session._id);
   const connections=await ctx.db.query('connections').withIndex('by_player',q=>q.eq('playerId',p._id)).collect();
   for(const connection of connections)if(connection.tokenHash===digest)await ctx.db.delete(connection._id);
-  if(!connections.some(c=>c.tokenHash!==digest&&c.lastSeen>Date.now()-45000)){
+  if(!connections.some(c=>c.tokenHash!==digest&&connectionAlive(c,Date.now()))){
     await ctx.db.patch(p._id,{online:false,lastSeen:Date.now()});await closeVisits(ctx,p._id,Date.now());
   }
 }});
@@ -288,7 +296,7 @@ export async function movePlayer(ctx,p,args){
   const map=await roomFor(ctx),layout=layoutFor(map.options,map.spaces??[]);
   if(!layout.tileSet.has(`${args.x},${args.z}`))fail('That tile cannot be reached.');
   const from=playerZone(p),to=zoneAt(layout,args.x,args.z);
-  const room=await getRoom(ctx,[from,to,MAIN_ZONE]);
+  const room=await loadZones(ctx,map,[from,to,MAIN_ZONE]);
   const target={x:args.x,z:args.z};let seat=null;
   let spot=null;
   if(args.seatId){seat=room.furniture.find(i=>i.id===args.seatId&&isPlaced(i));spot=seat&&seatFor(seat,room.definitions[seat.type]);if(!spot||!spot.cells.some(([x,z])=>x===target.x&&z===target.z))fail('That seat is not available.');}
@@ -303,6 +311,7 @@ export async function movePlayer(ctx,p,args){
   const direction=spot?.direction??pit?.direction??args.direction??(dx||dz?(Math.abs(dx)>Math.abs(dz)?(dx>0?2:6):(dz>0?4:0)):p.direction);
   const seatId=seat?.id??(pit?'pit':null);
   await ctx.db.patch(p._id,{route,startedAt:now,seatId,direction,zone:to,lastSeen:now,action:!seatId&&(p.action==='dance'||p.action==='breakdance')?p.action:null});
+  if(to!==from)await wakeBotRoaming(ctx,p);
   return {route,startedAt:now,seatId,direction,zone:to};
 }
 // Fridges serve nearby players; the bar serves a player after they reach a stool.

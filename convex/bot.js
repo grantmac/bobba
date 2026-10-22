@@ -6,7 +6,7 @@ import {atTime,zonePlayers,playerZone,playerTiles,freePosition,validName,fail,is
 import {zoneTiles} from '../shared/room-layout.js';
 import {loadZones} from './lib/furnitureStore.js';
 import {closeVisits} from './lib/visits.js';
-import {botState,identityVersion,wakeBot} from './lib/bot_events.js';
+import {botState,identityVersion,wakeBot,scheduleBotTick} from './lib/bot_events.js';
 import {BOT_LOOK,DEFAULT_BOT_NAME,DEFAULT_MODEL,DEFAULT_PERSONALITY} from './lib/bot_policy.js';
 import {seatFor} from '../shared/furniture-model.js';
 
@@ -102,7 +102,7 @@ export const restore=mutation({args:{token:v.string(),playerId:v.id('players')},
   await ctx.db.insert('botModeration',{playerId,identityVersion:identityVersion(player),name:player.name,decision:'restore',reason:'Restored by Grant',evidence:'',createdAt:Date.now()});
 }});
 
-// A durable lease serializes turns. The minute tick recovers an action that never started/finished.
+// A durable lease serializes turns. A scheduled watchdog recovers interrupted actions.
 export const claim=internalMutation({args:{},handler:async ctx=>{
   const state=await botState(ctx),now=Date.now();
   if(!state?.enabled||state.busyUntil>now)return null;
@@ -120,6 +120,7 @@ export const claim=internalMutation({args:{},handler:async ctx=>{
   const run=state.run+1;
   for(const event of events)await ctx.db.patch(event._id,{status:'running',run,attempts:event.attempts+1});
   await ctx.db.patch(state._id,{run,busyUntil:now+60000,scheduled:false});
+  await scheduleBotTick(ctx,state,61000);
   const players=await zonePlayers(ctx,zone,now),room=await roomFor(ctx),bot=botPlayer;
   await loadZones(ctx,room,[zone]);
   const memories=(await ctx.db.query('botMemories').withIndex('by_updated').order('desc').take(100)).filter(m=>!m.playerId||players.some(p=>p._id===m.playerId&&identityVersion(p)===m.identityVersion));
@@ -176,29 +177,36 @@ export const failed=internalMutation({args:{run:v.number(),message:v.string(),re
   if(pending)await wakeBot(ctx,{...state,busyUntil:0},10000);
 }});
 
-export const tick=internalMutation({args:{},handler:async ctx=>{
+export const tick=internalMutation({args:{scheduledAt:v.optional(v.number())},handler:async(ctx,{scheduledAt})=>{
   const state=await ensureBot(ctx);if(!state)return;
   const now=Date.now();
+  if(scheduledAt!==undefined&&state.nextTickAt!==scheduledAt)return;
+  if(scheduledAt!==undefined){await ctx.db.patch(state._id,{nextTickAt:undefined});state.nextTickAt=undefined;}
   // Keep the resident visible while paused or when Fireworks is unavailable.
   const bot=await ctx.db.get(state.playerId);if(bot.online!==true)await ctx.db.patch(bot._id,{online:true});
   if(state.enabled&&state.busyUntil<=now){
     if(state.scheduled)await ctx.db.patch(state._id,{scheduled:false});
     const pending=await ctx.db.query('botEvents').withIndex('by_status',q=>q.eq('status','pending')).first();
     const running=await ctx.db.query('botEvents').withIndex('by_status',q=>q.eq('status','running')).first();
-    if(pending||running)await wakeBot(ctx,{...state,scheduled:false,busyUntil:0},0);
-    if(state.roaming&&now-state.lastRoamAt>=60000){
+    if((pending||running)&&configured())await wakeBot(ctx,{...state,scheduled:false,busyUntil:0},0);
+    if(state.roaming){
       const zone=playerZone(bot),players=await zonePlayers(ctx,zone,now);
       if(players.some(p=>p.kind!=='bot')){
-        const room=await roomFor(ctx),tiles=zoneTiles(layoutFor(room.options,room.spaces??[]),zone);
-        for(let offset=0;offset<8;offset++){
-          const [x,z]=tiles[(Math.floor(now/60000)*17+offset*13)%tiles.length];
-          try{await movePlayer(ctx,bot,{x,z});break;}catch{/* Try another free destination. */}
+        if(now-state.lastRoamAt>=60000){
+          const room=await roomFor(ctx),tiles=zoneTiles(layoutFor(room.options,room.spaces??[]),zone);
+          for(let offset=0;offset<8;offset++){
+            const [x,z]=tiles[(Math.floor(now/60000)*17+offset*13)%tiles.length];
+            try{await movePlayer(ctx,bot,{x,z});break;}catch{/* Try another free destination. */}
+          }
+          await ctx.db.patch(state._id,{lastRoamAt:now});
         }
-        await ctx.db.patch(state._id,{lastRoamAt:now});
+        await scheduleBotTick(ctx,await ctx.db.get(state._id));
       }
     }
   }
-  for(const status of ['done','failed'])for(const event of await ctx.db.query('botEvents').withIndex('by_status',q=>q.eq('status',status).lt('createdAt',now-86400000)).take(100))await ctx.db.delete(event._id);
+  if(state.enabled&&state.busyUntil>now)await scheduleBotTick(ctx,await ctx.db.get(state._id),state.busyUntil-now+1000);
+  // Only maintenance runs clean old rows; active roaming does not repeat these reads.
+  if(scheduledAt===undefined)for(const status of ['done','failed'])for(const event of await ctx.db.query('botEvents').withIndex('by_status',q=>q.eq('status',status).lt('createdAt',now-86400000)).take(100))await ctx.db.delete(event._id);
 }});
 
 export const voiceResult=internalMutation({args:{id:v.id('botModeration'),error:v.optional(v.string())},handler:async(ctx,{id,error})=>{if(await ctx.db.get(id))await ctx.db.patch(id,{voiceError:error});}});

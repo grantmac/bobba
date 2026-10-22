@@ -3,6 +3,7 @@
 // flat-coloured pixel art with a small palette and hard edges, like the sprites. Shared by the
 // hosted endpoint and the prompts that tell agents what to draw.
 import {Jimp,ResizeStrategy} from 'jimp';
+import {encodePng} from './png.js';
 import {SPACE_SIZE} from './spaces.js';
 // Texels per floor tile (a 64 by 32 diamond on screen, seen from above) and per wall segment
 // (32 px wide, 117 px tall on screen), and the most colours a picture keeps.
@@ -18,5 +19,5 @@ export async function prepareSurface(image,{surface,fit}){
   if(out.width!==w||out.height!==h)out.resize(out.width<=w&&out.height<=h?{w,h,mode:ResizeStrategy.NEAREST_NEIGHBOR}:{w,h});
   out.quantize({colors:SURFACE_COLORS});
   const data=out.bitmap.data;for(let i=3;i<data.length;i+=4)data[i]=data[i]<128?0:255;
-  return {buffer:await out.getBuffer('image/png'),width:w,height:h};
+  return {buffer:await encodePng(out),width:w,height:h};
 }

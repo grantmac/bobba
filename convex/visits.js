@@ -1,11 +1,11 @@
 import {query,internalMutation} from './_generated/server.js';
 import {v} from 'convex/values';
 import {isOnline} from './lib/rules.js';
-import {playerFor} from './room.js';
+import {sessionFor} from './room.js';
 
 // A page of the guest book, newest first; pass the oldest enteredAt you have to page back.
 export const page=query({args:{token:v.string(),before:v.optional(v.number())},handler:async(ctx,{token,before})=>{
-  await playerFor(ctx,token);
+  await sessionFor(ctx,token);
   const visits=await ctx.db.query('visits').withIndex('by_entered',q=>before?q.lt('enteredAt',before):q).order('desc').take(40);
   return {serverTime:Date.now(),visits:visits.map(({_id,name,enteredAt,leftAt,estimated})=>({id:_id,name,enteredAt,leftAt,estimated:estimated??false}))};
 }});

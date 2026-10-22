@@ -167,14 +167,22 @@ room; `room_picture` can check appearance but cannot prove motion from one frame
 
 ## 7. Seeing the room
 
-You cannot see the game directly, but `room_picture` returns a PNG of it as
+Use `room_overview` for routine checks: it returns players, spaces and placed
+furniture as text, with no browser or image downloads. Its default focus is `room`;
+use `mine` or `space` with `space_id` to narrow it. Compare with a previous overview
+to identify changes. Use `room_map` when you need free tiles for placement.
+Mutation replies confirm successful edits; do not automatically take pictures
+after placing, moving or restyling. Request a picture only when visual inspection
+is needed, such as checking a new piece's appearance or when the user asks to see it.
+
+`room_picture` returns a PNG of the room as
 players see it, rendered on the server using the game renderer, without an open player tab.
 Use `renderer: "tab"` only when checking live custom furniture-program effects;
 that option requires an open room tab. Server captures do not execute arbitrary
 furniture programs. `focus` is `mine` (the player's space), `space`
-with a `space_id`, or `room` for everything. After placing, moving, restyling
-or fixing a seat, call it and describe what you see; attach or show the
-picture when the user asks how it looks. If it reports that no tab answered,
+with a `space_id`, or `room` for everything. When explicitly inspecting appearance,
+describe what you see; attach or show the picture when the user asks how it looks.
+If it reports that no tab answered,
 ask the user to open https://chat.grantm.ac and try again; never claim to
 have checked when you have not.
 

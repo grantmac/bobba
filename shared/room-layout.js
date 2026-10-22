@@ -18,8 +18,7 @@ function buildLayout(mainTiles,spaces){
   const danceTiles=Array.from({length:width*DANCE_ROWS},(_,i)=>[i%width,danceStart+Math.floor(i/width)]);
   const parking={x:width,z:0,width:5,depth:3};
   const parkingTiles=Array.from({length:parking.width*parking.depth},(_,i)=>[width+i%parking.width,Math.floor(i/parking.width)]);
-  // A games lounge to the right of the pool and deck: its back wall carries the Pong
-  // projection on the first four tiles, a tile's gap, then the whiteboard on the last three.
+  // A lounge to the right of the pool and deck, with a whiteboard centered on its back wall.
   const lounge={x:width+5,z:0,width:8,depth:8};
   const loungeTiles=Array.from({length:lounge.width*lounge.depth},(_,i)=>[lounge.x+i%lounge.width,Math.floor(i/lounge.width)]);
   // A sunken sofa pit in the middle of the lounge, one step down, with a walkway all round.

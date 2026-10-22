@@ -6,7 +6,7 @@ import {COLORS,BOARD_WIDTH,BOARD_HEIGHT,MAX_POINTS,MAX_STROKES} from '../shared/
 
 async function board(ctx){
   let doc=await ctx.db.query('whiteboard').withIndex('by_key',q=>q.eq('key','main')).unique();
-  if(!doc){const id=await ctx.db.insert('whiteboard',{key:'main',counter:0,clearedSerial:0});doc=await ctx.db.get(id);}
+  if(!doc){const id=await ctx.db.insert('whiteboard',{key:'main',counter:0,clearedSerial:0,strokeCount:0});doc=await ctx.db.get(id);}
   return doc;
 }
 const publicStroke=({id,color,size,points,serial,done})=>({id,color,size,points,serial,done});
@@ -28,7 +28,7 @@ export const draw=mutation({args:{token:v.string(),id:v.string(),color:v.string(
   if(!/^[a-z0-9-]{4,40}$/.test(id)||!COLORS.includes(color)||![2,4,8].includes(size))fail('Bad stroke.');
   if(points.length%2||points.length>MAX_POINTS*2||points.some(n=>!Number.isFinite(n)))fail('Bad stroke.');
   const clean=points.map((n,i)=>Math.max(0,Math.min(i%2?BOARD_HEIGHT:BOARD_WIDTH,Math.round(n*2)/2)));
-  const doc=await board(ctx),serial=doc.counter+1;
+  const doc=await board(ctx),serial=doc.counter+1;let strokeCount=doc.strokeCount;
   const existing=await ctx.db.query('strokes').withIndex('by_stroke',q=>q.eq('id',id)).unique();
   if(existing){
     if(existing.playerId!==p._id)fail('That stroke is not yours.');
@@ -36,15 +36,22 @@ export const draw=mutation({args:{token:v.string(),id:v.string(),color:v.string(
     await ctx.db.patch(existing._id,{points:[...existing.points,...clean].slice(-MAX_POINTS*2),serial,done});
   }else{
     if(!clean.length)return;
+    // Existing boards count once on their next new stroke. Thereafter this counter
+    // changes atomically with inserts/deletes, avoiding a read of all drawing data.
+    strokeCount??=(await ctx.db.query('strokes').withIndex('by_serial').take(MAX_STROKES+1)).length;
     await ctx.db.insert('strokes',{id,playerId:p._id,color,size,points:clean,serial,done});
-    const count=(await ctx.db.query('strokes').withIndex('by_serial').order('asc').take(MAX_STROKES+1));
-    if(count.length>MAX_STROKES)await ctx.db.delete(count[0]._id);
+    strokeCount++;
+    if(strokeCount>MAX_STROKES){
+      const oldest=await ctx.db.query('strokes').withIndex('by_serial').order('asc').take(strokeCount-MAX_STROKES);
+      for(const stroke of oldest)await ctx.db.delete(stroke._id);
+      strokeCount-=oldest.length;
+    }
   }
-  await ctx.db.patch(doc._id,{counter:serial});
+  await ctx.db.patch(doc._id,{counter:serial,...(strokeCount===undefined?{}:{strokeCount})});
 }});
 export const clear=mutation({args:{token:v.string()},handler:async(ctx,{token})=>{
   await playerFor(ctx,token);
   const doc=await board(ctx),serial=doc.counter+1;
   for(const s of await ctx.db.query('strokes').withIndex('by_serial').take(MAX_STROKES+50))await ctx.db.delete(s._id);
-  await ctx.db.patch(doc._id,{counter:serial,clearedSerial:serial});
+  await ctx.db.patch(doc._id,{counter:serial,clearedSerial:serial,strokeCount:0});
 }});

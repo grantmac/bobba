@@ -6,10 +6,10 @@ import {createToolbar} from '/src/toolbar.js';
 import {createAppearance} from '/src/appearance.js';
 import {prepareImage} from '/src/sprite-image.js';
 const assert=(ok,message)=>{if(!ok)throw Error(message);};
-let state={muted:false,volume:.79},gesture=null,voiceCalls=0,appearanceCalls=0,furnitureCalls=0,roomCalls=0;
+let state={muted:false,volume:.79},gesture=null,appearanceCalls=0,furnitureCalls=0,roomCalls=0;
 const external=document.createElement('dialog');external.innerHTML='<button>External control</button>';document.body.append(external);
-const toolbar=createToolbar({admin:true,onGesture:value=>gesture=value,onVoice(){voiceCalls++;external.showModal();external.querySelector('button').focus();},onAppearance(){appearanceCalls++;},onRoomEdit(){roomCalls++;},onFurniture(){furnitureCalls++;},onChat(){},onMusicMute:muted=>{state.muted=muted;toolbar.setMusicState(state);},onMusicVolume:volume=>{state.volume=volume;toolbar.setMusicState(state);}});
-toolbar.setVoiceEnabled(true);toolbar.setAppearanceEnabled(true);toolbar.setMusicState(state);
+const toolbar=createToolbar({admin:true,onGesture:value=>gesture=value,onAppearance(){appearanceCalls++;external.showModal();external.querySelector('button').focus();},onRoomEdit(){roomCalls++;},onFurniture(){furnitureCalls++;},onChat(){},onMusicMute:muted=>{state.muted=muted;toolbar.setMusicState(state);},onMusicVolume:volume=>{state.volume=volume;toolbar.setMusicState(state);}});
+toolbar.setAppearanceEnabled(true);toolbar.setMusicState(state);
 const q=selector=>document.querySelector(selector),click=selector=>q(selector).click(),visible=element=>element.getBoundingClientRect().width>0;
 const compact=matchMedia('(max-width:640px), (pointer:coarse)').matches;
 const toggle=q('.toolbar-menu-toggle'),icons=q('.bar-icons'),volume=q('#music-volume');
@@ -33,8 +33,8 @@ try{
   assert(document.activeElement===(compact?toggle:q('.music-toggle')),'Music did not restore focus');
   openTools();click('.actions-toggle');assert(!q('.actions-menu').hidden,'Actions did not open');
   click('[data-gesture="wave"]');assert(gesture==='wave'&&q('.actions-menu').hidden,'Gesture did not dispatch and close');
-  openTools();click('.voice-toggle');assert(voiceCalls===1&&external.open&&document.activeElement===external.querySelector('button'),'Voice lost focus while closing the drawer');external.close();
-  for(const [selector,count] of [['.appearance-toggle',()=>appearanceCalls],['[aria-label="Furniture"]',()=>furnitureCalls],['[aria-label="Edit room"]',()=>roomCalls]]){openTools();click(selector);assert(count()===1,'Control callback failed');if(compact)assert(!visible(icons),'Control left the drawer open');}
+  assert(!q('.voice-toggle'),'Voice control is still present');
+  for(const [selector,count] of [['.appearance-toggle',()=>appearanceCalls],['[aria-label="Furniture"]',()=>furnitureCalls],['[aria-label="Edit room"]',()=>roomCalls]]){openTools();click(selector);assert(count()===1,'Control callback failed');if(selector==='.appearance-toggle'){assert(external.open&&document.activeElement===external.querySelector('button'),'Appearance lost focus while closing the drawer');external.close();}if(compact)assert(!visible(icons),'Control left the drawer open');}
   if(compact){
     openTools();document.body.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));assert(!visible(icons),'Outside press did not close menu');
     openTools();icons.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert(!visible(icons)&&document.activeElement===toggle,'Escape did not restore menu focus');

@@ -5,7 +5,7 @@ import {mutation,query} from './_generated/server.js';
 import {v} from 'convex/values';
 import {fail} from './lib/rules.js';
 import {agentFor} from './agents.js';
-import {playerFor} from './room.js';
+import {playerFor,sessionFor} from './room.js';
 const region=v.object({x:v.number(),z:v.number(),width:v.number(),depth:v.number()});
 // A request older than this is nobody's to take; a taker silent for this long loses it.
 const STALE=20000,RETAKE=8000;
@@ -27,7 +27,8 @@ export const request=mutation({args:{agentToken:v.string(),region:v.optional(reg
 }});
 // The oldest request an open tab could take right now, or null.
 export const pending=query({args:{token:v.string()},handler:async(ctx,{token})=>{
-  await playerFor(ctx,token);const now=Date.now();
+  // Session validation preserves expiry and moderation without watching every player move.
+  await sessionFor(ctx,token);const now=Date.now();
   const next=(await ctx.db.query('captures').withIndex('by_time',q=>q.gt('requestedAt',now-STALE)).collect()).find(c=>takeable(c,now));
   return next?{id:next._id,region:next.region??null}:null;
 }});
