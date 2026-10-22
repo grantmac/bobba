@@ -210,7 +210,7 @@ export async function createAppearance({prepareImage, onApply, onOpen, onRoomKey
     });
     dialog.querySelector('.entry-intro').hidden=step!==1;
     returnButton.hidden=step!==1||!entry.onReturn||entry.admin;
-    roomKeyButton.hidden=true;
+    roomKeyButton.hidden=step!==3||!onRoomKey;roomKeyButton.textContent='Keep your character';
     dialog.querySelector('.entry-name').hidden=step!==1;
     dialog.querySelector('.appearance-body').hidden=step!==2;
     dialog.querySelector('.entry-agent').hidden=step!==3;
@@ -242,7 +242,7 @@ export async function createAppearance({prepareImage, onApply, onOpen, onRoomKey
   function open(){
     if(dialog.open)return;
     delete dialog.dataset.entryStep;delete dialog.dataset.agentConnected;dialog.classList.remove('entry-flow');
-    returnButton.hidden=true;roomKeyButton.hidden=!onRoomKey;
+    returnButton.hidden=true;roomKeyButton.hidden=!onRoomKey;roomKeyButton.textContent='Your room key';
     dialog.querySelector('.entry-progress').hidden=true;dialog.querySelector('.entry-intro').hidden=true;dialog.querySelector('.entry-agent').hidden=true;dialog.querySelector('.appearance-body').hidden=false;dialog.querySelector('.appearance-cancel').textContent='Cancel';
     dialog.querySelector('.entry-name').hidden=true;dialog.querySelector('h1').textContent='Your appearance';
     apply.textContent='Apply';dialog.querySelector('.appearance-close').hidden=false;dialog.querySelector('.appearance-cancel').hidden=false;

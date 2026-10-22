@@ -445,8 +445,6 @@ input:focus,textarea:focus,select:focus{outline:none}
 .room-key-support{margin:10px 0;font-size:10px;color:#555}
 .room-key-recover{margin-top:16px;padding-top:14px;border-top:1px solid #bbb}
 .room-key-recover label{font-weight:bold}
-.room-key-recover-help{margin:4px 0 10px;overflow-wrap:anywhere}
-.room-key-recover>div{display:flex;gap:6px;flex-wrap:wrap}
 .room-key-recover textarea,.room-key-code textarea{flex:1;min-width:150px;width:100%;border:1px solid #777;border-radius:3px;padding:8px;background:white;color:#111;font:12px Verdana,sans-serif}
 .room-key-status{margin:12px 0 0;overflow-wrap:anywhere}
 .room-key-status:empty{display:none}
