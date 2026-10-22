@@ -19,16 +19,28 @@ npm run dev
 
 Set `VITE_CONVEX_URL` and `VITE_CONVEX_SITE_URL` to the shared Convex deployment. Backend changes are published with `npx convex dev --once` using the existing authenticated deployment.
 
-- Visitors see the active room behind a three-step entry window: check a name, style their character, then optionally copy an agent connection prompt. Agent setup stays in the window and confirms connection after the agent contacts the MCP server. A name is unique among players seen in the last four hours; after that it can be picked again, which ends the previous holder's sessions. Grant is always reserved.
+- Visitors see the active room behind a three-step entry window: check a name, style their character, then optionally copy an agent connection prompt. Agent setup stays in the window and confirms connection after the agent contacts the MCP server. Saved character names are reserved permanently. Unsaved guest names can be picked again four hours after their last visit; this ends the previous guest's sessions and creates a new player identity without transferring their belongings, space or memories. Grant is always reserved.
 - Click the floor to walk, or a chair or sofa to sit. Scroll over the room to zoom. Occupied tiles and reserved walking routes prevent overlapping players.
 - Click yourself to change appearance. Click another player to see their portrait and name in the original-style information stand. Names are not displayed above avatars.
 - Wave and Dance are shared with other players. Walking stops the action.
 - Chat uses stacked balloons. Whisper currently changes the balloon styling; it is visible to everyone in the room, not private messaging.
 - Only Grant can change room shape, walls, floor, window and furniture. The catalogue contains 1,223 recovered floor furniture pieces, with placement, move, rotate, pickup, delete confirmation and inventory. R rotates and Escape cancels placement.
 
-The private Grant entry link is kept in `ADMIN-ENTRY.md` (Git-ignored and excluded from Vercel), outside the deployed application bundle. Its secret is verified against a server-side hash; the name Grant is reserved. Guest identity is remembered in the same browser for 30 days; admin sessions last 12 hours. There is no account signup or cross-device guest recovery.
+The private Grant entry link is kept in `ADMIN-ENTRY.md` (Git-ignored and excluded from Vercel), outside the deployed application bundle. Its secret is verified against a server-side hash; the name Grant is reserved. Guest identity is remembered in the same browser for 30 days, renewed when returning with less than seven days left; admin sessions last 12 hours. Visitors can optionally keep their character with a passkey or one-time backup code, and return from another browser through “Use my room key”. There is no account signup, password form or email service.
 
 Room and furniture state comes only from Convex. The browser remembers appearance preferences and a session token, not an alternative room. Closing the last tab sends a departure signal; a 45-second heartbeat timeout handles crashes or lost connections.
+
+## Keeping a character
+
+“Keep your character” appears after character creation; “Your room key” remains available in the appearance window. Saving a passkey or creating a backup code reserves the name permanently and retains the existing player ID, appearance, space, furniture and agent links. Returning in a remembered browser skips entry; otherwise “Use my room key” opens a small return panel over the room.
+
+Passkeys require device user verification and a discoverable credential, verified server-side with SimpleWebAuthn. A character can have up to five passkeys. Each key belongs to the exact room hostname where it was created: use the same address when returning (prefer `https://chat.grantm.ac/`). A password manager may sync a key across devices, or the browser may offer a phone/QR-code option. The server stores public keys; challenges expire after five minutes and can be used once.
+
+Backup codes contain 256 bits of randomness, are shown once and stored only as SHA-256 hashes. Creating a replacement invalidates the old code. Using a code creates a fresh session for the original player and consumes the code atomically; the return panel prompts the visitor to save a passkey or create another backup before leaving. There is no expiry on an unused backup code. Grant can save passkeys but retains the existing private entry link as the backup. Temporary room removals also apply to passkey and backup-code entry. Losing every passkey, the backup code and the browser session leaves no self-service recovery route.
+
+`ROOM_AUTH_ORIGINS` is an optional **Convex server environment** setting: a comma-separated allowlist of exact origins. Defaults are `https://chat.grantm.ac`, `https://habbo-room.vercel.app`, `http://localhost:5173` and `http://127.0.0.1:5173`. Add any additional development or preview origin explicitly; HTTPS is required except on localhost. No email or authentication-provider credentials are required. Deploy the Convex schema and functions before deploying the client that calls them. Existing guest sessions remain valid; no migration or reassignment of existing player records is needed.
+
+`test/identity.test.js` exercises real P-256 WebAuthn registrations and signed assertions, rejects forged/replayed/expired requests, verifies name and ownership isolation, and covers backup replacement, one-time use, throttling and session renewal. The room-key browser previews use simulated identity data and do not create real credentials.
 
 ## Appearance catalogue
 
