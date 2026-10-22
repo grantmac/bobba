@@ -390,9 +390,12 @@ background-size:11px 11px,11px 11px,11px 11px,11px 11px,calc(100% - 22px) 12px,c
 .agent-attach{display:block;width:calc(100% - 20px);margin:0 10px 8px;padding:6px 8px;border:1px solid #111;border-radius:5px;background:#d4e7cb;box-shadow:inset 0 1px #fff,0 1px #333;font:bold 10px Verdana,sans-serif;color:#222;cursor:pointer}
 .agent-attach[hidden]{display:none}
 .agent-dialog{width:min(420px,calc(100vw - 32px))}
+.appearance-dialog.share-dialog{inset:0;margin:auto}
 .agent-dialog .agent-body{padding:10px 12px;border:1px solid #111;border-radius:6px;background:#eee;font:10px/1.5 Verdana,sans-serif;color:#222}
 .agent-dialog .agent-prompt{display:block;width:100%;height:170px;resize:vertical;margin:8px 0;padding:8px;border:1px solid #777;border-radius:3px;background:#fff;color:#222;font:10px/1.5 'Courier New',monospace;overflow-wrap:anywhere}
 .agent-dialog button.agent-small{border:1px solid #111;border-radius:5px;background:#eee;box-shadow:inset 0 1px #fff,0 1px #333;padding:3px 8px;font:10px Verdana,sans-serif;color:#222;cursor:pointer}
+.share-dialog .agent-prompt{height:76px;resize:none}
+.share-dialog .share-copy{min-height:36px}
 .agent-attached{margin:4px 0 0;color:#444;font-size:10px}
 .agent-copy-status{margin:8px 0;color:#444}
 .agent-copy-status:empty{display:none}

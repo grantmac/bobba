@@ -1,3 +1,5 @@
+import {createShare} from './share.js';
+
 export function createToolbar({onRoomEdit,onFurniture,onChat,onTyping,onVoice,onAppearance,onGesture,onMusicMute,onMusicVolume,admin=true}) {
   const bar=document.createElement('div');bar.className='room-toolbar';
   bar.innerHTML=`<form class="room-chat">
@@ -75,7 +77,12 @@ export function createToolbar({onRoomEdit,onFurniture,onChat,onTyping,onVoice,on
   const furniture=document.createElement('button');furniture.type='button';furniture.className='bar-icon';
   furniture.title='Furniture';furniture.setAttribute('aria-label','Furniture');furniture.onclick=()=>onFurniture();
   furniture.innerHTML='<img src="/assets/bar/catalogue.png" alt="">';icons.append(furniture);
-  for(const [button,label] of [[musicToggle,'Music'],[actionsToggle,'Actions'],[voice,'Voice chat'],[appearance,'My look'],[room,'Edit room'],[furniture,'Furniture']]){
+  const share=document.createElement('button');share.type='button';share.className='bar-icon share-toggle';share.title='Share the room';share.setAttribute('aria-label','Share the room');share.setAttribute('aria-haspopup','dialog');
+  share.innerHTML='<img src="/assets/bar/share.png" width="32" height="40" alt="">';
+  const shareDialog=createShare({onClose:()=>focusTrigger(share)});
+  share.onclick=()=>{setToolsOpen(false);setMusicOpen(false);setActionsOpen(false);setOpen(false);shareDialog.open();};
+  icons.append(share);
+  for(const [button,label] of [[musicToggle,'Music'],[actionsToggle,'Actions'],[voice,'Voice chat'],[appearance,'My look'],[room,'Edit room'],[furniture,'Furniture'],[share,'Share']]){
     const text=document.createElement('span');text.className='toolbar-icon-label';text.textContent=label;button.append(text);
   }
   icons.addEventListener('click',event=>{if(event.target.closest('.bar-icon'))setToolsOpen(false);});
