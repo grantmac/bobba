@@ -95,25 +95,23 @@ export function createMultiplayer(){
       return ()=>stops.forEach(stop=>stop());
     },
     // The live room, one zone at a time. Fixed subscriptions carry the player, the map, the
-    // lobby switches and what the player holds; `setZones` adds and drops a
-    // presence, chat and furniture subscription per zone as the camera moves. Only the zones in
+    // lobby switches, world chat and what the player holds; `setZones` adds and drops a
+    // presence and furniture subscription per zone as the camera moves. Only the zones in
     // view cost anything, however many exist.
     async watch({onState,onError,onMap,onSignals,onFurniture,onPrograms}){
       try{await pulse();}catch(error){onError(error.message);return;}
       unsubscribe?.();unsubscribeRoom?.();
       const error=e=>onError(errorMessage(e));
-      let queued=false;
+      let queued=false,messages=[];
       const emit=()=>{
         if(queued)return;queued=true;
         queueMicrotask(()=>{
           queued=false;if(!me)return;
-          const players=new Map(),messages=[];let serverTime=0;
+          const players=new Map();let serverTime=0;
           for(const zone of zones.values()){
             if(zone.presence){serverTime=Math.max(serverTime,zone.presence.serverTime??0);for(const p of zone.presence.players)players.set(p.id,p);}
-            if(zone.messages)messages.push(...zone.messages);
           }
           players.delete(me.id);
-          messages.sort((a,b)=>a.sentAt-b.sentAt);
           state={serverTime:serverTime||Date.now()+offset,me,players:[...players.values()],messages};onState(state);
         });
       };
@@ -128,6 +126,7 @@ export function createMultiplayer(){
         queueMicrotask(()=>{furnitureQueued=false;onFurniture?.({zones:new Map([...zones].filter(([,z])=>z.furniture).map(([id,z])=>[id,z.furniture])),inventory:inventory??[]});});
       };
       const stops=[
+        client.onUpdate(api.room.worldChatFeed,{token},value=>{messages=value;emit();},error),
         client.onUpdate(api.room.population,{},value=>{population=value;},()=>{population={people:null};}),
         client.onUpdate(api.room.me,{token},value=>{me=value;emit();},error),
         client.onUpdate(api.room.roomMap,{token},value=>{room=value;onMap?.(value);},error),
@@ -138,7 +137,7 @@ export function createMultiplayer(){
       unsubscribeRoom=null;
       function addZone(id){
         if(zones.has(id)){const zone=zones.get(id);clearTimeout(zone.release);zone.release=null;return;}
-        const zone={presence:null,messages:null,furniture:null,programs:null,stopPrograms:null,programEpoch:0,release:null,stops:[]};zones.set(id,zone);
+        const zone={presence:null,furniture:null,programs:null,stopPrograms:null,programEpoch:0,release:null,stops:[]};zones.set(id,zone);
         function watchPrograms(items){
           const needed=items.some(item=>item.type.startsWith('asset_'));
           if(needed&&!zone.stopPrograms){
@@ -153,7 +152,6 @@ export function createMultiplayer(){
         }
         zone.stops=[
           client.onUpdate(heartbeatInterval===30000?api.room.livePresence:api.room.presence,{zone:id},value=>{zone.presence=value;emit();},error),
-          client.onUpdate(api.room.chatFeed,{token,zone:id},value=>{zone.messages=value;emit();},error),
           client.onUpdate(api.room.zoneFurniture,{token,zone:id},value=>{zone.furniture=value;watchPrograms(value);emitFurniture();},error)
         ];
       }

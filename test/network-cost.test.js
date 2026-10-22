@@ -24,6 +24,18 @@ const pulses=()=>fake.client.mutation.mock.calls.filter(([fn])=>getFunctionName(
 const watch=async(options={})=>{network=createMultiplayer();await network.resume();await network.watch({onState:vi.fn(),onError:vi.fn(),...options});};
 
 describe('room network budget',()=>{
+  it('keeps one world chat subscription as camera zones change, retaining distant messages',async()=>{
+    const onState=vi.fn();await watch({onState});
+    const calls=name=>fake.client.onUpdate.mock.calls.filter(([fn])=>getFunctionName(fn)===name);
+    expect(calls('room:worldChatFeed')).toHaveLength(1);expect(calls('room:chatFeed')).toHaveLength(0);
+    const messages=[{id:'distant-message',zone:'offscreen',body:'Hello from across the map',sentAt:Date.now()}];
+    calls('room:worldChatFeed')[0][2](messages);
+    await vi.advanceTimersByTimeAsync(0);expect(onState.mock.lastCall[0].messages).toEqual(messages);
+    network.setZones(['nearby']);network.setZones(['far-away']);await vi.advanceTimersByTimeAsync(10000);
+    expect(calls('room:worldChatFeed')).toHaveLength(1);expect(onState.mock.lastCall[0].messages).toEqual(messages);
+    const index=fake.client.onUpdate.mock.calls.findIndex(([fn])=>getFunctionName(fn)==='room:worldChatFeed');
+    network.close();network=null;expect(fake.client.onUpdate.mock.results[index].value).toHaveBeenCalledTimes(1);
+  });
   it('receives a single world-wide count without subscribing to off-screen player records',async()=>{
     await watch();expect(network.population).toEqual({people:null});
     const calls=fake.client.onUpdate.mock.calls.filter(([fn])=>getFunctionName(fn)==='room:population');

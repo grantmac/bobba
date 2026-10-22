@@ -1501,7 +1501,7 @@ describe('zones',()=>{
     await expect(t.mutation(api.room.teleport,{token,spaceId:space.spaceId})).rejects.toThrow('no free space');
     expect((await t.query(api.room.me,{token})).route).toEqual(before.route);
   });
-  it('scopes presence, chat and voice to the zone a player stands in',async()=>{
+  it('shares world chat across zones while preserving local feeds, presence and voice',async()=>{
     const me=await guest();const other=await friend();
     const space=await spaceFor(token,'Mine');
     expect((await t.query(api.room.presence,{zone:'main'})).players.map(p=>p.id).sort()).toEqual([me.id,other.id].sort());
@@ -1519,12 +1519,25 @@ describe('zones',()=>{
     expect((await t.query(api.room.chatFeed,{token,zone:'main'})).map(m=>m.body)).toEqual(['In the lobby']);
     expect((await t.query(api.room.chatFeed,{token})).map(m=>m.body)).toEqual(['Over here']);
     expect((await t.query(api.room.chatFeed,{token:otherToken})).map(m=>m.body)).toEqual(['In the lobby']);
+    const world=await t.query(api.room.worldChatFeed,{token});
+    expect(world.map(m=>m.body)).toEqual(['Over here','In the lobby']);
+    expect(world.map(m=>m.zone)).toEqual([space.spaceId,'main']);
+    expect(await t.query(api.room.worldChatFeed,{token:otherToken})).toEqual(world);
+    await expect(t.query(api.room.worldChatFeed,{token:'f'.repeat(64)})).rejects.toThrow('session');
     await t.mutation(api.room.heartbeat,{token,connectionId:'d'.repeat(64)});
     expect(await t.query(internal.room.voiceIdentity,{token})).toEqual({playerId:me.id,zone:space.spaceId});
     // Walking back out returns the player to the lobby's crowd.
     await t.mutation(api.room.move,{token,x:5,z:5});
     expect((await t.query(api.room.presence,{zone:space.spaceId})).players).toEqual([]);
     expect((await t.query(api.room.presence,{zone:'main'})).players.map(p=>p.id).sort()).toEqual([me.id,other.id].sort());
+  });
+  it('bounds world chat to the latest 100 messages in chronological order',async()=>{
+    const me=await guest();
+    await t.run(async ctx=>{
+      for(let i=0;i<105;i++)await ctx.db.insert('messages',{playerId:me.id,zone:i%2?'main':'distant',name:'Visitor',color:look.top.color,body:`Message ${i}`,mode:'Say',x:0,z:0,sentAt:Date.now()+i});
+    });
+    const feed=await t.query(api.room.worldChatFeed,{token});
+    expect(feed).toHaveLength(100);expect(feed[0].body).toBe('Message 5');expect(feed.at(-1).body).toBe('Message 104');
   });
   it('bounds every zone by the same cap, the lobby included',async()=>{
     await guest();

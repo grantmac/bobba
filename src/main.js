@@ -691,14 +691,7 @@ installTouchNavigation(container,{
   setView:view=>{zoom=view.zoom;panX=view.panX;panY=view.panY;resize();},
   cancelTap:()=>{down=null;hover.visible=false;}
 });
-const chat=createChat({getSpeaker:()=>{
-  const p=characterPoint(position.x,position.z);
-  return {name:network?.me?.name??'You',color:appearance?.chatColor()??'#6b8c64',x:p.x,y:p.y};
-},getLayout:()=>{
-  // Bubbles are anchored to room coordinates (a speaker's head) and follow pan and zoom;
-  // interface text keeps its native pixel size.
-  return {originX:view.left+view.halfW+viewOffsetX,originY:view.top+view.halfH+viewOffsetY,scale:displayScale,centerY:CENTER_Y};
-},onSelectSpeaker:speaker=>{const peer=[...peers.values()].find(p=>p.data.name===speaker.name);if(peer)selectPeer(peer);else if(speaker.name===network?.me?.name)appearance?.open();}});
+const chat=createChat({getSpeaker:()=>({name:network?.me?.name??'You',color:appearance?.chatColor()??'#6b8c64'}),onSelectSpeaker:speaker=>{const peer=[...peers.values()].find(p=>p.data.name===speaker.name);if(peer)selectPeer(peer);else if(speaker.name===network?.me?.name)appearance?.open();}});
 let localTyping=false;
 function positionTyping(player,point,visible){
   const active=player.id===network.me?.id?localTyping:(player.typingUntil??0)>network.now();
@@ -969,8 +962,7 @@ try{
       for(const message of state.messages){
         if(seenMessages.has(message.id))continue;seenMessages.add(message.id);
         if(network.now()-message.sentAt>28000)continue;
-        const p=characterPoint(message.x,message.z),rect=container.getBoundingClientRect();
-        chat.say(message.body,message.mode,{name:message.name,color:message.color,x:p.x,y:p.y});
+        chat.say(message.body,message.mode,{name:message.name,color:message.color});
       }
       // Bound deduplication memory to the server's current message window.
       const recentIds=new Set(state.messages.map(m=>m.id));for(const id of seenMessages)if(!recentIds.has(id))seenMessages.delete(id);

@@ -178,6 +178,13 @@ export const chatFeed=query({args:{token:v.string(),zone:v.optional(v.string())}
   const messages=await ctx.db.query('messages').withIndex('by_zone_time',q=>q.eq('zone',zone)).order('desc').take(CHAT_WINDOW);
   return messages.reverse().map(publicMessage);
 }});
+// Chat travels across the whole map, independently of visible-zone subscriptions.
+// Keep the zone feed above for callers that explicitly need local conversation.
+export const worldChatFeed=query({args:{token:v.string()},handler:async(ctx,{token})=>{
+  await sessionFor(ctx,token);
+  const messages=await ctx.db.query('messages').withIndex('by_time').order('desc').take(100);
+  return messages.reverse().map(publicMessage);
+}});
 export const scene=query({args:{},handler:async ctx=>{
   const room=await getRoom(ctx);
   return {...publicSignals(await signalsFor(ctx)),...await publicMap(ctx,room),furniture:await zoneItems(ctx,MAIN_ZONE)};
