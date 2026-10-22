@@ -8,6 +8,7 @@ import {seatFor,isWallItem,canHang} from '../shared/furniture-model.js';
 import {openVisit,closeVisits,closeStaleVisits} from './lib/visits.js';
 import {definitionsFor,assertOwnedChanges} from './lib/assets.js';
 import {discardRemovedPrograms} from './lib/programs.js';
+import {savedCharacter} from './lib/identity.js';
 import {queueBotEvent} from './lib/bot_events.js';
 const SESSION_AGE=30*24*60*60*1000,ADMIN_AGE=12*60*60*1000;
 // A guest name frees up this long after its holder was last seen; Grant is reserved for good.
@@ -52,7 +53,7 @@ export const checkName=query({args:{name:v.string(),entryCode:v.optional(v.strin
   if(named.key==='grant')fail('That name is reserved. Please choose another name.');
   const player=await ctx.db.query('players').withIndex('by_name',q=>q.eq('nameKey',named.key)).unique();
   if(player?.kind==='bot')fail('That name is reserved for the room bot.');
-  if(player?.savedAt&&!entryCode)fail('That name belongs to a saved character. Use your room key or choose another name.');
+  if(await savedCharacter(ctx,player)&&!entryCode)fail('That name belongs to a saved character. Use your room key or choose another name.');
   if((player?.blockedUntil??0)>Date.now())fail('You have been removed from the room for 10 minutes. Please return later.');
   if(player&&(isOnline(player)||Date.now()-player.lastSeen<NAME_REUSE_AFTER))fail('That name is already taken. Please choose another name.');
 }});
@@ -70,7 +71,7 @@ export const join=mutation({args:{token:v.string(),name:v.string(),look:v.any(),
   let player=await ctx.db.query('players').withIndex('by_name',q=>q.eq('nameKey',key)).unique();
   if(player?.kind==='bot')fail('That name is reserved for the room bot.');
   if((player?.blockedUntil??0)>Date.now())fail('You have been removed from the room for 10 minutes. Please return later.');
-  if(player?.savedAt&&!admin)fail('That name belongs to a saved character. Use your room key or choose another name.');
+  if(await savedCharacter(ctx,player)&&!admin)fail('That name belongs to a saved character. Use your room key or choose another name.');
   const now=Date.now();
   if(player&&!admin){
     if(isOnline(player,now)||now-player.lastSeen<NAME_REUSE_AFTER)fail('That name is already taken. It frees up four hours after its last visit.');

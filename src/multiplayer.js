@@ -5,9 +5,9 @@ export function createMultiplayer(){
   const url=import.meta.env.VITE_CONVEX_URL;
   if(!url)throw new Error('The room server is not configured.');
   const client=new ConvexClient(url,{logger:false});
-  window.addEventListener('hashchange',()=>{if(new URLSearchParams(location.hash.slice(1)).has('grant'))location.reload();});
-  const fragment=new URLSearchParams(location.hash.slice(1));let entryCode=fragment.get('grant')||'';
-  if(entryCode)history.replaceState(null,'',location.pathname+location.search);
+  window.addEventListener('hashchange',()=>{if(new URLSearchParams(location.hash.slice(1)).has('grant')||new URLSearchParams(location.hash.slice(1)).has('enter'))location.reload();});
+  const fragment=new URLSearchParams(location.hash.slice(1));let entryCode=fragment.get('grant')||'',agentEntry=fragment.get('enter');
+  if(entryCode||agentEntry!==null)history.replaceState(null,'',location.pathname+location.search);
   let token='',me=null,state=null,room=null,unsubscribe=null,unsubscribeRoom=null,unsubscribePong=null,heartbeat=null,offset=0;
   try{token=localStorage.getItem(KEY)||'';}catch{}
   let remembered=!!token;
@@ -33,6 +33,10 @@ export function createMultiplayer(){
   return {
     get adminEntry(){return !!entryCode;},get me(){return me;},get state(){return state;},now:()=>Date.now()+offset,
     async resume(){
+      if(agentEntry!==null){
+        const result=await identityCall('mutation',api.agentLogin.consume,{code:agentEntry,origin:location.origin});
+        acceptSession(result);agentEntry=null;return me;
+      }
       if(entryCode||!token)return null;
       try{
         try{me=await client.mutation(api.identity.resume,{token});}

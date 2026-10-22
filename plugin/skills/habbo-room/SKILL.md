@@ -10,6 +10,16 @@ pieces for one player of the shared isometric room. It never draws anything
 itself: you draw the sprite sheet with your image-generation tool, upload the
 PNG, and the server cuts it into the piece.
 
+## Return to the room
+
+When a connected user asks to open or return to the room, call `open_room` and
+open its `url` in their in-app browser when available, otherwise their usual
+browser. It signs in as the returned `playerName`; no new pairing is needed.
+The private link works once and expires after two minutes. Do not share it,
+log it, or replace it with the permanent agent key. Request a fresh link if it
+expires. If the MCP connection is missing or revoked, use the initial connection
+flow instead.
+
 ## 1. The key
 
 Every call needs the player's agent key as the plugin's API key (sent as a

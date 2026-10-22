@@ -7,6 +7,7 @@ import {backWallTiles} from '../shared/room-layout.js';
 import {ASSET_CATEGORIES,assetType,assetCatalogueEntry,definitionsFor,assertOwnedChanges} from './lib/assets.js';
 import {floorColors} from './lib/catalog.js';
 import {playerFor} from './room.js';
+import {activeIdentity} from './lib/identity.js';
 import {discardRemovedPrograms} from './lib/programs.js';
 import {isWallItem,pickupWithContents} from '../shared/furniture-model.js';
 import {SPACE_LIMIT,SPACES_PER_PLAYER,SPACE_SIZE,SPACE_MIN_WIDTH,SPACE_MAX_WIDTH,SPACE_FLOORS,SPACE_WALLS,SPACE_FITS,SPACE_IMAGE_MAX} from '../shared/spaces.js';
@@ -43,8 +44,9 @@ export const createKey=mutation({args:{token:v.string(),label:v.optional(v.strin
 }});
 // A copied key is not a connection: record the first authenticated MCP contact.
 export const connected=mutation({args:{agentToken:v.string()},handler:async(ctx,{agentToken})=>{
-  const {link}=await agentFor(ctx,agentToken);
+  const {link,player}=await agentFor(ctx,agentToken);activeIdentity(player);
   if(link.connectedAt===undefined)await ctx.db.patch(link._id,{connectedAt:Date.now()});
+  if(!player.savedAt)await ctx.db.patch(player._id,{savedAt:Date.now()});
 }});
 export const revoke=mutation({args:{token:v.string()},handler:async(ctx,{token})=>{
   const player=await playerFor(ctx,token);

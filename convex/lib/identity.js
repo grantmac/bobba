@@ -18,6 +18,12 @@ export function activeIdentity(player){
   if((player.blockedUntil??0)>Date.now())fail('You have been removed from the room for 10 minutes. Please return later.');
   return player;
 }
+export async function savedCharacter(ctx,player){
+  if(!player)return false;
+  if(player.savedAt)return true;
+  const links=await ctx.db.query('agentLinks').withIndex('by_player',q=>q.eq('playerId',player._id)).collect();
+  return links.some(link=>link.tokenHash&&link.connectedAt!==undefined);
+}
 // Fixed windows bound challenge storage and backup-code attempts.
 export async function rateLimit(ctx,key,maximum,windowMs){
   const now=Date.now(),row=await ctx.db.query('identityLimits').withIndex('by_key',q=>q.eq('key',key)).unique();

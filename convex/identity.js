@@ -2,13 +2,13 @@ import {query,mutation,internalQuery,internalMutation} from './_generated/server
 import {v} from 'convex/values';
 import {playerFor,sessionFor,publicPlayer} from './room.js';
 import {fail} from './lib/rules.js';
-import {hash,randomSecret,relyingParty,activeIdentity,rateLimit,newSession,GUEST_SESSION_AGE} from './lib/identity.js';
+import {hash,randomSecret,relyingParty,activeIdentity,rateLimit,newSession,savedCharacter,GUEST_SESSION_AGE} from './lib/identity.js';
 
 export const status=query({args:{token:v.string()},handler:async(ctx,{token})=>{
   const player=await playerFor(ctx,token);
   const keys=await ctx.db.query('passkeys').withIndex('by_player',q=>q.eq('playerId',player._id)).collect();
   const backup=await ctx.db.query('recoveryKeys').withIndex('by_player',q=>q.eq('playerId',player._id)).unique();
-  return {saved:!!player.savedAt,name:player.name,passkeys:keys.length,hasBackup:!!backup,backupAvailable:player.role!=='admin'};
+  return {saved:await savedCharacter(ctx,player),name:player.name,passkeys:keys.length,hasBackup:!!backup,backupAvailable:player.role!=='admin'};
 }});
 // Active visitors keep their browser session. Admin sessions retain their fixed lifetime.
 export const resume=mutation({args:{token:v.string()},handler:async(ctx,{token})=>{
@@ -88,7 +88,7 @@ export const useBackup=mutation({args:{code:v.string()},handler:async(ctx,{code}
   return {token:await newSession(ctx,player),player:publicPlayer(player)};
 }});
 export const cleanup=internalMutation({args:{},handler:async ctx=>{
-  for(const table of ['identityChallenges','identityLimits']){
+  for(const table of ['identityChallenges','identityLimits','agentEntries']){
     const expired=await ctx.db.query(table).withIndex('by_expiry',q=>q.lt('expiresAt',Date.now())).take(1000);
     for(const row of expired)await ctx.db.delete(row._id);
   }

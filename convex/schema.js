@@ -10,6 +10,7 @@ const space=v.object({id:v.string(),owner:v.id('players'),ownerName:v.string(),n
 export default defineSchema({
   programInstances:defineTable({itemId:v.string(),assetId:v.id('assets'),version:v.number(),state:v.any(),revision:v.number(),savedAt:v.number(),serial:v.number(),events:v.array(v.object({serial:v.number(),playerId:v.id('players'),at:v.number()}))}).index('by_item',['itemId']).index('by_asset',['assetId']),
   passkeys:defineTable({playerId:v.id('players'),credentialId:v.string(),publicKey:v.string(),counter:v.number(),transports:v.array(v.string()),rpId:v.string(),createdAt:v.number()}).index('by_credential',['credentialId']).index('by_player',['playerId']),
+  agentEntries:defineTable({codeHash:v.string(),linkId:v.id('agentLinks'),playerId:v.id('players'),origin:v.string(),expiresAt:v.number()}).index('by_code',['codeHash']).index('by_expiry',['expiresAt']),
   identityChallenges:defineTable({purpose:v.union(v.literal('register'),v.literal('authenticate')),challenge:v.string(),origin:v.string(),rpId:v.string(),playerId:v.optional(v.id('players')),sessionHash:v.optional(v.string()),expiresAt:v.number()}).index('by_expiry',['expiresAt']),
   recoveryKeys:defineTable({playerId:v.id('players'),tokenHash:v.string(),createdAt:v.number()}).index('by_player',['playerId']).index('by_token',['tokenHash']),
   identityLimits:defineTable({key:v.string(),count:v.number(),expiresAt:v.number()}).index('by_key',['key']).index('by_expiry',['expiresAt']),

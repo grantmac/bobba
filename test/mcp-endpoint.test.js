@@ -2,12 +2,24 @@
 // The hosted MCP endpoint's protocol handling, without a room server: handshake, tool
 // listing, key checks and malformed requests. Tool calls that reach Convex are covered by
 // the agent tests in multiplayer.test.js through the same backend functions.
-import {describe,it,expect} from 'vitest';
+import {describe,it,expect,vi} from 'vitest';
+import {ConvexHttpClient} from 'convex/browser';
 import {POST,GET} from '../api/mcp.js';
 const URL_='https://chat.example.test/api/mcp';
 const post=(body,headers={})=>POST(new Request(URL_,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:typeof body==='string'?body:JSON.stringify(body)}));
 const rpc=(method,params,id=1)=>({jsonrpc:'2.0',id,method,params});
 describe('hosted MCP endpoint',()=>{
+  it('returns a private browser link for the authenticated agent without returning its key',async()=>{
+    const key='a'.repeat(64),url='https://chat.example.test/#enter='+('c'.repeat(64));
+    const mutation=vi.spyOn(ConvexHttpClient.prototype,'mutation').mockResolvedValue({url,playerName:'Visitor',expiresAt:123});
+    vi.stubEnv('CONVEX_URL','https://example.convex.cloud');
+    try{
+      const {result}=await (await post(rpc('tools/call',{name:'open_room',arguments:{}}),{Authorization:`Bearer ${key}`})).json();
+      expect(mutation).toHaveBeenCalledWith(expect.anything(),{agentToken:key,origin:'https://chat.example.test'});
+      expect(JSON.parse(result.content[0].text)).toMatchObject({url,playerName:'Visitor',expiresAt:123});
+      expect(result.content[0].text).not.toContain(key);
+    }finally{mutation.mockRestore();vi.unstubAllEnvs();}
+  });
   it('answers initialize with a supported protocol version and tool capability',async()=>{
     const reply=await (await post(rpc('initialize',{protocolVersion:'2025-03-26',capabilities:{},clientInfo:{name:'t',version:'0'}}))).json();
     expect(reply.result.protocolVersion).toBe('2025-03-26');expect(reply.result.capabilities).toEqual({tools:{}});expect(reply.result.serverInfo.name).toBe('habbo-room');
@@ -16,7 +28,7 @@ describe('hosted MCP endpoint',()=>{
   });
   it('lists the tools and answers notifications with 202',async()=>{
     const {result}=await (await post(rpc('tools/list'))).json();
-    expect(result.tools.map(t=>t.name)).toEqual(['status','design_asset','upload_url','submit_asset','add_asset','my_assets','program_api','get_program','set_program','set_seat','delete_asset','room_map','room_picture','place','remove','add_space','design_surface','style_space','resize_space','remove_space']);
+    expect(result.tools.map(t=>t.name)).toEqual(['open_room','status','design_asset','upload_url','submit_asset','add_asset','my_assets','program_api','get_program','set_program','set_seat','delete_asset','room_map','room_picture','place','remove','add_space','design_surface','style_space','resize_space','remove_space']);
     const space=result.tools.find(t=>t.name==='add_space');
     expect(space.inputSchema.required).toEqual(['name']);expect(space.inputSchema.properties).not.toHaveProperty('width');expect(space.inputSchema.properties.floor.enum).toEqual(['plain','wood','tiles','carpet']);
     for(const tool of result.tools)expect(tool.inputSchema.type).toBe('object');

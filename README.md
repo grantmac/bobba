@@ -169,3 +169,9 @@ A five-by-five hot tub terrace extends the right-hand edge, opposite the dance f
 
 DJ decks now use the supplied grid-corrected 2:1 animation pack, with preserved aspect ratio, 200ms frames and tabletop alignment. The off state uses the supplied parked-tonearm stills, rather than freezing a playing frame.
 # bobba
+
+## Return through a connected agent
+
+Ask a connected MCP agent to “open my room”. Its `open_room` tool returns a private, one-use browser link that signs in as the character attached to that agent, even in a fresh browser. The link expires after two minutes; its secret is removed from the address bar immediately and exchanged atomically for a normal browser session. The permanent MCP key stays with the agent. Disconnecting the agent invalidates unused links, and moderation restrictions still apply.
+
+An authenticated MCP connection also saves the character and reserves its name. Existing connected characters are protected from name reuse without a migration. A copied but unused key alone does not reserve a name. Passkeys and backup codes remain available as independent ways back in.

@@ -11,13 +11,36 @@ beforeEach(()=>{
   vi.resetAllMocks();
   vi.stubEnv('VITE_CONVEX_URL','https://example.convex.cloud');
   storage=new Map([[key,token]]);
-  vi.stubGlobal('localStorage',{getItem:k=>storage.get(k)??null,removeItem:k=>storage.delete(k)});
+  vi.stubGlobal('localStorage',{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)});
   vi.stubGlobal('window',{addEventListener:vi.fn()});
   vi.stubGlobal('location',{hash:''});
 });
 afterEach(()=>{vi.unstubAllGlobals();vi.unstubAllEnvs();});
 
 describe('restoring a remembered session',()=>{
+  it.each([false,true])('opens the agent’s character regardless of a remembered session (%s)',async remembered=>{
+    if(!remembered)storage.clear();
+    const code='c'.repeat(64),nextToken='d'.repeat(64),replaceState=vi.fn();
+    vi.stubGlobal('history',{replaceState});
+    vi.stubGlobal('location',{hash:`#enter=${code}`,origin:'https://chat.grantm.ac',pathname:'/',search:''});
+    client.mutation.mockResolvedValue({token:nextToken,player});
+    const network=createMultiplayer();
+    expect(replaceState).toHaveBeenCalledWith(null,'','/');
+    expect(await network.resume()).toEqual(player);
+    expect(client.mutation).toHaveBeenCalledWith(api.agentLogin.consume,{code,origin:'https://chat.grantm.ac'});
+    expect(storage.get(key)).toBe(nextToken);expect(network.me).toEqual(player);
+    client.mutation.mockResolvedValue(player);await network.resume();
+    expect(client.mutation).toHaveBeenLastCalledWith(api.identity.resume,{token:nextToken});
+  });
+  it('does not silently open another character when the agent link fails',async()=>{
+    vi.stubGlobal('history',{replaceState:vi.fn()});
+    vi.stubGlobal('location',{hash:'#enter=invalid',origin:'https://chat.grantm.ac',pathname:'/',search:''});
+    client.mutation.mockRejectedValue({data:'This room link has expired. Ask your agent to open the room again.'});
+    const network=createMultiplayer();
+    await expect(network.resume()).rejects.toThrow('Ask your agent');
+    expect(network.me).toBeNull();expect(storage.get(key)).toBe(token);
+    expect(client.mutation).toHaveBeenCalledTimes(1);
+  });
   it('uses session renewal when the deployment supports it',async()=>{
     client.mutation.mockResolvedValue(player);
     const network=createMultiplayer();
