@@ -13,7 +13,6 @@ import type * as agents from "../agents.js";
 import type * as assets from "../assets.js";
 import type * as bot from "../bot.js";
 import type * as botBrain from "../botBrain.js";
-import type * as botVoice from "../botVoice.js";
 import type * as captures from "../captures.js";
 import type * as crons from "../crons.js";
 import type * as http from "../http.js";
@@ -31,12 +30,10 @@ import type * as lib_rules from "../lib/rules.js";
 import type * as lib_visits from "../lib/visits.js";
 import type * as migrate from "../migrate.js";
 import type * as notifications from "../notifications.js";
-import type * as passkeys from "../passkeys.js";
 import type * as pong from "../pong.js";
 import type * as programs from "../programs.js";
 import type * as room from "../room.js";
 import type * as visits from "../visits.js";
-import type * as voice from "../voice.js";
 import type * as whiteboard from "../whiteboard.js";
 
 import type {
@@ -51,7 +48,6 @@ declare const fullApi: ApiFromModules<{
   assets: typeof assets;
   bot: typeof bot;
   botBrain: typeof botBrain;
-  botVoice: typeof botVoice;
   captures: typeof captures;
   crons: typeof crons;
   http: typeof http;
@@ -69,12 +65,10 @@ declare const fullApi: ApiFromModules<{
   "lib/visits": typeof lib_visits;
   migrate: typeof migrate;
   notifications: typeof notifications;
-  passkeys: typeof passkeys;
   pong: typeof pong;
   programs: typeof programs;
   room: typeof room;
   visits: typeof visits;
-  voice: typeof voice;
   whiteboard: typeof whiteboard;
 }>;
 

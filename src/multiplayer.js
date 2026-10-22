@@ -142,6 +142,8 @@ export function createMultiplayer(){
         // A zone that scrolled out of view lingers a moment, so panning back and forth is free.
         for(const [id,zone] of zones)if(!keep.has(id)&&!zone.release)zone.release=setTimeout(()=>{if(!keep.has(id))dropZone(id);},RELEASE_AFTER);
       };
+      // Zones asked for before the room was live are picked up now.
+      wanted(lastZones);
       clearInterval(heartbeat);heartbeat=setInterval(()=>mutate('heartbeat',{connectionId,pageOrigin:location.origin}).catch(error=>onError(error.message)),15000);
     },
     // The zones the camera can see; the player's own zone is always included.

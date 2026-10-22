@@ -340,6 +340,8 @@ function buildRoom(options){
   drawTarget=scene;path=[];hover.visible=false;targetMarker.visible=false;
   if(!valid(Math.floor(position.x),Math.floor(position.z))){const [x,z]=roomShape.tiles.reduce((best,t)=>Math.hypot(t[0]+.5-position.x,t[1]+.5-position.z)<Math.hypot(best[0]+.5-position.x,best[1]+.5-position.z)?t:best);position.x=x+.5;position.z=z+.5;}
   placePong();placeWhiteboard();
+  // Every space was just dropped with the old room, so the visible ones are drawn again whatever the camera did.
+  lastZoneKey='';
   container.dataset.shape=options.shape;container.dataset.danceStart=String(layout.danceStart);furniture?.roomChanged();stickies?.redraw();resize();
 }
 
