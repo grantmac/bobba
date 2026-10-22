@@ -74,7 +74,9 @@ export function placeableTiles(layout,zone=null){
   const all=zone===null?[...layout.mainTiles,...layout.danceTiles,...layout.poolDeckTiles,...layout.parkingTiles,...layout.spaceTiles]:zone===MAIN_ZONE?[...layout.mainTiles,...layout.danceTiles,...layout.poolDeckTiles,...layout.parkingTiles]:zoneTiles(layout,zone);
   return new Set(all.map(cell=>cell.join(',')));
 }
-export const ZONE_PIECE_LIMIT=200;
+// Not a per-player cap: a guard on how much one zone is asked to check at once. Floor pieces are
+// bounded by tiles anyway; only wall and tabletop pieces can pile up.
+export const ZONE_PIECE_LIMIT=1000;
 // `items` is a complete list for one zone (or the whole room when zone is null): collisions and
 // tabletop checks are exact because a piece never straddles two zones.
 export function validateFurniture(items,options,defs=furniture,spaces=[],zone=null){

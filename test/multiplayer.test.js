@@ -581,13 +581,14 @@ describe('agents building pieces',()=>{
     if(space)await t.mutation(api.agents.addSpace,{agentToken,name:'Mine'});
     return {player,agentToken,storageId};
   }
-  it('allows eighty placed pieces per builder and rejects the eighty-first',async()=>{
+  it('puts no cap on how many pieces a builder places or builds',async()=>{
     const {agentToken,storageId}=await attach();
     const built=await t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId,{category:'Wall',wallWidth:32,parts:[{storageId,direction:4,width:48,height:60,reg:{x:-8,y:46}}],views:[{direction:4,source:4,mirror:false}]})});
     const place=()=>t.mutation(api.agents.place,{agentToken,assetId:built.id,x:23,z:0,rotation:4,u:.5,height:60});
-    for(let i=0;i<80;i++)await place();
-    await expect(place()).rejects.toThrow('up to 80 pieces');
-    expect((await t.query(api.agents.status,{agentToken})).placed).toHaveLength(80);
+    for(let i=0;i<120;i++)await place();
+    expect((await t.query(api.agents.status,{agentToken})).placed).toHaveLength(120);
+    for(let i=0;i<60;i++)await t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId,{name:`Piece ${i}`})});
+    expect((await t.query(api.agents.status,{agentToken})).assets).toHaveLength(61);
   });
   it('hands the player a key for the hosted endpoint and reads uploads back through it',async()=>{
     await guest();

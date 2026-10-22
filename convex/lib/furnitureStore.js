@@ -5,7 +5,7 @@
 import {isPlaced,isWallItem} from '../../shared/furniture-model.js';
 import {zoneAt,MAIN_ZONE} from '../../shared/room-layout.js';
 import {fail,layoutFor,validateFurniture,healOrphans,ownSpaceCheck,freePosition,blocked,atTime,zonePlayers} from './rules.js';
-import {definitionsFor,assertOwnedChanges,PLACED_LIMIT_PER_PLAYER} from './assets.js';
+import {definitionsFor,assertOwnedChanges} from './assets.js';
 export const INVENTORY='inventory';
 export const ZONE_CHANGE_LIMIT=250;
 const FIELDS=['id','type','rotation','x','z','supportId','on','u','height','owner'];
@@ -83,9 +83,6 @@ export async function applyChanges(ctx,room,player,changes){
   if(!admin){
     const previous=[...ids].map(id=>before.get(id)).filter(Boolean).map(docItem),next=[...ids].map(id=>after.get(id)).filter(Boolean);
     try{assertOwnedChanges(previous,next,player._id,definitions,ownSpaceCheck(room.options,room.spaces??[],player._id,definitions));}catch(error){fail(error.message);}
-    const mine=await ownedItems(ctx,player._id);
-    const placed=mine.filter(item=>!ids.has(item.id)&&isPlaced(item)).length+next.filter(item=>item.owner===player._id&&isPlaced(item)).length;
-    if(placed>PLACED_LIMIT_PER_PLAYER)fail(`You can place up to ${PLACED_LIMIT_PER_PLAYER} pieces.`);
   }
   validateFurniture([...after.values()].filter(item=>!isPlaced(item)),room.options,definitions,room.spaces??[],INVENTORY);
   for(const [zone,list] of lists)validateFurniture(list,room.options,definitions,room.spaces??[],zone);

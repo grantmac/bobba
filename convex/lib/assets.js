@@ -4,7 +4,6 @@
 import {furniture} from './catalog.js';
 import {isPlaced} from '../../shared/furniture-model.js';
 export const ASSET_CATEGORIES=['Decor','Tables','Seating','Rugs','Plants','Lighting','Wall'];
-export const ASSET_LIMIT_PER_PLAYER=50,PLACED_LIMIT_PER_PLAYER=80;
 export const assetType=asset=>`asset_${asset._id}`;
 // Where an avatar sits on a built seat: the builder names one tile (offsets within the footprint
 // as placed facing lower-right, rotation 2, where x runs across the depth and z along the width)
@@ -46,7 +45,7 @@ export async function assetCatalogueEntry(ctx,asset){
 // Non-admins may only add, move or remove pieces they own, built from their own assets;
 // anything else in the list must be untouched. `previous` and `next` need only carry the pieces
 // that changed. `where` (from rules.ownSpaceCheck) confines a builder's pieces to their own space.
-// The placed-piece cap is checked by the caller, which knows the player's whole collection.
+// There is no cap on how many pieces a player builds or places: a space's tiles are the limit.
 export function assertOwnedChanges(previous,next,playerId,definitions,where=null){
   const before=new Map(previous.map(item=>[item.id,item])),after=new Map(next.map(item=>[item.id,item]));
   for(const id of new Set([...before.keys(),...after.keys()])){
