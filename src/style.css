@@ -301,7 +301,7 @@ background-size:11px 11px,11px 11px,11px 11px,11px 11px,calc(100% - 22px) 12px,c
   #speech-mode{height:28px;margin:0}
   .bar-hint{display:none}
   .bar-icons{gap:2px}.bar-icon{width:27px}.bar-icon:disabled{display:none}
-  .toolbar-menu-toggle{display:flex;flex:none;align-items:center;justify-content:center;width:44px;height:44px;margin-top:10px;padding:0;border:0;background:none}
+  .toolbar-menu-toggle{display:flex;flex:none;align-items:center;justify-content:center;width:44px;height:44px;margin-top:-6px;padding:0;border:0;background:none}
   .toolbar-menu-toggle span{position:relative;display:block;width:34px;height:28px;padding:0;filter:drop-shadow(2px 2px #0005)}
   .toolbar-menu-toggle span::after{content:'';position:absolute;left:9px;top:8px;width:16px;height:2px;background:#eee;box-shadow:0 1px #345565,0 5px #eee,0 6px #345565,0 10px #eee,0 11px #345565}
   .toolbar-menu-toggle:hover span,.toolbar-menu-toggle[aria-expanded=true] span{filter:brightness(1.15) drop-shadow(2px 2px #0005)}
