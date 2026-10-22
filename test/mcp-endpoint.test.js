@@ -13,18 +13,17 @@ describe('hosted MCP endpoint',()=>{
     const reply=await (await post(rpc('initialize',{protocolVersion:'2025-03-26',capabilities:{},clientInfo:{name:'t',version:'0'}}))).json();
     expect(reply.result.protocolVersion).toBe('2025-03-26');expect(reply.result.capabilities).toEqual({tools:{}});expect(reply.result.serverInfo.name).toBe('habbo-room');
     expect(reply.result.instructions).toContain('Use room_overview for routine room checks');
-    expect(reply.result.instructions).not.toContain('After any change, room_picture');
+    expect(reply.result.instructions).not.toContain('room_picture');
     const newer=await (await post(rpc('initialize',{protocolVersion:'2099-01-01'}))).json();
     expect(newer.result.protocolVersion).toBe('2025-06-18');
   });
   it('lists the tools and answers notifications with 202',async()=>{
     const {result}=await (await post(rpc('tools/list'))).json();
-    expect(result.tools.map(t=>t.name)).toEqual(['status','design_asset','upload_url','preview_asset','submit_asset','add_asset','my_assets','set_controls','program_api','get_program','set_program','set_seat','delete_asset','room_map','room_overview','room_picture','place','remove','add_space','design_surface','style_space','resize_space','remove_space']);
+    expect(result.tools.map(t=>t.name)).toEqual(['status','design_asset','upload_url','preview_asset','submit_asset','add_asset','my_assets','set_controls','program_api','get_program','set_program','set_seat','delete_asset','room_map','room_overview','place','remove','add_space','design_surface','style_space','resize_space','remove_space']);
     const space=result.tools.find(t=>t.name==='add_space');
     expect(space.inputSchema.required).toEqual(['name']);expect(space.inputSchema.properties).not.toHaveProperty('width');expect(space.inputSchema.properties.floor.enum).toEqual(['plain','wood','tiles','carpet']);
     for(const tool of result.tools)expect(tool.inputSchema.type).toBe('object');
     expect(result.tools.find(t=>t.name==='place').inputSchema.properties.support_id.type).toBe('string');
-    expect(result.tools.find(t=>t.name==='room_picture').inputSchema.properties.renderer.default).toBe('server');
     expect(result.tools.find(t=>t.name==='preview_asset').inputSchema.properties.foreground_mask_storage_id.type).toBe('string');
     const controls=result.tools.find(t=>t.name==='set_controls');
     expect(controls.inputSchema.required).toEqual(['asset_id','use','power']);
@@ -46,6 +45,17 @@ describe('hosted MCP endpoint',()=>{
       expect(JSON.parse(result.content[0].text).players[0].name).toBe('Visitor');
       expect(query).toHaveBeenCalledTimes(1);expect(query.mock.calls[0][1]).toEqual({agentToken:'a'.repeat(64),focus:'room'});
     }finally{query.mockRestore();vi.unstubAllEnvs();}
+  });
+  it('directs retired screenshot calls to text without calling Convex or fetching files',async()=>{
+    const query=vi.spyOn(ConvexHttpClient.prototype,'query'),mutation=vi.spyOn(ConvexHttpClient.prototype,'mutation');
+    const fetch=vi.spyOn(globalThis,'fetch').mockRejectedValue(new Error('Unexpected download'));
+    try{
+      for(const renderer of ['server','tab']){
+        const {error}=await (await post(rpc('tools/call',{name:'room_picture',arguments:{renderer}}),{Authorization:`Bearer ${'a'.repeat(64)}`})).json();
+        expect(error.code).toBe(-32602);expect(error.message).toContain('room_overview');
+      }
+      expect(query).not.toHaveBeenCalled();expect(mutation).not.toHaveBeenCalled();expect(fetch).not.toHaveBeenCalled();
+    }finally{query.mockRestore();mutation.mockRestore();fetch.mockRestore();}
   });
   it('provides the executable furniture contract without contacting the backend',async()=>{
     const {result}=await (await post(rpc('tools/call',{name:'program_api'}),{Authorization:`Bearer ${'a'.repeat(64)}`})).json();

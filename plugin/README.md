@@ -12,8 +12,7 @@ the room's pixel-art style and the endpoint remakes at the game's own pixel scal
 figure sits on a built seat and returns positions for every rotation. `preview_asset` shows
 footprint tiles and a test sitter without publishing or placing. Foreground masks let a seat rim
 draw in front of the avatar. `place` accepts a table `support_id` from `room_map.tables`.
-`room_overview` is the default text-only room check. Mutation replies confirm edits; pictures are reserved for explicit visual inspection. `room_picture` uses a server browser by default; no player tab is required. Use `renderer: "tab"`
-for live furniture-program effects. `add_asset` with `frames` makes an animated piece from a strip of up to four frames,
+`room_overview` provides text-only room checks. Mutation replies confirm edits; room screenshots have been removed. `preview_asset` remains available for checking an individual piece before publishing. `add_asset` with `frames` makes an animated piece from a strip of up to four frames,
 optionally switchable by a click.
 
 For custom behaviour, `program_api` describes the JavaScript runtime and includes

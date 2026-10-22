@@ -19,7 +19,7 @@ import {robotFrames} from './robot-avatar.js';
 import {createPlayerFrames} from './player-appearance.js';
 import {roomLayout,tileDrop,walkingDrop,tileAtPoint,isPoolWater,pitSeat,backWallTiles,onWalkway,STEP_DOWN,DANCE_ROWS,zonesIn,zoneBounds,zoneAt,MAIN_ZONE} from '../shared/room-layout.js';
 import {floorSampler,createSpaceFloor,createMetalWalkway,picturePixels,pictureSampler,wallSegment} from './spaces.js';
-import {renderPicture,startSnapshots} from './snapshot.js';
+import {renderPicture} from './snapshot.js';
 import {createDanceFloor} from './dance-floor.js';
 import {createDanceFloorControls} from './dance-floor-controls.js';
 import {createDiscoBall} from './disco-ball.js';
@@ -437,13 +437,12 @@ function overCharacter(event) {
   return x>=p.x-18&&x<=p.x+18&&y>=p.y-68&&y<=p.y+4;
 }
 
-// A seat by id: a furniture seat, or 'pit' for the sunken sofa's ring tile the player stands on.
-// A picture for an agent (src/snapshot.js): the whole room, or one block of tiles with the wall
-// behind it, at two pixels per room pixel (less for a very wide room), as a PNG.
+// Local render-smoke fixture only; agent room observation uses text.
 async function takePicture(region){
+  if(!renderInput)throw new Error('Room screenshots are unavailable.');
   const r=region??zoneBounds(layout,MAIN_ZONE);
   // Whatever the region covers must be in this tab, drawn and furnished, even if the camera is elsewhere.
-  const zones=zonesIn(layout,r),release=renderInput?()=>{}:await network.ensureZones(zones);
+  const zones=zonesIn(layout,r);
   try{
     await loadSpacePictures(layout.spaces.filter(s=>zones.includes(s.id)));
     for(const id of zones)visibleZoneIds.add(id);syncSpaces();
@@ -454,7 +453,7 @@ async function takePicture(region){
     // One frame so furniture that just arrived is positioned before the read-back.
     await new Promise(resolve=>requestAnimationFrame(resolve));
     return await new Promise((resolve,reject)=>renderPicture(renderer,scene,bounds,scale).toBlob(blob=>blob?resolve(blob):reject(new Error('Could not encode the picture.')),'image/png'));
-  }finally{release();lastZoneKey='';updateVisibleZones();}
+  }finally{lastZoneKey='';updateVisibleZones();}
 }
 function seatInfo(id,point){
   if(id!=='pit')return furniture?.seat(id,point)??null;
@@ -922,7 +921,6 @@ try{
   network.assets.watch(list=>furniture.setAssets(list),message=>toolbar.status(message));
   window.addEventListener('pagehide',()=>furniture.disposePrograms());
   window.addEventListener('pageshow',event=>{if(event.persisted)furniture.redraw();});
-  startSnapshots({captures:network.captures,capture:takePicture,onStatus:message=>toolbar.status(message)});
   toolbar.setAdmin(admin);
   let roomKey='',ownLook=JSON.stringify(network.me.look),lookVersion=0,ownZone=network.me.zone;
   const seenMessages=new Set();
@@ -960,7 +958,15 @@ try{
       const recentIds=new Set(state.messages.map(m=>m.id));for(const id of seenMessages)if(!recentIds.has(id))seenMessages.delete(id);
       avatar.visible=true;ready=true;toolbar.setAppearanceEnabled(true);centreViewOnAvatar();
       playerPrepared=true;finishInitialLoad();
-    },onError:message=>{ready=false;radio.close();toolbar.setAppearanceEnabled(false);toolbar.status(message);if(message.includes('removed from the room')){network.close();const notice=document.querySelector('#load-error');notice.textContent=message;notice.hidden=false;}if(first)reject(new Error(message));},onMap,onSignals,onFurniture,onPrograms:list=>furniture.receivePrograms(list)});
+    },onError:(message,{transient=false}={})=>{
+      toolbar.status(message);
+      if(transient&&!first)return;
+      ready=false;radio.close();toolbar.setAppearanceEnabled(false);
+      if(message.includes('removed from the room')||message.includes('session has ended')){
+        network.close();const notice=document.querySelector('#load-error');notice.textContent=message;notice.hidden=false;
+      }
+      if(first)reject(new Error(message));
+    },onMap,onSignals,onFurniture,onPrograms:list=>furniture.receivePrograms(list)});
     lastZoneKey='';updateVisibleZones();
   });
   // Both subscriptions and the restored avatar have rendered before returning visitors see it.

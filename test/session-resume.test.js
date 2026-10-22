@@ -13,6 +13,7 @@ beforeEach(()=>{
   storage=new Map([[key,token]]);
   vi.stubGlobal('localStorage',{getItem:k=>storage.get(k)??null,removeItem:k=>storage.delete(k)});
   vi.stubGlobal('window',{addEventListener:vi.fn()});
+  vi.stubGlobal('document',{addEventListener:vi.fn()});
   vi.stubGlobal('location',{hash:''});
 });
 afterEach(()=>{vi.unstubAllGlobals();vi.unstubAllEnvs();});

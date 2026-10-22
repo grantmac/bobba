@@ -25,7 +25,7 @@ The deployed app and local configuration share `perfect-peacock-308`, the cloud 
 | Path | Before | After |
 | --- | --- | --- |
 | Periodic heartbeat | 240 calls per connected tab-hour | 120, plus initial connection and page restores |
-| Connection crash timeout | 45 seconds | 90 seconds; clean departures still immediate |
+| Connection crash timeout | 45 seconds | 5 minutes to tolerate background delays; clean departures still immediate |
 | Pong | Always subscribed; up to 10 paddle writes/second/paddle | Removed from the client: zero Pong subscriptions or gameplay calls |
 | Slow heartbeat request | Further requests can queue | At most one in flight per connection |
 | Session subscription | `session` and `me` both validate the same token | `me` remains; redundant `session` subscription removed |
@@ -43,11 +43,11 @@ Pong was removed at the owner's request after the initial throttling pass. Its 5
 
 ## Agent checks and images — follow-up
 
-Routine agent checks now use `room_overview`: one authenticated query returns current players, spaces and furniture as text. It does not resolve storage URLs, download images, launch Chromium or create a capture. Mutation replies confirm edits; MCP instructions, follow-up hints and the bundled plugin skill no longer instruct agents to take a picture after every change. `room_picture` and `preview_asset` still explicitly request visual inspection. Existing installed plugin copies need the updated skill, and existing agent conversations may retain old instructions until refreshed.
+Routine agent checks now use `room_overview`: one authenticated query returns current players, spaces and furniture as text. It does not resolve storage URLs, download images, launch Chromium or create a capture. Mutation replies confirm edits; MCP instructions, follow-up hints and the bundled plugin skill no longer instruct agents to take a picture after every change. Room screenshots were subsequently removed (see below); `preview_asset` still explicitly requests inspection of an individual piece. Existing installed plugin copies need the updated skill, and existing agent conversations may retain old instructions until refreshed.
 
 Focused server pictures now resolve surface image URLs only for the requested space, retain the other spaces' dimensions for positioning, and draw only the selected zones. Previously the renderer initialized every space and could download distant floor/wall pictures even for a focused picture. Scene preparation also avoids loading custom asset geometry before reading the same assets again for their sprites.
 
-The public asset catalogue contained 130 custom pieces and 404 distinct image URLs during this check. HEAD requests for three images returned `Cache-Control: private, max-age=2592000` (30 days) and `cf-cache-status: DYNAMIC`. Browser caching is already enabled; these responses do not provide a shared CDN cache. The renderer still starts with a fresh browser cache for explicitly requested pictures. The usage dashboard does not attribute file serving to players versus renders.
+The public asset catalogue contained 130 custom pieces and 404 distinct image URLs during this check. HEAD requests for three images returned `Cache-Control: private, max-age=2592000` (30 days) and `cf-cache-status: DYNAMIC`. Browser caching is already enabled; these responses do not provide a shared CDN cache. At the time of the audit, room pictures started with a fresh browser cache. Room screenshots are now retired; individual asset previews still start a fresh browser. The usage dashboard does not attribute file serving to players versus renders.
 
 Six existing first-part images were downloaded once for a lossless PNG compression comparison:
 
@@ -62,7 +62,7 @@ Six existing first-part images were downloaded once for a lossless PNG compressi
 
 Combined: 886,407 → 649,930 bytes, a 26.7% reduction in this small sample (not a catalogue-wide or bill forecast). New sprite, animation, foreground and surface uploads now try the existing PNG encoding and standard deflate compression, keeping the smaller. Pixel dimensions, RGBA values and appearance remain identical. This adds one encoding pass at upload time, no new dependency or per-download transformation. Existing stored images have not been rewritten; they need a separate migration to benefit.
 
-Next image options: re-encode existing large sprites once, then measure remaining picture traffic before adding a shared cache. A shared CDN could serve cold visitors and fresh renderer browsers from one cached copy, but would shift delivery traffic to that provider. A bounded warm-process renderer cache would avoid some repeated downloads without another service, but cold starts would still miss. Neither has been added in this pass.
+Next image options: re-encode existing large sprites once, then measure remaining asset-preview and player traffic before adding a shared cache. A shared CDN could serve cold visitors and fresh renderer browsers from one cached copy, but would shift delivery traffic to that provider. A bounded warm-process renderer cache would avoid some repeated downloads without another service, but cold starts would still miss. Neither has been added in this pass.
 
 ## Thumbnails, rotations and bot idle checks
 
@@ -107,3 +107,80 @@ These are code observations and one live catalogue sample, not measured monthly 
 Compare equivalent periods and activity after rollout: connected tab-hours, movements, builds and pictures. Verify that new clients make no Pong calls. Check call counts, I/O and file serving separately. Retain this baseline; no total bill reduction has been measured yet.
 
 Convex's [realtime documentation](https://docs.convex.dev/realtime) explains automatic query caching, and its [best practices](https://docs.convex.dev/understanding/best-practices) cover changing clocks and broad query dependencies. Fewer subscriptions alone are not a reliable cost measure.
+
+## Room screenshots retired — 22 October 2026
+
+At the owner's request, room observation is now text-only. The MCP tool list no
+longer includes `room_picture`; cached calls receive a message directing them to
+`room_overview` without a backend query or image download. Tool instructions,
+mutation hints and the bundled plugin skill use text checks. Player tabs no
+longer subscribe to capture requests or upload room screenshots.
+
+The old `agents.renderScene`, capture request and capture upload-URL endpoints
+refuse new screenshot work. The legacy pending query returns null and claiming
+returns false without database reads, so older tabs stay idle. Finish, result
+and discard remain for already-started captures and authorized cleanup; existing
+capture rows and artwork are not deleted by this change. `preview_asset` remains
+available for isolated furniture checks. No renderer cache was added.
+
+Validation covers the absent MCP tool, text guidance for both old renderer modes
+without network calls, disabled backend capture work, idle legacy subscriptions,
+text overview authorization/focus and retained asset previews. Deploy backend
+first, then the frontend/MCP, and refresh installed plugin instructions. This
+removes future room screenshot traffic; the historical usage report does not
+separate screenshots from player downloads, so no total savings percentage is
+claimed.
+
+## Existing sprite compression and resolution — 22 October 2026
+
+A read-only inventory from `perfect-peacock-308` found 159 assets and 478 distinct
+sprite PNGs, including nine animation sheets. Each source was downloaded once
+and retained locally; every optimized candidate was decoded and compared for
+identical width, height and RGBA bytes, including transparent pixels.
+
+| Full sprite set | Bytes |
+| --- | ---: |
+| Current files | 33,209,997 |
+| Smallest lossless encoding per file | 29,113,152 |
+| Potential saving | 4,096,845 (12.34%) |
+
+358 files became smaller. The migration deliberately requires at least 256 bytes
+and 5% savings per file, avoiding replacement of warm browser-cache URLs for
+negligible gains. That selects 246 files across 86 assets and saves 3,965,102 bytes
+(11.94% of the whole sprite set). Selected files total 20,085,968 → 16,120,866 bytes.
+For example, the Silver F1 Car animation shrank from 940,526 to 284,011 bytes;
+the 80s CRT TV and VCR animation shrank from 462,980 to 145,292 bytes.
+
+All sources match their declared 3× dimensions. Animation cells also match 3×
+their logical frame sizes, with no unused outer sheet extent. The room supports
+zoom and high-density displays. At the owner's request to preserve sharpness,
+no dimensions, frame rectangles, registration points or pixel values are changed.
+The audit found no excess-resolution candidates under that constraint.
+
+These are file-size measurements, not a reduction in total traffic or the bill.
+The audit incurred a one-time 33.21 MB of sprite downloads. Original/candidate
+files and the detailed report are in `/tmp/habbo-sprite-optimization-2026-10-22/`.
+
+`tools/audit-sprites.mjs` can repeat this audit from an `assets:list` JSON file,
+reusing its locally cached originals. `spriteBackfill.run` is an internal action
+that processes five assets per batch. Its default mode inventories without
+downloading or writing images. Apply mode verifies pixels again, stores only
+worthwhile replacements, and atomically compares the previous parts before
+updating an asset. Concurrent sprite edits are skipped; unrelated fields remain
+intact. Original files are retained for older clients and recovery, so storage
+temporarily increases. Old tabs can keep their old sprite URLs until refreshed.
+Uncertain transaction failures retain uploaded files rather than risk deleting
+an image that may already be referenced.
+
+After deploying the migration functions, inventory and then apply explicitly:
+
+```sh
+node tools/backfill-sprites.mjs --deployment-name perfect-peacock-308
+node tools/backfill-sprites.mjs --deployment-name perfect-peacock-308 --apply > /tmp/habbo-sprite-migration.jsonl
+```
+
+Keep the JSONL output: each committed asset lists old/new storage IDs and byte
+counts. Re-running skips files that no longer meet the savings threshold. Tests
+cover dry-run behavior, exact pixels and dimensions, animation/foreground
+metadata, retained originals, reruns and concurrent edits. The migration has
+been prepared locally; it has not been deployed or applied to live files.

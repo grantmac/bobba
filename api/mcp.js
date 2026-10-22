@@ -15,7 +15,7 @@ import {SPACE_LIMIT,SPACES_PER_PLAYER,SPACE_SIZE,SPACE_MIN_WIDTH,SPACE_MAX_WIDTH
 
 export const maxDuration=120;
 const api=anyApi,SERVER={name:'habbo-room',version:'0.9.0'},PROTOCOLS=['2024-11-05','2025-03-26','2025-06-18'];
-const INSTRUCTIONS=`Builds furniture into the shared Habbo-style room for the player whose agent key you hold. For any picture that is not already a game sprite: design_asset (prompt + reference image URLs) → draw the 2 by 2 sprite sheet with your image tool → upload_url → POST the PNG to it → submit_asset with the storage id. Then place it from room_map when the player says where. The player can also add one block of floor to the room with add_space: it always joins the right-hand end of the back wall, after the latest space, and the room_map shows it with its tiles; style_space then restyles that space's floor and back wall with colours, wallpapers or pictures; any picture starts with design_surface, and is remade at the game's pixel scale on the way in. Before publishing, preview_asset renders the prepared piece with footprint tiles and a test sitter. Use room_overview for routine room checks and room_map for placement. Mutation replies confirm changes; do not automatically take a picture after each change. Call room_picture only for an explicit visual inspection, such as checking appearance or showing the user a picture; renderer tab is available for live program effects. ${CONVENTIONS}`;
+const INSTRUCTIONS=`Builds furniture into the shared Habbo-style room for the player whose agent key you hold. For any picture that is not already a game sprite: design_asset (prompt + reference image URLs) → draw the 2 by 2 sprite sheet with your image tool → upload_url → POST the PNG to it → submit_asset with the storage id. Then place it from room_map when the player says where. The player can also add one block of floor to the room with add_space: it always joins the right-hand end of the back wall, after the latest space, and the room_map shows it with its tiles; style_space then restyles that space's floor and back wall with colours, wallpapers or pictures; any picture starts with design_surface, and is remade at the game's pixel scale on the way in. Before publishing, preview_asset renders the prepared piece with footprint tiles and a test sitter. Use room_overview for routine room checks and room_map for placement. Mutation replies confirm changes; do not automatically take a picture after each change. Room observation is text-only; use preview_asset only to inspect an individual piece before publishing. ${CONVENTIONS}`;
 const NO_KEY='No agent key. Send the player\'s key as "Authorization: Bearer <key>": in the room, open Furniture → Build with your agent → Copy agent prompt, then paste the prompt into your agent.';
 const message=error=>typeof error?.data==='string'?error.data:(error?.message||String(error)).replace(/\[(CONVEX|Request ID)[^\]]*\]\s*/g,'').replace(/^Server Error\s*/,'').replace(/^Uncaught (\w*Error): /,'').split('\n')[0];
 function convexUrl(){const url=process.env.CONVEX_URL||process.env.VITE_CONVEX_URL;if(!url)throw new Error('The room server is not configured (CONVEX_URL).');return url;}
@@ -50,8 +50,6 @@ const TOOLS=[
   {name:'delete_asset',description:'Delete a piece the player built, removing any placed copies.',inputSchema:object({asset_id:{type:'string'}},['asset_id'])},
   {name:'room_map',description:'The room floor: the lobby areas with their tiles (and whether each is free), every space by name and position, and, for the lobby and the player\'s own spaces (the only places the agent can build), their tiles, wall segments for wall pieces (x, z, side, rotation) and placed furniture.',inputSchema:object({})},
   {name:'room_overview',description:'Default way to check the room: text-only current players, spaces and placed furniture, without downloading images or starting a browser. Compare snapshots for changes. Use room_map when you need free placement tiles.',inputSchema:object({focus:{type:'string',enum:['mine','space','room'],default:'room'},space_id:{type:'string',description:'Required with focus space'}})},
-  {name:'room_picture',description:'Only for explicitly requested visual inspection, not routine room checks (use room_overview). Render the room on the server using the actual game renderer, with no player browser required. focus mine frames the player’s space, space frames space_id, room frames the whole room. Server pictures show saved furniture and players; arbitrary furniture programs are not executed. renderer tab uses a live open room browser for program effects.',
-    inputSchema:object({focus:{type:'string',enum:['mine','space','room'],default:'mine'},space_id:{type:'string',description:'With focus space: the space to frame, from room_map'},renderer:{type:'string',enum:['server','tab'],default:'server'}})},
   {name:'place',description:'Place one of the player\'s pieces on a free tile (x, z from room_map), or on a table with support_id from room_map.tables. Wall pieces take the wall tile plus rotation 2 (left wall) or 4 (right wall), with u (0.25-0.75 along the tile) and height (26-88 px up the wall).',
     inputSchema:object({asset_id:{type:'string'},x:{type:'integer'},z:{type:'integer'},support_id:{type:'string',description:'Table item id from room_map.tables. x,z must be free tiles on that table and the whole piece must fit.'},rotation:{type:'integer',description:'Supported direction from the asset views; walls support 2 or 4 only'},u:{type:'number'},height:{type:'number'}},['asset_id','x','z'])},
   {name:'remove',description:'Pick a placed piece of the player\'s out of the room (item id from status or room_map).',inputSchema:object({item_id:{type:'string'}},['item_id'])},
@@ -152,35 +150,11 @@ const HANDLERS={
   async delete_asset({asset_id},{token}){await call('mutation',api.agents.deleteAsset,{agentToken:token,id:asset_id});return 'Deleted.';},
   async room_overview({focus='room',space_id},{token}){return call('query',api.agents.overview,{agentToken:token,focus,...(space_id?{spaceId:space_id}:{})});},
   async room_map(_,{token}){return call('query',api.agents.map,{agentToken:token});},
-  async place({asset_id,support_id,...rest},{token}){return {...await call('mutation',api.agents.place,{agentToken:token,assetId:asset_id,...rest,...(support_id?{supportId:support_id}:{})}),then:'Placed successfully. Use room_overview if you need a text check; room_picture only for visual inspection.'};},
-  // Waits for an open room tab to render and upload the picture (convex/captures.js), then returns it as image content.
-  async room_picture({focus='mine',space_id,renderer='server'},{token,origin}){
-    if(renderer==='server'){
-      const scene=await call('query',api.agents.renderScene,{agentToken:token,focus,...(space_id?{spaceId:space_id}:{})});
-      return {content:[{type:'image',mimeType:'image/png',data:await render(origin,{mode:'room',scene})},{type:'text',text:'Rendered on the server with the game renderer. Saved furniture and current players; custom program effects are not executed. Use renderer tab for a live program view.'}]};
-    }
-    let region=null,label='the lobby';
-    if(focus!=='room'){
-      const map=await call('query',api.agents.map,{agentToken:token}),space=focus==='space'?map.spaces.find(s=>s.id===space_id):map.spaces.find(s=>s.mine);
-      if(!space)throw new Error(focus==='space'?'No space with that id.':'The player has no space yet: use focus "room", or add one.');
-      region={x:space.x,z:space.z,width:space.width,depth:space.depth};label=`the space "${space.name}"`;
-    }
-    const id=await call('mutation',api.captures.request,{agentToken:token,...(region?{region}:{})}),started=Date.now();let last=null;
-    while(Date.now()-started<25000){
-      await new Promise(resolve=>setTimeout(resolve,600));
-      last=await call('query',api.captures.result,{agentToken:token,id});
-      if(last.status==='done'||last.status==='failed')break;
-    }
-    const discard=()=>call('mutation',api.captures.discard,{agentToken:token,id}).catch(()=>{});
-    if(last?.status!=='done'){await discard();throw new Error(last?.status==='failed'?`The room tab could not take the picture: ${last.reason}`:`No open room tab answered within 25 seconds. Someone needs the room open in a browser at ${origin} (the player usually does): ask them to open it, then try again.`);}
-    const response=await fetch(last.url);if(!response.ok){await discard();throw new Error('Could not fetch the picture.');}
-    const data=Buffer.from(await response.arrayBuffer()).toString('base64');await discard();
-    return {content:[{type:'image',data,mimeType:'image/png'},{type:'text',text:`A picture of ${label}, rendered just now by ${last.takenBy?`${last.takenBy}'s`:'an open'} room tab.`}]};
-  },
+  async place({asset_id,support_id,...rest},{token}){return {...await call('mutation',api.agents.place,{agentToken:token,assetId:asset_id,...rest,...(support_id?{supportId:support_id}:{})}),then:'Placed successfully. Use room_overview if you need a text check.'};},
   async remove({item_id},{token}){await call('mutation',api.agents.remove,{agentToken:token,itemId:item_id});return 'Removed.';},
   async add_space({floor_color,...rest},{token}){
     const space=await call('mutation',api.agents.addSpace,{agentToken:token,...rest,...(floor_color?{floorColor:floor_color}:{})});
-    return {...space,then:'The space is in the room for everyone now. Its tiles are free: place the player\'s pieces on them with place when they say where. Use room_overview for a text check; room_picture only for visual inspection.'};
+    return {...space,then:'The space is in the room for everyone now. Its tiles are free: place the player\'s pieces on them with place when they say where. Use room_overview for a text check.'};
   },
   async design_surface({surface,fit='tile',description,details=''},{origin}){
     const {w,h}=surfaceSize(surface,fit),id=surface==='floor'?'floor_image_storage_id':'wall_image_storage_id',fitKey=surface==='floor'?'floor_fit':'wall_fit';
@@ -200,11 +174,11 @@ const HANDLERS={
       if(storage_id)await call('mutation',api.agents.discardUpload,{agentToken:token,storageId:storage_id}).catch(()=>{});
     }
     const space=await call('mutation',api.agents.styleSpace,args);
-    return {...space,...kept,then:'Everyone in the room sees the new look now. Use room_overview for a text check; room_picture only for visual inspection.'};
+    return {...space,...kept,then:'Everyone in the room sees the new look now. Use room_overview for a text check.'};
   },
   async resize_space({space_id,width},{token}){
     const space=await call('mutation',api.agents.resizeSpace,{agentToken:token,...(space_id?{spaceId:space_id}:{}),width});
-    return {...space,then:`${space.moved?`The ${space.moved} space${space.moved===1?'':'s'} after it moved along with everything on them. `:''}room_map has the new tiles; Use room_overview for a text check; room_picture only for visual inspection.`};
+    return {...space,then:`${space.moved?`The ${space.moved} space${space.moved===1?'':'s'} after it moved along with everything on them. `:''}room_map has the new tiles; Use room_overview for a text check.`};
   },
   async remove_space({space_id},{token}){await call('mutation',api.agents.removeSpace,{agentToken:token,spaceId:space_id});return 'Removed.';},
 };
@@ -224,7 +198,7 @@ async function handle(m,context){
     case 'tools/list':return reply(id,{tools:TOOLS});
     case 'tools/call':{
       const tool=HANDLERS[params.name];
-      if(!tool)return rpcError(id,-32602,`Unknown tool: ${params.name}`);
+      if(!tool)return rpcError(id,-32602,params.name==='room_picture'?'Room pictures have been removed. Use room_overview for text-only room checks.':`Unknown tool: ${params.name}`);
       try{
         if(!context.token)throw new Error(NO_KEY);
         const value=await tool(params.arguments??{},context);

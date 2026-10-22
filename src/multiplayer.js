@@ -11,8 +11,8 @@ export function createMultiplayer(){
   try{if(pairingCode)sessionStorage.setItem(pairingStorage,pairingCode);else pairingCode=sessionStorage.getItem(pairingStorage)||'';}catch{}
   if(entryCode||fragment.has('pair'))history.replaceState(null,'',location.pathname+location.search);
   let token='',me=null,state=null,room=null,inventory=null,unsubscribe=null,unsubscribeRoom=null,heartbeat=null,heartbeatInterval=15000,offset=0;
-  // Per-zone subscriptions, keyed by zone id; `pinned` zones stay while a picture needs them.
-  const zones=new Map(),pinned=new Set(),loaded=new Map(),looks=new Map();let wanted=null,lastZones=[];
+  // Per-zone subscriptions, keyed by zone id.
+  const zones=new Map(),looks=new Map();let wanted=null,lastZones=[];
   const RELEASE_AFTER=2500;
   try{token=localStorage.getItem(KEY)||'';}catch{}
   let remembered=!!token;
@@ -31,18 +31,22 @@ export function createMultiplayer(){
         heartbeatInterval=result.heartbeatInterval===30000?30000:15000;
       }
       return result;
-    }catch(error){throw new Error(errorMessage(error));}
+    }catch(error){throw new Error(errorMessage(error),{cause:error});}
   }
   function randomToken(){return [...crypto.getRandomValues(new Uint8Array(32))].map(b=>b.toString(16).padStart(2,'0')).join('');}
   const connectionId=randomToken();let population={people:null};
-  let pendingHeartbeat=null;
+  let pendingHeartbeat=null,refreshConnection=null,closed=false;
   function pulse(){
     if(!pendingHeartbeat)pendingHeartbeat=mutate('heartbeat',{connectionId,pageOrigin:location.origin}).finally(()=>{pendingHeartbeat=null;});
     return pendingHeartbeat;
   }
   const depart=()=>{if(token&&me)navigator.sendBeacon(import.meta.env.VITE_CONVEX_SITE_URL+'/disconnect',JSON.stringify({token,connectionId}));};
+  const wake=()=>{if(!closed&&!document.hidden)refreshConnection?.();};
+  const restore=event=>{if(event.persisted)wake();};
   window.addEventListener('pagehide',depart);
-  window.addEventListener('pageshow',event=>{if(event.persisted&&me)pulse().catch(()=>{});});
+  window.addEventListener('pageshow',restore);
+  window.addEventListener('online',wake);
+  document.addEventListener('visibilitychange',wake);
   return {
     get adminEntry(){return !!entryCode;},get me(){return me;},get state(){return state;},now:()=>Date.now()+offset,
     get population(){return {...population};},
@@ -150,7 +154,7 @@ export function createMultiplayer(){
         zone.stops=[
           client.onUpdate(heartbeatInterval===30000?api.room.livePresence:api.room.presence,{zone:id},value=>{zone.presence=value;emit();},error),
           client.onUpdate(api.room.chatFeed,{token,zone:id},value=>{zone.messages=value;emit();},error),
-          client.onUpdate(api.room.zoneFurniture,{token,zone:id},value=>{zone.furniture=value;watchPrograms(value);emitFurniture();loaded.get(id)?.forEach(resolve=>resolve());loaded.delete(id);},error)
+          client.onUpdate(api.room.zoneFurniture,{token,zone:id},value=>{zone.furniture=value;watchPrograms(value);emitFurniture();},error)
         ];
       }
       function dropZone(id){
@@ -158,24 +162,22 @@ export function createMultiplayer(){
         clearTimeout(zone.release);zone.stopPrograms?.();zone.stops.forEach(stop=>stop());zones.delete(id);emit();emitFurniture();emitPrograms();
       }
       wanted=ids=>{
-        const keep=new Set([...ids,...pinned,...(me?[me.zone]:[])]);
+        const keep=new Set([...ids,...(me?[me.zone]:[])]);
         for(const id of keep)addZone(id);
         // A zone that scrolled out of view lingers a moment, so panning back and forth is free.
         for(const [id,zone] of zones)if(!keep.has(id)&&!zone.release)zone.release=setTimeout(()=>{if(!keep.has(id))dropZone(id);},RELEASE_AFTER);
       };
       // Zones asked for before the room was live are picked up now.
       wanted(lastZones);
-      clearInterval(heartbeat);heartbeat=setInterval(()=>pulse().catch(error=>onError(error.message)),heartbeatInterval);
+      // Sleeping tabs may lose their presence lease. Refresh as soon as they return,
+      // and let the transport retry temporary failures without disabling the room.
+      refreshConnection=()=>pulse().catch(error=>{
+        if(!closed)onError(error.message,{transient:!error.cause?.data});
+      });
+      clearInterval(heartbeat);heartbeat=setInterval(refreshConnection,heartbeatInterval);
     },
     // The zones the camera can see; the player's own zone is always included.
     setZones(ids){lastZones=ids;wanted?.(ids);},
-    // Hold some zones subscribed (for a picture of them) until their furniture has arrived.
-    async ensureZones(ids){
-      for(const id of ids)pinned.add(id);
-      wanted?.(lastZones);
-      await Promise.all(ids.map(id=>zones.get(id)?.furniture?Promise.resolve():new Promise(resolve=>{if(!loaded.has(id))loaded.set(id,[]);loaded.get(id).push(resolve);})));
-      return ()=>{for(const id of ids)pinned.delete(id);wanted?.(lastZones);};
-    },
     get zones(){return [...zones.keys()];},
     // An appearance by player and version: fetched once, then remembered.
     async look(id,version){
@@ -249,15 +251,7 @@ export function createMultiplayer(){
       attached:(onList,onError)=>client.onUpdate(api.agents.attached,{token},onList,error=>onError(errorMessage(error))),
       revoke:()=>client.mutation(api.agents.revoke,{token}).catch(error=>{throw new Error(errorMessage(error));}),
     },
-    // Pictures for agents: an open tab takes the request, renders and uploads (src/snapshot.js).
-    captures:{
-      watch:(onPending,onError)=>client.onUpdate(api.captures.pending,{token},onPending,error=>onError(errorMessage(error))),
-      take:id=>client.mutation(api.captures.take,{token,id}),
-      uploadUrl:()=>client.mutation(api.captures.uploadUrl,{token}),
-      finish:(id,storageId)=>client.mutation(api.captures.finish,{token,id,storageId}),
-      failed:(id,reason)=>client.mutation(api.captures.failed,{token,id,reason}),
-    },
-    close(){population={people:null};depart();window.removeEventListener('pagehide',depart);unsubscribe?.();unsubscribeRoom?.();clearInterval(heartbeat);client.close();},
+    close(){closed=true;refreshConnection=null;population={people:null};depart();window.removeEventListener('pagehide',depart);window.removeEventListener('pageshow',restore);window.removeEventListener('online',wake);document.removeEventListener('visibilitychange',wake);unsubscribe?.();unsubscribeRoom?.();clearInterval(heartbeat);client.close();},
   };
 }
 export function samplePlayer(player,now){

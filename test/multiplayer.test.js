@@ -3,7 +3,8 @@ import {convexTest} from 'convex-test';
 import schema from '../convex/schema.js';
 import {api,internal} from '../convex/_generated/api.js';
 import {heartbeat as heartbeatFunction} from '../convex/room.js';
-import {pending as pendingCaptures} from '../convex/captures.js';
+import {CONNECTION_TIMEOUT} from '../shared/presence-policy.js';
+import {pending as pendingCaptures,take as takeCapture} from '../convex/captures.js';
 import {attached as attachedAgents} from '../convex/agents.js';
 import {overview as roomOverview} from '../convex/agents.js';
 import {draw as drawWhiteboard} from '../convex/whiteboard.js';
@@ -51,7 +52,7 @@ describe('agent build diagnostics and table placement',()=>{
     await expect(t.mutation(api.agents.place,{agentToken,assetId:lamp.id,x:2,z:2,supportId:placed.itemId})).rejects.toThrow();
     await expect(t.mutation(api.agents.place,{agentToken,assetId:lamp.id,x:3,z:2,supportId:placed.itemId})).rejects.toThrow();
   });
-  it('uses valid wall defaults and returns a read-only render scene including distant spaces',async()=>{
+  it('uses valid wall defaults and reports placed artwork as text',async()=>{
     await admin();const {agentToken}=await t.mutation(api.agents.createKey,{token:adminToken});
     await t.mutation(api.agents.addSpace,{agentToken,name:'Workshop'});
     const map=await t.query(api.agents.map,{agentToken}),wall=map.walls.find(w=>w.x===map.spaces[0].x&&w.side==='right');
@@ -64,20 +65,11 @@ describe('agent build diagnostics and table placement',()=>{
     });
     const poster=await t.mutation(api.agents.createAsset,{agentToken,name:'Poster',category:'Wall',width:1,depth:1,spriteDensity:1,wallWidth:24,icon:storageId,parts:[{storageId,direction:0,width:24,height:40,reg:{x:12,y:40}}],views:[0,4].map(direction=>({direction,source:0,mirror:false}))});
     await t.mutation(api.agents.place,{agentToken,assetId:poster.id,x:wall.x,z:wall.z});
-    const before=await everywhere(),scene=await t.query(api.agents.renderScene,{agentToken,focus:'space',spaceId:map.spaces[0].id});
-    expect(scene.room.furniture).toHaveLength(1);expect(scene.room.furniture[0].rotation).toBe(4);
-    expect(scene.region.x).toBe(wall.x);expect(scene.assets[0].parts[0].file).toContain('https://');
-    expect(scene.zones).toEqual([map.spaces[0].id]);
-    expect(scene.room.spaces[0].floorImageUrl).toContain('https://');
-    expect(scene.room.spaces[1]).not.toHaveProperty('floorImageUrl');
-    expect(scene.room.spaces[1]).not.toHaveProperty('wallImageUrl');
-    expect(scene.room.spaces[1]).not.toHaveProperty('floorImage');
-    const full=await t.query(api.agents.renderScene,{agentToken,focus:'room'});
-    expect(full.room.spaces.every(s=>s.floorImageUrl&&s.wallImageUrl)).toBe(true);
+    const before=await everywhere();
+    expect(before.find(item=>item.type===poster.type).rotation).toBe(4);
     const overview=await t.query(api.agents.overview,{agentToken,focus:'mine'});
     expect(overview.furniture[0].name).toBe('Poster');expect(overview.spaces[0].wallImage).toBe(true);
     expect(await everywhere()).toEqual(before);
-    await expect(t.query(api.agents.renderScene,{agentToken:'f'.repeat(64),focus:'room'})).rejects.toThrow();
   });
   it('preserves foreground sprites and returns seat pixel positions after edits',async()=>{
     await admin();const {agentToken}=await t.mutation(api.agents.createKey,{token:adminToken});
@@ -86,8 +78,8 @@ describe('agent build diagnostics and table placement',()=>{
     const result=await t.mutation(api.agents.setSeat,{agentToken,assetId:asset.id,seat:{x:0,z:1,height:20}});
     expect(result.positions.rotations[0].seats[0].surface).toEqual({x:-32,y:12});
     await t.mutation(api.agents.place,{agentToken,assetId:asset.id,x:2,z:2});
-    const scene=await t.query(api.agents.renderScene,{agentToken,focus:'room'});
-    expect(scene.assets.find(a=>a.id===asset.type).parts.map(p=>p.foreground)).toEqual([false,true]);
+    const preview=await t.query(api.agents.previewAsset,{agentToken,assetId:asset.id});
+    expect(preview.asset.parts.map(p=>p.foreground)).toEqual([false,true]);
     await expect(t.mutation(api.agents.discardUpload,{agentToken,storageId:foregroundStorageId})).rejects.toThrow('belongs to a piece');
   });
 });
@@ -126,9 +118,9 @@ describe('facing another player',()=>{
   });
 });
 describe('room access and persistence',()=>{
-  it('keeps movement out of screenshot, agent-list and guest-book query dependencies',async()=>{
+  it('keeps movement out of agent-list and guest-book query dependencies',async()=>{
     await guest();
-    for(const fn of [pendingCaptures,attachedAgents,visitPage]){
+    for(const fn of [attachedAgents,visitPage]){
       const reads=[];
       await t.run(ctx=>fn._handler({...ctx,db:new Proxy(ctx.db,{get(db,key){
         if(key==='get')return id=>{reads.push(id);return db.get(id);};
@@ -136,11 +128,11 @@ describe('room access and persistence',()=>{
         return typeof db[key]==='function'?db[key].bind(db):db[key];
       }})},{token}));
       expect(reads).toContain('sessions');
-      expect(reads.every(id=>['sessions','captures','agentLinks','visits'].includes(id))).toBe(true);
+      expect(reads.every(id=>['sessions','agentLinks','visits'].includes(id))).toBe(true);
     }
     // Reducing dependencies must not bypass session expiry or removal from the room.
     const session=await t.run(ctx=>ctx.db.query('sessions').first());
-    const queries=[api.captures.pending,api.agents.attached,api.visits.page];
+    const queries=[api.agents.attached,api.visits.page];
     await t.run(ctx=>ctx.db.patch(session._id,{blockedUntil:Date.now()+600000}));
     for(const query of queries)await expect(t.query(query,{token})).rejects.toThrow('removed from the room');
     await t.run(ctx=>ctx.db.patch(session._id,{blockedUntil:undefined,expiresAt:1}));
@@ -164,9 +156,43 @@ describe('room access and persistence',()=>{
     await t.run(async ctx=>{const row=await ctx.db.query('connections').first();await ctx.db.patch(row._id,{tokenHash:await digest(token)});});
     expect((await t.mutation(api.room.heartbeat,{token,connectionId})).heartbeatInterval).toBe(30000);
     const upgraded=await t.run(ctx=>ctx.db.query('connections').first());
-    expect(upgraded.timeoutMs).toBe(90000);
+    expect(upgraded.timeoutMs).toBe(CONNECTION_TIMEOUT);
     await t.mutation(internal.room.expireConnection,{connectionId,seenAt:now-15000});
     expect((await t.query(api.room.livePresence,{zone:'main'})).players.map(p=>p.id)).toEqual([me.id]);
+  });
+  it('keeps a player present through delayed background heartbeats without restarting their visit',async()=>{
+    const me=await guest(),connectionId='d'.repeat(64);
+    await t.mutation(api.room.heartbeat,{token,connectionId});
+    const connection=await t.run(ctx=>ctx.db.query('connections').first());
+    const before=await t.run(ctx=>ctx.db.get(me.id));
+    const visits=await t.run(ctx=>ctx.db.query('visits').collect());
+    const clock=vi.spyOn(Date,'now').mockReturnValue(connection.lastSeen+120000);
+    try{
+      await t.mutation(internal.room.expireConnection,{connectionId,seenAt:connection.lastSeen});
+      expect((await t.query(api.room.livePresence,{zone:'main'})).players.map(p=>p.id)).toEqual([me.id]);
+      await t.mutation(api.room.heartbeat,{token,connectionId});
+      expect(await t.run(ctx=>ctx.db.get(me.id))).toEqual(before);
+      expect(await t.run(ctx=>ctx.db.query('visits').collect())).toEqual(visits);
+      await t.mutation(internal.room.disconnect,{token,connectionId});
+      expect((await t.query(api.room.livePresence,{zone:'main'})).players).toEqual([]);
+    }finally{clock.mockRestore();}
+  });
+  it('upgrades a 90-second lease and ignores its original expiry job',async()=>{
+    const me=await guest(),connectionId='d'.repeat(64),now=Date.now();
+    await t.run(async ctx=>{
+      await ctx.db.patch(me.id,{online:true});
+      await ctx.db.insert('connections',{connectionId,playerId:me.id,tokenHash:await digest(token),lastSeen:now,expiryAt:now+90000,timeoutMs:90000});
+    });
+    const clock=vi.spyOn(Date,'now').mockReturnValue(now+30000);
+    try{
+      await t.mutation(api.room.heartbeat,{token,connectionId});
+      const lease=await t.run(ctx=>ctx.db.query('connections').first());
+      expect(lease.timeoutMs).toBe(CONNECTION_TIMEOUT);
+      clock.mockReturnValue(now+90000);
+      await t.mutation(internal.room.expireConnection,{connectionId,seenAt:now});
+      expect(await t.run(ctx=>ctx.db.query('connections').first())).toEqual(lease);
+      expect((await t.query(api.room.livePresence,{zone:'main'})).players.map(p=>p.id)).toEqual([me.id]);
+    }finally{clock.mockRestore();}
   });
   it('honors legacy lease expiry and preserves another tab throughout its longer lease',async()=>{
     const me=await guest(),a='d'.repeat(64),b='e'.repeat(64);
@@ -222,15 +248,15 @@ describe('room access and persistence',()=>{
     const clock=vi.spyOn(Date,'now').mockReturnValue(initial.lastSeen+60000);
     try{
       await t.mutation(api.room.heartbeat,{token,connectionId});
-      clock.mockReturnValue(initial.lastSeen+90000);
+      clock.mockReturnValue(initial.lastSeen+CONNECTION_TIMEOUT);
       await t.mutation(internal.room.expireConnection,{connectionId,seenAt:initial.lastSeen});
       const renewed=await t.run(ctx=>ctx.db.query('connections').first());
-      expect(renewed.expiryAt).toBe(initial.lastSeen+150000);
-      clock.mockReturnValue(initial.lastSeen+120000);
+      expect(renewed.expiryAt).toBe(initial.lastSeen+60000+CONNECTION_TIMEOUT);
+      clock.mockReturnValue(initial.lastSeen+CONNECTION_TIMEOUT+30000);
       expect((await t.query(api.room.presence,{})).players.some(p=>p.id===me.id)).toBe(true);
       await expect(t.mutation(api.room.move,{token:adminToken,x:Math.floor(me.route[0].x),z:Math.floor(me.route[0].z)})).rejects.toThrow('reached');
       expect(await t.query(internal.room.voiceIdentity,{token})).toEqual({playerId:me.id,zone:'main'});
-      clock.mockReturnValue(initial.lastSeen+150001);
+      clock.mockReturnValue(renewed.expiryAt+1);
       await t.mutation(internal.room.expireConnection,{connectionId,seenAt:renewed.lastSeen});
       expect((await t.query(api.room.presence,{})).players.some(p=>p.id===me.id)).toBe(false);
       expect((await t.query(api.visits.page,{token})).visits.find(v=>v.name==='Visitor').leftAt).not.toBeNull();
@@ -691,10 +717,24 @@ describe('room access and persistence',()=>{
     const connection=await t.run(ctx=>ctx.db.query('connections').first());
     await t.mutation(internal.room.expireConnection,{connectionId,seenAt:connection.lastSeen-1});
     expect((await t.query(api.room.state,{token:adminToken})).players.some(p=>p.name==='Visitor')).toBe(true);
-    const clock=vi.spyOn(Date,'now').mockReturnValue(connection.lastSeen+90001);
+    const clock=vi.spyOn(Date,'now').mockReturnValue(connection.lastSeen+CONNECTION_TIMEOUT+1);
     try{
       await t.mutation(internal.room.expireConnection,{connectionId,seenAt:connection.lastSeen});
       expect((await t.query(api.room.state,{token:adminToken})).players.some(p=>p.name==='Visitor')).toBe(false);
+    }finally{clock.mockRestore();}
+  });
+  it('restores a suspended tab after its presence lease expires and accepts gestures',async()=>{
+    const me=await guest(),connectionId='d'.repeat(64);
+    await t.mutation(api.room.heartbeat,{token,connectionId});
+    const connection=await t.run(ctx=>ctx.db.query('connections').first());
+    const clock=vi.spyOn(Date,'now').mockReturnValue(connection.lastSeen+10*60000);
+    try{
+      await t.mutation(internal.room.expireConnection,{connectionId,seenAt:connection.lastSeen});
+      expect((await t.query(api.room.livePresence,{zone:'main'})).players).toEqual([]);
+      await t.mutation(api.room.heartbeat,{token,connectionId});
+      expect((await t.query(api.room.livePresence,{zone:'main'})).players.map(p=>p.id)).toEqual([me.id]);
+      await t.mutation(api.room.gesture,{token,action:'dance'});
+      expect((await t.query(api.room.me,{token})).action).toBe('dance');
     }finally{clock.mockRestore();}
   });
 
@@ -1122,48 +1162,36 @@ describe('voice room access',()=>{
     await expect(t.action(api.voice.connect,{token})).rejects.toThrow('not ready yet');
   });
 });
-describe('agents asking for pictures',()=>{
+describe('retired room pictures',()=>{
   it('cannot use screenshot cleanup to delete another player’s artwork',async()=>{
-    await guest();const owner=await t.mutation(api.room.join,{token:otherToken,name:'Artist',look});
+    const player=await guest(),owner=await t.mutation(api.room.join,{token:otherToken,name:'Artist',look});
     const agentToken=(await t.mutation(api.agents.createKey,{token,label:'Codex'})).agentToken;
     const png=await t.run(async ctx=>{
       const storageId=await ctx.storage.store(new Blob([new Uint8Array([137,80,78,71])],{type:'image/png'}));
       await ctx.db.insert('assets',{ownerId:owner.id,ownerName:'Artist',name:'Protected artwork',category:'Decor',width:1,depth:1,surfaceHeight:0,spriteDensity:3,icon:storageId,parts:[{storageId,direction:2,width:30,height:30,reg:{x:15,y:30}}],views:[{direction:2,source:2,mirror:false}],createdAt:Date.now()});
       return storageId;
     });
-    const id=await t.mutation(api.captures.request,{agentToken});await t.mutation(api.captures.take,{token,id});
+    const id=await t.run(ctx=>ctx.db.insert('captures',{playerId:player.id,requestedAt:Date.now(),status:'taking',takenBy:player.id,takenAt:Date.now()}));
     await expect(t.mutation(api.captures.finish,{token,id,storageId:png})).rejects.toThrow('room artwork');
     // Even a stale request written before the protection must leave the artwork intact.
     await t.run(ctx=>ctx.db.patch(id,{status:'done',storageId:png}));
     await t.mutation(api.captures.discard,{agentToken,id});
     expect(await t.run(ctx=>ctx.db.system.get(png))).not.toBeNull();
-    const stale=await t.mutation(api.captures.request,{agentToken});
-    await t.run(ctx=>ctx.db.patch(stale,{status:'done',storageId:png,requestedAt:Date.now()-600001}));
-    await t.mutation(api.captures.request,{agentToken});
-    expect(await t.run(ctx=>ctx.db.system.get(png))).not.toBeNull();
   });
-  it('hands a request to an open tab, which uploads the picture for the agent',async()=>{
-    await guest();const agentToken=(await t.mutation(api.agents.createKey,{token,label:'Codex'})).agentToken;
+  it('rejects new server and tab pictures and leaves old subscriptions idle without reads',async()=>{
+    const player=await guest(),agentToken=(await t.mutation(api.agents.createKey,{token})).agentToken;
+    const id=await t.run(ctx=>ctx.db.insert('captures',{playerId:player.id,requestedAt:Date.now(),status:'pending'}));
+    const noIO={db:new Proxy({},{get(){throw new Error('Retired capture accessed database');}}),storage:new Proxy({},{get(){throw new Error('Retired capture accessed storage');}})};
+    expect(await pendingCaptures._handler(noIO,{token})).toBeNull();
+    expect(await takeCapture._handler(noIO,{token,id})).toBe(false);
+    await expect(t.query(api.agents.renderScene,{agentToken,focus:'room'})).rejects.toThrow('room_overview');
+    await expect(t.mutation(api.captures.request,{agentToken})).rejects.toThrow('room_overview');
+    await expect(t.mutation(api.captures.uploadUrl,{token})).rejects.toThrow('room_overview');
+    expect(await t.run(ctx=>ctx.db.query('captures').collect())).toHaveLength(1);
     expect(await t.query(api.captures.pending,{token})).toBeNull();
-    const id=await t.mutation(api.captures.request,{agentToken,region:{x:21,z:0,width:8,depth:8}});
-    expect(await t.query(api.captures.pending,{token})).toEqual({id,region:{x:21,z:0,width:8,depth:8}});
-    expect((await t.query(api.captures.result,{agentToken,id})).status).toBe('pending');
-    // The first tab to claim it renders; a second claim is refused and the request leaves the queue.
-    expect(await t.mutation(api.captures.take,{token,id})).toBe(true);
     expect(await t.mutation(api.captures.take,{token,id})).toBe(false);
-    expect(await t.query(api.captures.pending,{token})).toBeNull();
-    const png=await t.run(ctx=>ctx.storage.store(new Blob([new Uint8Array([137,80,78,71])],{type:'image/png'})));
-    await t.mutation(api.room.join,{token:otherToken,name:'Friend',look});
-    await expect(t.mutation(api.captures.finish,{token:otherToken,id,storageId:png})).rejects.toThrow('Another tab');
-    await t.mutation(api.captures.finish,{token,id,storageId:png});
-    const result=await t.query(api.captures.result,{agentToken,id});
-    expect(result.status).toBe('done');expect(result.url).toMatch(/^http/);expect(result.takenBy).toBe('Visitor');
-    // Only the asking agent sees it, and discarding removes the request and its picture.
-    const other=(await t.mutation(api.agents.createKey,{token:otherToken,label:'Other'})).agentToken;
-    await expect(t.query(api.captures.result,{agentToken:other,id})).rejects.toThrow('No such');
     await t.mutation(api.captures.discard,{agentToken,id});
-    await expect(t.query(api.captures.result,{agentToken,id})).rejects.toThrow('No such');
-    expect(await t.run(ctx=>ctx.db.system.get(png))).toBeNull();
+    expect(await t.run(ctx=>ctx.db.query('captures').collect())).toHaveLength(0);
   });
 });
 describe('agents adding spaces',()=>{

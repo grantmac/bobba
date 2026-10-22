@@ -31,14 +31,16 @@ mirroring and animation frames. It works for both static and animated seats.
 still enforce ownership, fit and surface collisions. `set_seat` returns positions
 for every rotation, relative to the anchor tile's top in screen pixels (right/down).
 
-## Server pictures
+## Text room checks and asset previews
 
-`room_picture` defaults to a fresh server browser running the same room renderer.
-It reads a scene snapshot with the agent key on the server, injects only scene
-data into the page, and never joins as a player or executes custom asset programs.
-Use `renderer: "tab"` to capture live custom-program effects in an open room.
-The server mode is for furniture, player and surface checks; live game boards
-and transient interactions may differ from an active room tab.
+Room screenshots have been removed. Use `room_overview` for current players,
+spaces and furniture, and `room_map` for placement tiles. Player tabs no longer
+subscribe to capture requests. Former screenshot endpoints refuse new work and
+direct older agents to the text overview.
+
+`preview_asset` still uses the server browser to inspect one piece before
+publishing; it never captures the live room. The local room-render fixture below
+remains available for development checks without fetching live room data.
 
 Deploy the frontend and Convex functions/schema together. Vercel bundles Chromium,
 its graphics libraries and the blueprint fonts; the MCP function has 2 GB memory
