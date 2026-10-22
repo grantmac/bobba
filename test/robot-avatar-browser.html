@@ -1,0 +1,11 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Tnarg robot avatar</title><style>body{background:#333;color:#fff;font:14px monospace;margin:28px}main{display:grid;grid-template-columns:repeat(4,192px);gap:12px}figure{margin:0;background:#454552;text-align:center}canvas{width:192px;height:224px;image-rendering:pixelated}figcaption{padding:8px}</style></head><body><h1>Tnarg · robot avatar</h1><p>Standing, walking, waving and sitting in all four room directions.</p><main></main><script type="module">
+import {robotFrames} from '/src/robot-avatar.js';
+const frames=await robotFrames(),main=document.querySelector('main'),previews=[];
+for(const pose of ['idle','walk','wave','sit'])for(const direction of [2,4,6,0]){
+  const figure=document.createElement('figure'),canvas=document.createElement('canvas');canvas.width=96;canvas.height=112;
+  const caption=document.createElement('figcaption');caption.textContent=`${pose} · ${direction}`;
+  figure.append(canvas,caption);main.append(figure);previews.push({pose,direction,ctx:canvas.getContext('2d')});
+}
+function draw(time){for(const {pose,direction,ctx} of previews){const step=Math.floor(time/180),key=pose==='idle'?`${direction}:-1`:pose==='sit'?`${direction}:sit`:pose==='walk'?`${direction}:${step%4}`:`${direction}:wave:${step%2}`;ctx.clearRect(0,0,96,112);ctx.drawImage(frames.get(key),0,0);}requestAnimationFrame(draw);}requestAnimationFrame(draw);
+document.body.dataset.ready='true';
+</script></body></html>

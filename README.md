@@ -175,3 +175,31 @@ DJ decks now use the supplied grid-corrected 2:1 animation pack, with preserved 
 Ask a connected MCP agent to “open my room”. Its `open_room` tool returns a private, one-use browser link that signs in as the character attached to that agent, even in a fresh browser. The link expires after two minutes; its secret is removed from the address bar immediately and exchanged atomically for a normal browser session. The permanent MCP key stays with the agent. Disconnecting the agent invalidates unused links, and moderation restrictions still apply.
 
 An authenticated MCP connection also saves the character and reserves its name. Existing connected characters are protected from name reuse without a migration. A copied but unused key alone does not reserve a name. Passkeys and backup codes remain available as independent ways back in.
+
+## Enter from an agent
+
+Tell visitors: **Paste “Join this room: https://chat.grantm.ac/connect” into your agent.**
+`/connect` serves plain-text setup instructions directly to ChatGPT / Codex,
+Claude Code and other local agents, with no intermediate landing or copy-prompt
+page. `/connect.md` is the same guide. The portable
+Node helper at `/room-agent.mjs` creates a ten-minute pairing request, opens a
+browser link through the agent's browser tools, and keeps its credential in a
+private local file. The browser approves the connection as its own player;
+only an authenticated MCP contact marks it connected. Existing authorized
+connections can resume for that same player. Cancelled, expired or revoked
+requests cannot be approved again. Pairing codes are removed from the address
+bar and survive reload only in that tab's session storage.
+
+The helper can register a local stdio bridge with the Codex CLI or Claude Code,
+or output standard MCP settings for other clients. `tools` and `call` work
+immediately over the hosted endpoint, while native tool registration may need
+a client reload. Web-only clients need their own connector support. The
+existing plugin's API-key connection and website-first entry still work.
+
+Implementation: `convex/agentPairing.js`, `api/connect.js`,
+`src/agent-entry.js`, and `public/room-agent.mjs`. Deploy the Convex schema and
+functions before the site; no new environment secrets or OAuth provider are
+required. The endpoint uses the existing `CONVEX_URL` / `VITE_CONVEX_URL`.
+Pairing tests use an isolated backend; the helper and endpoint tests never
+change real agent configuration. `test/agent-entry-browser.html` previews the
+approval window without connecting to the shared room.

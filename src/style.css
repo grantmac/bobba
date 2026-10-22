@@ -467,3 +467,10 @@ input:focus,textarea:focus,select:focus{outline:none}
 .room-key-code{margin-top:12px}.room-key-code label{display:block;font-weight:bold}
 .room-key-code textarea,.room-key-recover textarea{display:block;box-sizing:border-box;width:100%;min-width:0;margin:8px 0;resize:vertical;font:12px/1.5 monospace;overflow-wrap:anywhere}
 @media(max-width:560px){.room-key-create-backup,.room-key-copy{min-height:40px}}
+
+/* Agent entry shares the room's existing window chrome. */
+.appearance-dialog.agent-entry{inset:0;margin:auto;max-height:calc(100dvh - 32px)}
+.agent-entry .pairing-verification{padding:10px;border:1px solid #999;background:#fff;font:bold 12px/1.6 monospace;overflow-wrap:anywhere}
+.agent-entry .pairing-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+.agent-entry button.pairing-approve{background:#d4e7cb}
+.agent-entry button[hidden]{display:none}

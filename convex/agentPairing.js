@@ -47,7 +47,7 @@ export const decide=mutation({args:{token:v.string(),code:v.string(),approve:v.b
   const player=await playerFor(ctx,token);
   if((player.blockedUntil??0)>Date.now())fail('This player is temporarily removed from the room.');
   const pair=await lookup(ctx,'by_code','codeHash',code),current=await state(ctx,pair);
-  if(!pair||['expired','cancelled','revoked'].includes(current))fail('This connection request has ended. Ask Codex to open a new one.');
+  if(!pair||['expired','cancelled','revoked'].includes(current))fail('This connection request has ended. Ask your agent to open a new one.');
   if(pair.playerId&&pair.playerId!==player._id)fail('This connection request belongs to another player.');
   if(!approve){
     if(pair.linkId)await ctx.db.delete(pair.linkId);

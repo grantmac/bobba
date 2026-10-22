@@ -41,6 +41,17 @@ describe('restoring a remembered session',()=>{
     expect(network.me).toBeNull();expect(storage.get(key)).toBe(token);
     expect(client.mutation).toHaveBeenCalledTimes(1);
   });
+  it('keeps a pairing across reloads in this tab and removes it from the address bar',()=>{
+    const pairs=new Map(),code='d'.repeat(64),replaceState=vi.fn();
+    vi.stubGlobal('sessionStorage',{getItem:k=>pairs.get(k)??null,setItem:(k,v)=>pairs.set(k,v),removeItem:k=>pairs.delete(k)});
+    vi.stubGlobal('history',{replaceState});vi.stubGlobal('location',{hash:`#pair=${code}`,pathname:'/',search:''});
+    const first=createMultiplayer();expect(first.pairing.code).toBe(code);
+    expect(replaceState).toHaveBeenCalledWith(null,'','/');
+    vi.stubGlobal('location',{hash:'',pathname:'/',search:''});
+    const reloaded=createMultiplayer();expect(reloaded.pairing.code).toBe(code);
+    reloaded.pairing.clear();expect(createMultiplayer().pairing.code).toBe('');
+    expect(storage.get(key)).toBe(token);
+  });
   it('uses session renewal when the deployment supports it',async()=>{
     client.mutation.mockResolvedValue(player);
     const network=createMultiplayer();

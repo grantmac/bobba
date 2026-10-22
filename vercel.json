@@ -2,7 +2,16 @@
   "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
+  "rewrites": [{"source":"/connect","destination":"/connect.md"}],
   "headers": [
+    {
+      "source": "/connect",
+      "headers": [{"key":"Content-Type","value":"text/plain; charset=utf-8"},{"key":"Cache-Control","value":"no-store"}]
+    },
+    {
+      "source": "/connect.md",
+      "headers": [{"key":"Content-Type","value":"text/plain; charset=utf-8"},{"key":"Cache-Control","value":"no-store"}]
+    },
     {
       "source": "/version.json",
       "headers": [{"key": "Cache-Control", "value": "no-store"}]
