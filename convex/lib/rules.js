@@ -53,7 +53,6 @@ export function blocked(room,x,z,ignore=null){
   return room.furniture.some(i=>i.id!==ignore&&isPlaced(i)&&takesFloor(defs[i.type])&&cells(i,defs).some(([a,b])=>a===x&&b===z));
 }
 export function validateFurniture(items,options,defs=furniture,spaces=[]){
-  if(items.length>200)fail('The room can hold up to 200 pieces.');
   const ids=new Set(),occupied=new Set(),rugs=new Set(),layout=layoutFor(options,spaces),tiles=new Set([...layout.mainTiles,...layout.danceTiles,...layout.poolDeckTiles,...layout.parkingTiles,...layout.spaceTiles].map(cell=>cell.join(','))),hasWall=wallChecker(options,spaces);
   for(const item of items){
     if(!item||Object.keys(item).some(key=>!['id','type','rotation','x','z','supportId','on','u','height','owner'].includes(key))||!['id','type','rotation','x','z'].every(key=>Object.hasOwn(item,key))||typeof item.id!=='string'||!/^[-a-zA-Z0-9]{1,80}$/.test(item.id)||ids.has(item.id))fail('Invalid furniture.');
