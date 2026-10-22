@@ -1,0 +1,53 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Toolbar verification</title>
+<link rel="stylesheet" href="/src/style.css"><style>body{background:#333;color:#eee}#checks{padding:12px;font:11px/1.6 Verdana,sans-serif}#result{margin:0 0 8px}#measure{margin:0}</style>
+<div id="checks"><p id="result">Checking toolbar…</p><p id="measure"></p></div>
+<script type="module">
+import {createToolbar} from '/src/toolbar.js';
+import {createAppearance} from '/src/appearance.js';
+import {prepareImage} from '/src/sprite-image.js';
+const assert=(ok,message)=>{if(!ok)throw Error(message);};
+let state={muted:false,volume:.79},gesture=null,voiceCalls=0,appearanceCalls=0,furnitureCalls=0,roomCalls=0;
+const external=document.createElement('dialog');external.innerHTML='<button>External control</button>';document.body.append(external);
+const toolbar=createToolbar({admin:true,onGesture:value=>gesture=value,onVoice(){voiceCalls++;external.showModal();external.querySelector('button').focus();},onAppearance(){appearanceCalls++;},onRoomEdit(){roomCalls++;},onFurniture(){furnitureCalls++;},onChat(){},onMusicMute:muted=>{state.muted=muted;toolbar.setMusicState(state);},onMusicVolume:volume=>{state.volume=volume;toolbar.setMusicState(state);}});
+toolbar.setVoiceEnabled(true);toolbar.setAppearanceEnabled(true);toolbar.setMusicState(state);
+const q=selector=>document.querySelector(selector),click=selector=>q(selector).click(),visible=element=>element.getBoundingClientRect().width>0;
+const compact=matchMedia('(max-width:640px), (pointer:coarse)').matches;
+const toggle=q('.toolbar-menu-toggle'),icons=q('.bar-icons'),volume=q('#music-volume');
+const openTools=()=>{if(compact)click('.toolbar-menu-toggle');};
+try{
+  assert(visible(toggle)===compact,'Menu visibility must match the screen size');
+  if(compact){
+    assert(!visible(icons),'Phone controls must start collapsed');
+    assert(q('#chat-message').getBoundingClientRect().width>=170,'Phone chat field is still cramped');
+    openTools();assert(toggle.getAttribute('aria-expanded')==='true'&&visible(icons),'Menu did not open');
+    for(const button of icons.querySelectorAll('.bar-icon')){const r=button.getBoundingClientRect();assert(r.width>=44&&r.height>=44,'Control target is too small');}
+  }
+  click('.music-toggle');assert(!q('.music-controls').hidden,'Music panel did not open');
+  if(compact)assert(!visible(icons)&&document.activeElement===volume,'Music must close the drawer and focus the slider');
+  const bounds=q('.music-controls').getBoundingClientRect();assert(bounds.left>=0&&bounds.right<=innerWidth&&bounds.top>=0,'Music panel left the viewport');
+  volume.value='35';volume.dispatchEvent(new Event('input'));assert(state.volume===.35&&q('.music-controls output').textContent==='35%','Volume callback or readout failed');
+  click('.music-mute');assert(state.muted&&q('.music-mute').getAttribute('aria-pressed')==='true','Mute callback failed');
+  volume.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert(q('.music-controls').hidden,'Escape did not close music');
+  assert(document.activeElement===(compact?toggle:q('.music-toggle')),'Music did not restore focus');
+  openTools();click('.actions-toggle');assert(!q('.actions-menu').hidden,'Actions did not open');
+  click('[data-gesture="wave"]');assert(gesture==='wave'&&q('.actions-menu').hidden,'Gesture did not dispatch and close');
+  openTools();click('.voice-toggle');assert(voiceCalls===1&&external.open&&document.activeElement===external.querySelector('button'),'Voice lost focus while closing the drawer');external.close();
+  for(const [selector,count] of [['.appearance-toggle',()=>appearanceCalls],['[aria-label="Furniture"]',()=>furnitureCalls],['[aria-label="Edit room"]',()=>roomCalls]]){openTools();click(selector);assert(count()===1,'Control callback failed');if(compact)assert(!visible(icons),'Control left the drawer open');}
+  if(compact){
+    openTools();document.body.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));assert(!visible(icons),'Outside press did not close menu');
+    openTools();icons.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert(!visible(icons)&&document.activeElement===toggle,'Escape did not restore menu focus');
+    toggle.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}));assert(visible(icons)&&icons.contains(document.activeElement),'Keyboard did not enter menu');
+    q('#chat-message').focus();assert(!visible(icons),'Leaving menu focus did not close it');
+  }
+  toolbar.setAdmin(false);openTools();assert(!visible(q('[aria-label="Edit room"]')),'Guest sees room editor');
+  if(compact)click('.toolbar-menu-toggle');toolbar.setAdmin(true);
+  const appearance=await createAppearance({prepareImage,onApply(){},onOpen(){}}),frame=appearance.initial.get('2:-1');toolbar.setAvatar(frame);
+  const portrait=q('.appearance-toggle canvas');assert(portrait.width===96&&portrait.height===120,'Portrait lost its high-density backing canvas');
+  const source=frame.getContext('2d').getImageData(24,16,48,60).data,target=portrait.getContext('2d').getImageData(0,0,96,120).data;
+  for(let y=0;y<60;y++)for(let x=0;x<48;x++)for(let channel=0;channel<4;channel++)assert(source[(y*48+x)*4+channel]===target[((y*2)*96+x*2)*4+channel],'Portrait discarded source pixels');
+  assert(getComputedStyle(portrait).imageRendering==='auto','Portrait is forced to nearest-neighbour scaling');
+  q('#result').textContent='PASS: menu, controls, focus, permissions and full-detail avatar.';
+  q('#measure').textContent=`${innerWidth}px screen · chat field ${Math.round(q('#chat-message').getBoundingClientRect().width)}px`;
+  state={muted:false,volume:.79};toolbar.setMusicState(state);q('#chat-message').blur();
+}catch(error){q('#result').textContent='FAIL: '+error.message;throw error;}
+</script>

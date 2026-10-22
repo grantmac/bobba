@@ -748,11 +748,12 @@ function animate(now){
 }
 requestAnimationFrame(animate);
 try{
-  toolbar=createToolbar({admin:false,onTyping:typing=>{if(ready){localTyping=typing;void network.typing(typing).catch(()=>{});}},onAppearance:()=>{if(ready)appearance.open();},onVoice:()=>{if(ready)voice.open();},onRoomEdit:()=>{if(ready&&network.me?.role==='admin')roomEditor.open();},onFurniture:()=>{if(ready)furniture.open();},onChat:(body,mode)=>{if(ready)return network.chat(body,mode);},onGesture:action=>{if(ready)network.gesture(action).catch(error=>toolbar.status(error.message));}});
+  toolbar=createToolbar({admin:false,onMusicMute:muted=>radio?.setMuted(muted),onMusicVolume:volume=>{radio?.setVolume(volume);radio?.setMuted(false);},onTyping:typing=>{if(ready){localTyping=typing;void network.typing(typing).catch(()=>{});}},onAppearance:()=>{if(ready)appearance.open();},onVoice:()=>{if(ready)voice.open();},onRoomEdit:()=>{if(ready&&network.me?.role==='admin')roomEditor.open();},onFurniture:()=>{if(ready)furniture.open();},onChat:(body,mode)=>{if(ready)return network.chat(body,mode);},onGesture:action=>{if(ready)network.gesture(action).catch(error=>toolbar.status(error.message));}});
   network=createMultiplayer();
   danceControls=createDanceFloorControls({onChange:on=>network.danceFloor(on),onError:message=>toolbar.status(message)});
   voice=createVoice({credentials:tab=>network.voiceCredentials(tab),onState:state=>toolbar.setVoiceState(state),onSpeaking:speaking=>radio?.duck(speaking)});
-  radio=createRoomRadio();
+  radio=createRoomRadio({onState:state=>toolbar.setMusicState(state)});
+  toolbar.setMusicState(radio.snapshot());
   for(const event of ['pointerdown','keydown'])document.addEventListener(event,()=>{if(ready)void radio.unlock();});
   window.addEventListener('pagehide',()=>radio.close());
   const [catalogResponse,paletteResponse,initialRoom]=await Promise.all([fetch('/assets/room-options/catalog.json'),fetch('/assets/room-options/source-palette.json'),network.loadPreview()]);
