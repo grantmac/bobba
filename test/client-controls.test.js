@@ -127,6 +127,20 @@ describe('shared deck radio',()=>{
     radio.setMuted(false);await Promise.resolve();expect(state().playing).toBe(true);
     radio.setVolume(.12);expect(audio.volume).toBe(.12);
   });
+  it('silences zero volume even when iOS ignores volume writes, without overriding explicit mute',async()=>{
+    const {audio,radio}=setup();
+    Object.defineProperty(audio,'volume',{get:()=>1,set:()=>{}});
+    radio.receive(decks,true);await Promise.resolve();
+    radio.setVolume(0);radio.setMuted(false);
+    expect(audio.volume).toBe(1);expect(audio.muted).toBe(true);expect(radio.audible).toBe(false);
+    radio.setVolume(.5);expect(audio.muted).toBe(false);expect(radio.audible).toBe(true);
+    radio.setMuted(true);radio.setVolume(.8);expect(audio.muted).toBe(true);expect(audio.src).toBe('');
+    await radio.unlock();expect(audio.src).toBe('');
+    radio.setMuted(false);await Promise.resolve();expect(audio.muted).toBe(false);expect(radio.audible).toBe(true);
+    radio.restore({muted:false,volume:0});expect(audio.muted).toBe(true);
+    radio.restore({muted:true,volume:.5});expect(audio.muted).toBe(true);
+    radio.restore({muted:false,volume:.5});expect(audio.muted).toBe(false);
+  });
   it('reports audible playback only while the stream can actually play sound',async()=>{
     const {audio,radio}=setup();expect(radio.audible).toBe(false);
     radio.receive(decks,true);await Promise.resolve();expect(radio.audible).toBe(true);

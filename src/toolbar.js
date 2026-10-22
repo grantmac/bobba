@@ -44,7 +44,9 @@ export function createToolbar({onRoomEdit,onFurniture,onChat,onTyping,onAppearan
   musicVolume.oninput=()=>onMusicVolume?.(Number(musicVolume.value)/100);
   for(const element of [music,musicPanel]){
     element.addEventListener('keydown',event=>{if(event.key==='Escape'){setMusicOpen(false);focusTrigger(musicToggle);event.stopPropagation();}});
-    element.addEventListener('focusout',event=>{if(!inMusic(event.relatedTarget))setMusicOpen(false);});
+    // Safari taps can blur the slider without focusing the button. Keep the panel
+    // open until its click runs; outside presses are handled by pointerdown below.
+    element.addEventListener('focusout',event=>{if(event.relatedTarget&&!inMusic(event.relatedTarget))setMusicOpen(false);});
   }
   document.addEventListener('pointerdown',event=>{if(!inMusic(event.target))setMusicOpen(false);});
   if(onMusicMute||onMusicVolume)icons.append(music);

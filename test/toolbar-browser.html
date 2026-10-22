@@ -28,7 +28,14 @@ try{
   if(compact)assert(!visible(icons)&&document.activeElement===volume,'Music must close the drawer and focus the slider');
   const bounds=q('.music-controls').getBoundingClientRect();assert(bounds.left>=0&&bounds.right<=innerWidth&&bounds.top>=0,'Music panel left the viewport');
   volume.value='35';volume.dispatchEvent(new Event('input'));assert(state.volume===.35&&q('.music-controls output').textContent==='35%','Volume callback or readout failed');
+  // Safari blurs the focused slider before clicking a button, with no relatedTarget.
+  volume.blur();assert(!q('.music-controls').hidden,'Safari blur dismissed music before the mute tap');
   click('.music-mute');assert(state.muted&&q('.music-mute').getAttribute('aria-pressed')==='true','Mute callback failed');
+  volume.focus();volume.blur();click('.music-mute');assert(!state.muted,'Safari unmute callback failed');
+  volume.focus();q('#chat-message').focus();assert(q('.music-controls').hidden,'Leaving music focus did not close it');
+  openTools();click('.music-toggle');
+  document.body.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));assert(q('.music-controls').hidden,'Outside press did not close music');
+  openTools();click('.music-toggle');
   volume.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));assert(q('.music-controls').hidden,'Escape did not close music');
   assert(document.activeElement===(compact?toggle:q('.music-toggle')),'Music did not restore focus');
   openTools();click('.actions-toggle');assert(!q('.actions-menu').hidden,'Actions did not open');

@@ -6,7 +6,11 @@ const DUCK_LEVEL=.08,DUCK_HOLD=900;
 export function createRoomRadio({audio=new Audio(),onState=()=>{},now=()=>performance.now(),schedule=fn=>requestAnimationFrame(fn)}={}){
   audio.preload='none';
   let active=false,muted=false,pending=false,generation=0,playing=false,level=.7875,ducked=false,duckFactor=1,duckTimer=null,easing=false;
-  const applyVolume=()=>{audio.volume=Math.max(0,Math.min(1,level*duckFactor));};
+  const applyVolume=()=>{
+    // iOS ignores programmatic volume changes, so zero must also mute the element.
+    audio.muted=muted||level===0;
+    audio.volume=Math.max(0,Math.min(1,level*duckFactor));
+  };
   applyVolume();
   const emit=()=>onState({active,muted,playing,volume:level});
   function ease(){
@@ -38,7 +42,7 @@ export function createRoomRadio({audio=new Audio(),onState=()=>{},now=()=>perfor
       if(next===active)return;active=next;if(active)void play();else stop();emit();
     },
     unlock:play,
-    setMuted(value){muted=value;if(muted)stop();else void play();emit();},
+    setMuted(value){muted=value;applyVolume();if(muted)stop();else void play();emit();},
     setVolume(value){level=Math.max(0,Math.min(1,value));applyVolume();emit();},
     // Voice activity: duck at once, release after a hold.
     duck(speaking){clearTimeout(duckTimer);duckTimer=null;if(speaking)setDucked(true);else duckTimer=setTimeout(()=>setDucked(false),DUCK_HOLD);},
