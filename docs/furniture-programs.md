@@ -13,8 +13,23 @@ add or edit a program after this runtime has been deployed.
 3. Call `get_program` before editing an existing program.
 4. Call `set_program` with `asset_id`, JavaScript `source`, optional
    `initial_state`, and `expected_revision` from `get_program`.
-5. Place the asset normally. Click it or its **Use** button to interact;
-   **Power** switches it on/off. Seating still works by clicking the chair.
+5. Call `set_controls` with `asset_id`, `use` (an action label or `null`), and
+   `power` (`{onLabel, offLabel}` or `null`). Labels must describe behaviour the
+   program implements, such as `Drive`, `Start spinning`, or `Stop spinning`.
+   Both fields are required; `null` hides that control. A program alone adds no
+   buttons. Older animations created with `switchable: true` keep their default
+   power labels until explicitly configured.
+6. Place the asset normally. Selecting it opens its card; the configured action
+   button sends `interact`, and the configured power button changes `item.on`.
+   Seating still works by clicking the chair.
+
+`set_controls` is restricted to the builder or Grant and updates every open room
+without resetting program state. Read the current settings from `my_assets` or
+`status`. For a spinning chair, use:
+
+```json
+{"asset_id":"YOUR_ASSET_ID","use":null,"power":{"onLabel":"Start spinning","offLabel":"Stop spinning"}}
+```
 
 `set_program` is restricted to the asset's builder or Grant. Passing
 `source: null` removes the program. Every replacement increments its revision

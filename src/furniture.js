@@ -6,6 +6,7 @@ import {prepareCarGlass} from './car-glass.js';
 import {createBalloonMotion} from './balloon-motion.js';
 import {createSpeakerMotion} from './speaker-motion.js';
 import {createAssetPrograms} from './asset-program-runtime.js';
+import {furnitureControls} from '../shared/furniture-controls.js';
 
 const ROOT='/assets/furniture/';
 // Built pieces reference their sprites by URL; the shipped catalogue by file name.
@@ -120,7 +121,8 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
   const attachButton=document.createElement('button');attachButton.type='button';attachButton.className='agent-attach';attachButton.textContent='Build with your agent';attachButton.hidden=!onAttachAgent;
   attachButton.onclick=()=>{panel.hidden=true;cancel();onAttachAgent?.();};
   panel.querySelector('.furniture-filters').after(attachButton);
-  actions.innerHTML=`<button class="furniture-close" aria-label="Deselect furniture">×</button><img alt=""><strong></strong><span class="furniture-location"></span><div>${['Move','Rotate','Pick up','Delete','Power','Use'].map(name=>`<button data-action="${name}">${name}</button>`).join('')}</div>`;
+  actions.classList.add('furniture-selection');
+  actions.innerHTML=`<button class="furniture-close" aria-label="Deselect furniture">×</button><header class="furniture-selection-summary"><canvas class="furniture-preview" width="64" height="64" aria-hidden="true"></canvas><div><strong></strong><span class="furniture-builder"></span></div></header><div class="furniture-selection-buttons">${['Use','Power','Move','Rotate','Pick up','Delete'].map(name=>`<button data-action="${name}">${name}</button>`).join('')}</div>`;
   const placement=document.createElement('section');placement.className='furniture-placement';placement.hidden=true;
   placement.innerHTML='<span></span><button data-placement="rotate">Rotate (R)</button><button data-placement="cancel">Cancel (Esc)</button>';
   const confirmation=document.createElement('dialog');confirmation.className='appearance-dialog furniture-confirm';
@@ -262,11 +264,25 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     // The catalogue grid is costly to build, so it waits until the panel is actually showing.
     if(panel.hidden)listStale=true;else{renderList();listStale=false;}
     redraw();const item=items.find(i=>i.id===selected),def=item&&definitions.get(item.type),mine=!!item&&editable&&canEdit(item);
-    actions.hidden=(!mine&&!def?.program&&!(networkPower&&item?.type==='custom_dj_decks'))||!item||!isPlaced(item)||!!pending;
-    if(!actions.hidden){actions.querySelector('img').src=src(def.icon);actions.querySelector('strong').textContent=def.name;actions.querySelector('.furniture-location').textContent=item.supportId?'On table':isWallItem(def)?'On wall':`Tile ${item.x+1}, ${item.z+1}`;actions.querySelector('[data-action="Rotate"]').disabled=def.views.length<2||isWallItem(def);}
+    actions.hidden=(!mine&&!def?.ownerName&&!def?.program&&!(networkPower&&switchable(item)))||!item||!isPlaced(item)||!!pending;
+    if(!actions.hidden){
+      actions.querySelector('strong').textContent=def.name;
+      actions.querySelector('.furniture-builder').textContent=def.ownerName?`Built by ${def.ownerName}`:'';
+      actions.querySelector('[data-action="Rotate"]').disabled=def.views.length<2||isWallItem(def);
+      // Room frames already compose layers and crop animation sheets.
+      const preview=actions.querySelector('.furniture-preview'),ctx=preview.getContext('2d'),frame=frameFor(item);
+      ctx.clearRect(0,0,64,64);ctx.imageSmoothingEnabled=false;
+      if(frame){
+        const scale=Math.min(1/frame.density,64/frame.canvas.width,64/frame.canvas.height);
+        const width=Math.max(1,Math.round(frame.canvas.width*scale)),height=Math.max(1,Math.round(frame.canvas.height*scale));
+        ctx.drawImage(frame.canvas,Math.round((64-width)/2),Math.round((64-height)/2),width,height);
+      }
+    }
     actions.querySelectorAll('[data-action]').forEach(button=>{button.hidden=!mine;if(saving)button.disabled=true;else if(button.dataset.action!=='Rotate')button.disabled=false;});
-    const power=actions.querySelector('[data-action="Power"]');power.hidden=!networkPower||!switchable(item);power.textContent=item?.on===false?'Turn on':'Turn off';power.setAttribute('aria-pressed',String(item?.on!==false));
-    actions.querySelector('[data-action="Use"]').hidden=!def?.program;
+    const controls=furnitureControls(def);
+    const power=actions.querySelector('[data-action="Power"]');power.hidden=!networkPower||!switchable(item)||!controls.power;power.textContent=(item?.on===false?controls.power?.onLabel:controls.power?.offLabel)??'';power.setAttribute('aria-pressed',String(item?.on!==false));
+    const use=actions.querySelector('[data-action="Use"]');use.hidden=!def?.program||!controls.use;use.textContent=controls.use??'';
+    actions.querySelector('.furniture-selection-buttons').hidden=![...actions.querySelectorAll('[data-action]')].some(button=>!button.hidden);
     placement.hidden=!pending;
     if(pending){const def=definitions.get(pending.type);placement.querySelector('span').textContent=isWallItem(def)?`${def.name} — click a wall`:def.name;placement.querySelector('[data-placement="rotate"]').disabled=def.views.length<2||isWallItem(def);}
   }
@@ -305,15 +321,15 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     if(!history.length||saving||!editable)return;
     const previous=history.at(-1);change(()=>{history.pop();items=previous;fitStoredItems();selected=null;},false);
   };
-  actions.querySelector('.furniture-close').onclick=()=>{selected=null;render();};
+  actions.querySelector('.furniture-close').onclick=()=>{selected=null;render();focusRoom();};
   actions.querySelectorAll('[data-action]').forEach(button=>button.onclick=async()=>{
     const item=items.find(i=>i.id===selected);if(!item)return;
     switch(button.dataset.action){
       case 'Move':begin(item);break;
       case 'Rotate':rotate();break;
-      case 'Use':Promise.resolve(onProgramUse(item.id)).catch(error=>onPowerError(error.message));break;
+      case 'Use':if(furnitureControls(definitions.get(item.type)).use)Promise.resolve(onProgramUse(item.id)).catch(error=>onPowerError(error.message));break;
       case 'Power':
-        if(!networkPower||saving||!switchable(item))break;
+        if(!networkPower||saving||!switchable(item)||!furnitureControls(definitions.get(item.type)).power)break;
         saving=true;render();
         try{await networkPower(item.id,item.on===false);}catch(error){onPowerError(error.message);}finally{saving=false;render();}
         break;
@@ -375,12 +391,9 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     }
     const hit=hitVisual(point);
     if(click){
-      // A built animation that is switchable flips on or off when anyone else clicks it; its builder (and Grant) get the usual selection with a Power button.
+      // Selection only opens the card. The agent-defined buttons invoke behaviour.
       const programmed=hit&&!!definitions.get(hit.item.type)?.program;
-      const flips=hit&&!programmed&&networkPower&&!!definitions.get(hit.item.type)?.switchable&&!(editable&&canEdit(hit.item));
-      selected=hit&&(programmed||editable&&canEdit(hit.item)||(networkPower&&hit.item.type==='custom_dj_decks'))?hit.item.id:null;render();onInspect(hit?.item??null,hit?definitions.get(hit.item.type):null);
-      if(programmed)Promise.resolve(onProgramUse(hit.item.id)).catch(error=>onPowerError(error.message));
-      if(flips)networkPower(hit.item.id,hit.item.on===false).catch(error=>onPowerError(error.message));
+      selected=hit&&(definitions.get(hit.item.type)?.ownerName||programmed||editable&&canEdit(hit.item)||(networkPower&&switchable(hit.item)))?hit.item.id:null;render();onInspect(hit?.item??null,hit?definitions.get(hit.item.type):null);
       const spot=hit&&clickedSeat(hit.item.id,point);if(spot)onSit(spot);else if(hit&&USABLE.has(hit.item.type))onUse(hit.item.id);
     }
     return !!hit&&definitions.get(hit.item.type).category!=='Rugs';
@@ -455,7 +468,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
       for(const def of catalog.filter(d=>d.id.startsWith('asset_')&&!keep.has(d.id))){definitions.delete(def.id);loading.delete(def.id);for(const view of def.views)frames.delete(`${def.id}:${view.direction}`);}
       catalog=[...catalog.filter(d=>!d.id.startsWith('asset_')),...list];
       // Keep loaded sprites while seating, power capability and programs change live.
-      for(const def of list){const known=definitions.get(def.id);if(!known)definitions.set(def.id,def);else{known.seat=def.seat;known.program=def.program;known.switchable=def.switchable;}}
+      for(const def of list){const known=definitions.get(def.id);if(!known)definitions.set(def.id,def);else{known.seat=def.seat;known.program=def.program;known.switchable=def.switchable;known.controls=def.controls;}}
       items=restoreItems(rawItems,definitions);listStale=true;render();
     }
   };

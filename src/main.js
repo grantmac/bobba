@@ -899,8 +899,8 @@ try{
     programMe:()=>network.me?.id??null,onProgramSave:(itemId,version,revision,state)=>network.programs.save(itemId,version,revision,state),onProgramUse:itemId=>network.programs.interact(itemId),
     programNow:()=>network.now(),programReducedMotion:()=>reducedMotion.matches,
     prepareImage,worldPoint:iso,isTile:(x,z)=>valid(x,z)&&!isPoolWater(layout,x,z)&&!onWalkway(layout,x,z),floorHeight,getAvatar:()=>position,stopWalking,onChanged:()=>{ensureFreeTile();positionAwayPoster();positionDeckSign();},onSit:sitOn,onUse:useItem,
-    // Clicking a player-built piece names it and its builder on the info stand; stock pieces clear it.
-    onInspect:(item,def)=>{if(def?.ownerName)infoStand.inspect({name:def.name,by:def.ownerName,icon:def.icon});else infoStand.hide();},
+    // Furniture carries its own builder credit; dismiss the character/space stand.
+    onInspect:()=>infoStand.hide(),
     // Builders may only drop pieces in a space they own (the server enforces the same).
     canBuildAt:(x,z)=>layout.spaces.some(s=>s.owner===network?.me?.id&&x>=s.x&&x<s.x+s.width&&z>=s.z&&z<s.z+s.depth),
     focusRoom:()=>container.focus({preventScroll:true}),

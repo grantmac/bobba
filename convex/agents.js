@@ -9,6 +9,7 @@ import {loadZones,zoneItems,ownedItems,itemDoc,applyChanges,shiftItems} from './
 import {floorColors} from './lib/catalog.js';
 import {playerFor} from './room.js';
 import {isWallItem} from '../shared/furniture-model.js';
+import {furnitureControls} from '../shared/furniture-controls.js';
 import {SPACE_LIMIT,SPACES_PER_PLAYER,SPACE_SIZE,SPACE_MIN_WIDTH,SPACE_MAX_WIDTH,SPACE_FLOORS,SPACE_WALLS,SPACE_FITS,SPACE_IMAGE_MAX} from '../shared/spaces.js';
 // A space's styling as agents see it: pictures as yes/no, the storage ids stay private.
 const spaceStyle=s=>({floor:s.floor,floorColor:s.floorColor,floorFit:s.floorFit??null,floorImage:!!s.floorImage,wall:s.wall??null,wallColor:s.wallColor??null,wallFit:s.wallFit??null,wallImage:!!s.wallImage});
@@ -63,7 +64,7 @@ export const status=query({args:{agentToken:v.string()},handler:async(ctx,{agent
   const {player}=await agentFor(ctx,agentToken);
   const assets=await ctx.db.query('assets').withIndex('by_owner',q=>q.eq('ownerId',player._id)).collect();
   const room=await getRoom(ctx),placed=(await ownedItems(ctx,player._id)).filter(isPlaced);
-  return {playerName:player.name,playerId:player._id,assets:assets.map(a=>({id:a._id,type:assetType(a),name:a.name,category:a.category,width:a.width,depth:a.depth,...(a.category==='Seating'?{seat:a.seat??null}:{}),...(a.frameDuration?{animated:true,frameMs:a.frameDuration,switchable:!!a.switchable}:{}),programRevision:a.programRevision??0,programmable:!!a.program,createdAt:a.createdAt})),
+  return {playerName:player.name,playerId:player._id,assets:assets.map(a=>({id:a._id,type:assetType(a),name:a.name,category:a.category,width:a.width,depth:a.depth,...(a.category==='Seating'?{seat:a.seat??null}:{}),...(a.frameDuration?{animated:true,frameMs:a.frameDuration,switchable:!!a.switchable}:{}),programRevision:a.programRevision??0,programmable:!!a.program,controls:furnitureControls(a),createdAt:a.createdAt})),
     placed:placed.map(({id,type,x,z,rotation})=>({id,type,x,z,rotation})),categories:ASSET_CATEGORIES,
     spaces:(room.spaces??[]).filter(s=>s.owner===player._id).map(s=>({id:s.id,name:s.name,width:s.width,depth:s.depth,...spaceStyle(s)})),
     spaceOptions:{perPlayer:SPACES_PER_PLAYER,limit:SPACE_LIMIT,size:`${SPACE_SIZE} by ${SPACE_SIZE} tiles to start; resize_space makes it ${SPACE_MIN_WIDTH} to ${SPACE_MAX_WIDTH} tiles wide`,floors:SPACE_FLOORS,walls:SPACE_WALLS,colors:'any hex colour like #b59232 (floorColors are the room palette)',floorColors,pictures:`PNG, JPEG, WebP or GIF up to ${SPACE_IMAGE_MAX/1024/1024} MB, uploaded through upload_url; fit 'tile' repeats it on every tile or wall segment, 'cover' stretches one copy over the whole floor or wall`}};
@@ -88,7 +89,7 @@ export const discardUpload=mutation({args:{agentToken:v.string(),storageId:v.str
   await ctx.storage.delete(id);
 }});
 // An animated part carries its frame cells (2 to 4, in the stored sheet's pixels); the piece then
-// has a frameDuration, and may be switchable: players click it to freeze it on its first frame.
+// has a frameDuration, and may be switchable: players use its power button to freeze it on its first frame.
 const cell=v.object({x:v.number(),y:v.number(),width:v.number(),height:v.number()});
 const part=v.object({storageId:v.id('_storage'),direction:v.number(),width:v.number(),height:v.number(),reg:v.object({x:v.number(),y:v.number()}),frames:v.optional(v.array(cell))});
 const view=v.object({direction:v.number(),source:v.number(),mirror:v.boolean()});

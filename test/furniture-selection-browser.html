@@ -1,0 +1,55 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Furniture selection checks</title><link rel="stylesheet" href="/src/style.css">
+<style>body{padding:24px;color:white;font:12px Verdana}#results{white-space:pre-wrap;max-width:700px}button{padding:8px}</style>
+<button id="run">Run selection checks</button><pre id="results">Loading…</pre>
+<script type="module">
+import {createFurniture} from '/src/furniture.js';
+import {prepareImage} from '/src/sprite-image.js';
+const catalogue=await (await fetch('/assets/furniture/catalog.json')).json(),decks=catalogue.find(def=>def.id==='custom_dj_decks');
+const asset={...decks,id:'asset_preview',name:'Animated DJ Decks',owner:'builder',ownerName:'Grant',switchable:true,icon:decks.parts[0].file,
+ program:{apiVersion:1,revision:1,source:'export default function(){}',initialState:{}},controls:{use:null,power:null}};
+const initialItems=[{id:'decks',type:asset.id,rotation:2,x:2,z:2,owner:'builder'}];
+const visuals=new Set();let uses=0,powers=0,marks=[],focused=0;
+const furniture=await createFurniture({prepareImage,initialItems,initialAssets:[structuredClone(asset)],
+ makeVisual(canvas){const mesh={canvas,material:{map:{}}};visuals.add(mesh);return mesh;},disposeVisual(mesh){visuals.delete(mesh);},
+ positionVisual(mesh,x,y,w,h,order){Object.assign(mesh,{x,y,w,h,renderOrder:order});},markTiles(cells){marks=cells;},
+ worldPoint:(x,z)=>({x:x*500,y:z*500}),isTile:()=>true,getAvatar:()=>({x:0,z:0}),stopWalking(){},onChanged(){},onSit(){},focusRoom(){focused++;},onProgramUse(){uses++;}
+});
+const card=document.querySelector('.furniture-selection'),results=document.querySelector('#results');
+const assert=(value,message)=>{if(!value)throw Error(message);};
+function select(){
+ const v=[...visuals][0],pixels=v.canvas.getContext('2d').getImageData(0,0,v.canvas.width,v.canvas.height).data;
+ for(let i=3;i<pixels.length;i+=4)if(pixels[i]>40){const n=(i-3)/4;
+  furniture.pointer({x:v.x+(n%v.canvas.width+.5)*v.w/v.canvas.width,y:v.y+(Math.floor(n/v.canvas.width)+.5)*v.h/v.canvas.height},{x:2,z:2},true);return;
+ }
+ throw Error('No furniture pixels');
+}
+document.querySelector('#run').onclick=async()=>{try{
+ furniture.setAssets([asset]);furniture.receive(initialItems);
+ furniture.connect({admin:false,me:'visitor',onSave:async()=>{},onPower:async(id,on)=>{powers++;furniture.receive(furniture.getItems().map(item=>item.id===id?{...item,on}:item));}});
+ const beforeUses=uses,beforePowers=powers;select();
+ assert(!card.hidden&&card.textContent.includes('Built by Grant'),'Built item and credit must be visible to visitors');
+ assert(!card.textContent.includes('Tile '),'Coordinates must not appear');
+ assert(card.querySelector('.furniture-selection-buttons').hidden,'Programs must not invent buttons');
+ assert(uses===beforeUses&&powers===beforePowers,'Selection must not invoke an action');
+ const pixels=card.querySelector('canvas').getContext('2d').getImageData(0,0,64,64).data;
+ assert(!card.querySelector('img')&&pixels.some((v,i)=>i%4===3&&v>40),'Preview must render one room frame, not the icon sheet');
+ const controls={use:'Play a set',power:{onLabel:'Start decks',offLabel:'Stop decks'}};
+ furniture.setAssets([{...asset,controls}]);
+ assert(card.querySelector('[data-action="Use"]').textContent==='Play a set','MCP action label must update live');
+ assert(card.querySelector('[data-action="Power"]').textContent==='Stop decks','MCP power-off label must update live');
+ card.querySelector('[data-action="Use"]').click();assert(uses===beforeUses+1,'Action button must invoke the program once');
+ card.querySelector('[data-action="Power"]').click();await Promise.resolve();
+ assert(powers===beforePowers+1&&card.querySelector('[data-action="Power"]').textContent==='Start decks','MCP power-on label must follow state');
+ assert(card.querySelector('[data-action="Move"]').hidden,'Visitors must not get editing controls');
+ furniture.setAssets([asset]);assert(card.querySelector('.furniture-selection-buttons').hidden,'MCP must remove both buttons live');
+ card.querySelector('.furniture-close').click();assert(card.hidden&&marks.length===0&&focused>0,'Close must clear selection and restore focus');
+ select();furniture.key({key:'Escape'});assert(card.hidden&&marks.length===0,'Escape must dismiss');
+ select();furniture.pointer({x:-9999,y:-9999},{x:0,z:0},true);assert(card.hidden,'Empty floor must dismiss');
+ furniture.connect({admin:true,me:'builder',onSave:async()=>{}});select();assert(!card.querySelector('[data-action="Move"]').hidden,'Builder must retain editing controls');
+ furniture.connect({admin:false,me:'visitor',onSave:async()=>{},onPower:async()=>{}});furniture.setAssets([{...asset,controls}]);
+ assert(card.getBoundingClientRect().left>=0&&card.getBoundingClientRect().right<=innerWidth,'Card must fit viewport');
+ results.textContent='PASS: MCP labels and visibility update live; selection has no action side effects; buttons invoke the right actions; preview, permissions, credit, dismissal, and viewport fit.';
+}catch(error){results.textContent='FAIL: '+error.message;throw error;}};
+results.textContent='Ready';
+</script>

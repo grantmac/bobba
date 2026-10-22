@@ -16,10 +16,13 @@ describe('hosted MCP endpoint',()=>{
   });
   it('lists the tools and answers notifications with 202',async()=>{
     const {result}=await (await post(rpc('tools/list'))).json();
-    expect(result.tools.map(t=>t.name)).toEqual(['status','design_asset','upload_url','submit_asset','add_asset','my_assets','program_api','get_program','set_program','set_seat','delete_asset','room_map','room_picture','place','remove','add_space','design_surface','style_space','resize_space','remove_space']);
+    expect(result.tools.map(t=>t.name)).toEqual(['status','design_asset','upload_url','submit_asset','add_asset','my_assets','set_controls','program_api','get_program','set_program','set_seat','delete_asset','room_map','room_picture','place','remove','add_space','design_surface','style_space','resize_space','remove_space']);
     const space=result.tools.find(t=>t.name==='add_space');
     expect(space.inputSchema.required).toEqual(['name']);expect(space.inputSchema.properties).not.toHaveProperty('width');expect(space.inputSchema.properties.floor.enum).toEqual(['plain','wood','tiles','carpet']);
     for(const tool of result.tools)expect(tool.inputSchema.type).toBe('object');
+    const controls=result.tools.find(t=>t.name==='set_controls');
+    expect(controls.inputSchema.required).toEqual(['asset_id','use','power']);
+    expect(controls.inputSchema.properties.use.type).toEqual(['string','null']);
     expect((await post({jsonrpc:'2.0',method:'notifications/initialized'})).status).toBe(202);
   });
   it('refuses tool calls without a key and explains how to get one',async()=>{

@@ -33,6 +33,33 @@ describe('saved asset programs',()=>{
     expect(walk.route).toEqual([{x:24.5,z:4.5},{x:25.5,z:4.5},{x:26.5,z:4.5}]);
     expect((await t.query(api.room.me,{token})).seatId).toBeNull();
   });
+  it('lets the MCP define visible labels live without resetting program state',async()=>{
+    const {agentToken,asset,itemId,set}=await setup();await set({});
+    expect((await t.query(api.assets.list,{}))[0].controls).toEqual({use:null,power:null});
+    await t.mutation(api.programs.interact,{token,itemId});
+    const before=await t.query(api.programs.list,{});
+    const controls={use:' Drive ',power:{onLabel:'Start engine',offLabel:'Stop engine'}};
+    await t.mutation(api.assetControls.set,{agentToken,assetId:asset.id,controls});
+    const expected={...controls,use:'Drive'};
+    expect((await t.query(api.assets.list,{}))[0].controls).toEqual(expected);
+    expect((await t.query(api.agents.status,{agentToken})).assets[0].controls).toEqual(expected);
+    expect(await t.query(api.programs.list,{})).toEqual(before);
+    expect((await t.query(api.programs.get,{agentToken,assetId:asset.id})).revision).toBe(1);
+    await t.mutation(api.assetControls.set,{agentToken,assetId:asset.id,controls:{use:null,power:null}});
+    expect((await t.query(api.assets.list,{}))[0].controls).toEqual({use:null,power:null});
+  });
+  it('validates action capabilities, labels, and control ownership',async()=>{
+    const {agentToken,asset,set}=await setup();
+    const update=controls=>t.mutation(api.assetControls.set,{agentToken,assetId:asset.id,controls});
+    await expect(update({use:'Drive',power:null})).rejects.toThrow('Attach a program');
+    await expect(update({use:null,power:{onLabel:'Start',offLabel:'Stop'}})).rejects.toThrow('needs a program');
+    await set({});
+    for(const use of ['', '  ', 'x'.repeat(25), 'Go\nnow'])await expect(update({use,power:null})).rejects.toThrow('labels');
+    await expect(update({use:null,power:{onLabel:'Start',offLabel:''}})).rejects.toThrow('labels');
+    await t.mutation(api.room.join,{token:otherToken,name:'Other',look});
+    const other=await t.mutation(api.agents.createKey,{token:otherToken,label:'Test'});
+    await expect(t.mutation(api.assetControls.set,{agentToken:other.agentToken,assetId:asset.id,controls:{use:null,power:null}})).rejects.toThrow('not yours');
+  });
   it('publishes code live, protects ownership and stale edits, and removes power cleanly',async()=>{
     const {agentToken,asset,itemId,set}=await setup();
     await set({initialState:{count:0},expectedRevision:0});

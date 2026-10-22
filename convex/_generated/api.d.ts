@@ -10,6 +10,7 @@
 
 import type * as agentPairing from "../agentPairing.js";
 import type * as agents from "../agents.js";
+import type * as assetControls from "../assetControls.js";
 import type * as assets from "../assets.js";
 import type * as bot from "../bot.js";
 import type * as botBrain from "../botBrain.js";
@@ -18,6 +19,7 @@ import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as identity from "../identity.js";
 import type * as lib_appearance from "../lib/appearance.js";
+import type * as lib_assetControls from "../lib/assetControls.js";
 import type * as lib_assets from "../lib/assets.js";
 import type * as lib_bot_events from "../lib/bot_events.js";
 import type * as lib_bot_policy from "../lib/bot_policy.js";
@@ -45,6 +47,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   agentPairing: typeof agentPairing;
   agents: typeof agents;
+  assetControls: typeof assetControls;
   assets: typeof assets;
   bot: typeof bot;
   botBrain: typeof botBrain;
@@ -53,6 +56,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   identity: typeof identity;
   "lib/appearance": typeof lib_appearance;
+  "lib/assetControls": typeof lib_assetControls;
   "lib/assets": typeof lib_assets;
   "lib/bot_events": typeof lib_bot_events;
   "lib/bot_policy": typeof lib_bot_policy;
