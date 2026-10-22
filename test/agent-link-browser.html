@@ -19,13 +19,10 @@ document.querySelector('#run').onclick=async()=>{try{
  assert(keys===1,'Copy must create one key');assert(copied===prompt.value,'Clipboard differs from displayed prompt');
  assert(copied.includes('https://chat.grantm.ac/api/mcp'),'Prompt must use the hosted MCP endpoint');
  assert(copied.includes('Authorization: Bearer preview-agent-key-not-valid'),'Prompt is missing authentication');
- assert(copied===`Help me build furniture for my room at https://chat.grantm.ac.
+ assert(copied.includes("After status succeeds, tell me you're connected"),"Prompt must ask for a connection confirmation");
+ assert(copied.includes("click Enter room")&&copied.includes("Ask what I'd like to create first"),"Prompt must explain the next step and ask what to create");
+ assert(copied.includes('style its floor and walls')&&copied.includes('turn pictures or ideas into furniture'),'Prompt must explain supported capabilities');
 
-Connect to this HTTP MCP server:
-https://chat.grantm.ac/api/mcp
-Authorization: Bearer preview-agent-key-not-valid
-
-Use this key only with the MCP server above. Call tools/list to discover its tools, then call status.`,'Prompt must match the short connection instructions exactly');
  copy.click();await tick();assert(keys===1,'Copying again must reuse the same key');
  blocked=true;copy.click();await tick();assert(dialog.querySelector('[role=status]').textContent.includes('Copy the selected prompt'),'Manual copy fallback missing');
  assert(prompt.selectionStart===0&&prompt.selectionEnd===prompt.value.length,'Manual prompt was not selected');

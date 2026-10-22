@@ -392,3 +392,6 @@ input:focus,textarea:focus,select:focus{outline:none}
 .entry-agent .agent-attached::before{content:'';width:7px;height:7px;border:1px solid #666;background:#aaa;border-radius:50%;box-shadow:inset 0 1px #ddd}
 .entry-agent .agent-attached[data-connected=true]::before{background:#59974d;border-color:#2e6127;box-shadow:inset 0 1px #a1c996}
 .entry-agent .agent-prompt{display:block;width:100%;box-sizing:border-box;height:150px;padding:8px;border:1px solid #777;background:#fff;color:#222;font:10px/1.5 monospace;resize:vertical}
+
+.entry-flow[data-agent-connected=true] .entry-agent-setup .agent-copy-prompt,.entry-flow[data-agent-connected=true] .entry-agent-setup .agent-copy-status,.entry-flow[data-agent-connected=true] .entry-agent-setup .agent-prompt{display:none}
+.character-editor.entry-flow[data-agent-connected=true] footer .appearance-apply{background:#d4e7cb}

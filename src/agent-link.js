@@ -20,7 +20,9 @@ Connect to this HTTP MCP server:
 ${mcpUrl}
 Authorization: Bearer ${agentToken}
 
-Use this key only with the MCP server above. Call tools/list to discover its tools, then call status.`;
+Use this key only with the MCP server above. Call tools/list to discover its tools, then call status.
+
+After status succeeds, tell me you're connected and remind me to click Enter room on the website. Briefly explain that you can create my own space, style its floor and walls, turn pictures or ideas into furniture, and place or rearrange my furniture. Offer a few short examples, such as "make me a cosy reading corner", "turn this picture into a chair", or "give my space a checkerboard floor". Ask what I'd like to create first. Don't start building until I choose.`;
         prompt.hidden=false;
       }
       try{

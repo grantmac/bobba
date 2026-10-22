@@ -128,7 +128,7 @@ export async function createAppearance({prepareImage, onApply, onOpen}) {
     <header><h1 id="appearance-title">Your appearance</h1><button type="button" class="appearance-close" aria-label="Close appearance editor">×</button></header>
     <ol class="entry-progress" hidden><li>Name</li><li>Character</li><li>Agent</li></ol>
     <section class="entry-intro" hidden><h2>Welcome! Make yourself at home.</h2><p>Choose a name for your character, then pick your look.</p></section>
-    <section class="entry-agent" hidden><h2>Connect your agent</h2><p>Use an agent to create a space and style it with your own furniture.</p><div class="entry-agent-setup"><button type="button" class="entry-connect agent-copy-prompt">Copy Agent Prompt</button><p class="agent-copy-status" role="status" aria-live="polite"></p><textarea class="agent-prompt" aria-label="Agent setup prompt" readonly spellcheck="false" hidden></textarea><p class="agent-attached" role="status" aria-live="polite" data-connected="false">Not connected</p></div><p>You can also do this later from the catalogue.</p></section>
+    <section class="entry-agent" hidden><h2 class="entry-agent-title">Connect your agent</h2><p class="entry-agent-description">Use an agent to create a space and style it with your own furniture.</p><div class="entry-agent-setup"><button type="button" class="entry-connect agent-copy-prompt">Copy Agent Prompt</button><p class="agent-copy-status" role="status" aria-live="polite"></p><textarea class="agent-prompt" aria-label="Agent setup prompt" readonly spellcheck="false" hidden></textarea><p class="agent-attached" role="status" aria-live="polite" data-connected="false">Not connected</p></div><p class="entry-agent-note">You can also do this later from the catalogue.</p></section>
     <div class="entry-name" hidden><label for="entry-name">Your name</label><input id="entry-name" autocomplete="nickname" minlength="2" maxlength="20" placeholder="What should we call you?" aria-describedby="entry-name-help entry-name-error"><p class="entry-note" id="entry-name-help"></p><p class="entry-name-error" id="entry-name-error" role="alert"></p></div>
     <div class="appearance-body">
       <div class="appearance-character"><div class="preview-stage"><canvas id="appearance-preview" width="96" height="112" aria-label="Character preview"></canvas></div><div class="turn-controls"><button type="button" aria-label="Turn preview left">◀</button><button type="button" aria-label="Turn preview right">▶</button></div></div>
@@ -192,7 +192,6 @@ export async function createAppearance({prepareImage, onApply, onOpen}) {
   let entryStep=0,agentSetup=null;
   function showEntryStep(step){
     entryStep=step;dialog.dataset.entryStep=String(step);
-    if(step===3){agentSetup=createAgentPrompt({network:{agents:entry.agents},root:dialog.querySelector('.entry-agent-setup')});agentSetup.start();}
     dialog.querySelectorAll('.entry-progress li').forEach((item,i)=>{
       if(i+1===step)item.setAttribute('aria-current','step');else item.removeAttribute('aria-current');
     });
@@ -204,6 +203,17 @@ export async function createAppearance({prepareImage, onApply, onOpen}) {
     dialog.querySelector('.appearance-cancel').hidden=step!==2;
     dialog.querySelector('.appearance-cancel').textContent='Back';
     apply.textContent=step===3?'Enter room':'Continue';
+    if(step===3){
+      agentSetup=createAgentPrompt({network:{agents:entry.agents},root:dialog.querySelector('.entry-agent-setup'),onAttached:list=>{
+        const connected=list.some(agent=>agent.connectedAt!=null);
+        dialog.dataset.agentConnected=String(connected);
+        dialog.querySelector('.entry-agent-title').textContent=connected?"You're connected!":'Connect your agent';
+        dialog.querySelector('.entry-agent-description').textContent=connected?'Enter the room to explore and bring your ideas to life with your agent.':'Use an agent to create a space and style it with your own furniture.';
+        dialog.querySelector('.entry-agent-note').textContent=connected?'Your agent will explain what you can create. Head into the room when you’re ready.':'You can also do this later from the catalogue.';
+        apply.textContent=connected?'Enter the room':'Enter room';
+      }});
+      agentSetup.start();
+    }
     status.textContent='';dialog.scrollTop=0;
     if(step===1)nameInput.focus();
     else {dialog.focus();if(step===2)update();}
@@ -216,7 +226,7 @@ export async function createAppearance({prepareImage, onApply, onOpen}) {
   nameInput.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();apply.click();}});
   function open(){
     if(dialog.open)return;
-    delete dialog.dataset.entryStep;dialog.classList.remove('entry-flow');
+    delete dialog.dataset.entryStep;delete dialog.dataset.agentConnected;dialog.classList.remove('entry-flow');
     dialog.querySelector('.entry-progress').hidden=true;dialog.querySelector('.entry-intro').hidden=true;dialog.querySelector('.entry-agent').hidden=true;dialog.querySelector('.appearance-body').hidden=false;dialog.querySelector('.appearance-cancel').textContent='Cancel';
     dialog.querySelector('.entry-name').hidden=true;dialog.querySelector('h1').textContent='Your appearance';
     apply.textContent='Apply';dialog.querySelector('.appearance-close').hidden=false;dialog.querySelector('.appearance-cancel').hidden=false;

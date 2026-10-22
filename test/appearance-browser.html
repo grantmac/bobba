@@ -10,6 +10,6 @@ editor.enter({
     if(name.trim().toLowerCase()==='grant')throw new Error('That name is reserved. Please choose another name.');
   },
   onEnter:async()=>{},
-  agents:{key:async()=>({agentToken:'preview-only'}),attached:callback=>{callback([]);return ()=>{};}}
+  agents:{key:async()=>({agentToken:'preview-only'}),attached:callback=>{callback(new URLSearchParams(location.search).has('connected')?[{connectedAt:123}]:[]);return ()=>{};}}
 });
 </script>
