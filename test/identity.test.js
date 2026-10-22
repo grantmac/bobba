@@ -76,6 +76,14 @@ describe('room keys',()=>{
     await expect(t.query(api.room.checkName,{name:'visitor'})).rejects.toThrow('saved character');
     await expect(t.mutation(api.room.join,{token:otherToken,name:'VISITOR',look})).rejects.toThrow('saved character');
   });
+  it('returns to the original character after the remembered browser session expires',async()=>{
+    const device=await saveKey();later(GUEST_SESSION_AGE+1);
+    await expect(t.mutation(api.identity.resume,{token})).rejects.toThrow('ended');
+    const request=await t.action(api.passkeys.authenticationOptions,{origin});
+    const restored=await t.action(api.passkeys.authenticate,{id:request.id,response:await device.authenticate(request.options.challenge)});
+    expect((await t.mutation(api.identity.resume,{token:restored.token}))).toMatchObject({id:player.id,name:'Visitor',look});
+    expect(await t.run(ctx=>ctx.db.query('players').collect())).toHaveLength(1);
+  });
   it('binds registration to the requesting session',async()=>{
     await t.mutation(api.room.join,{token:otherToken,name:'Someone',look});
     const request=await t.action(api.passkeys.registrationOptions,{token,origin}),device=await authenticator();

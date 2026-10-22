@@ -6,20 +6,21 @@
 import {createRoomKey} from '/src/room-key.js';
 import {createAppearance} from '/src/appearance.js';
 import {prepareImage} from '/src/sprite-image.js';
-let saved=false,hasBackup=false;
+let saved=false,hasBackup=false,passkeyCount=0;
 const results=document.querySelector('#results'),previewCode='12345678-12345678-12345678-12345678-12345678-12345678-12345678-12345678';
 const identity={remembered:true,
-  status:async()=>({saved,name:'Visitor',passkeys:saved?1:0,hasBackup,backupAvailable:true}),
+  status:async()=>({saved,name:'Visitor',passkeys:passkeyCount,hasBackup,backupAvailable:true}),
   registrationOptions:async()=>{throw new DOMException('Cancelled by visitor','NotAllowedError');},
   authenticationOptions:async()=>{throw new DOMException('Cancelled by visitor','NotAllowedError');},
   makeBackup:async()=>{saved=true;hasBackup=true;results.textContent='PASS: new backup created. The displayed code is a preview, not a real credential.';return {code:previewCode};},
   useBackup:async code=>{if(code!==previewCode)throw new Error('That backup code is not valid or has already been used.');saved=true;hasBackup=false;results.textContent='PASS: original character restored; backup consumed.';return {token:'preview',player:{name:'Visitor'}};},
 };
+const previewLook={hair:{model:'1',color:'#624631'},skin:{model:'1',color:'#e8b18a'},top:{model:'1',color:'#6b8c64'},bottom:{model:'1',color:'#55677e'},shoes:{model:'1',color:'#42454c'}};
 const key=createRoomKey({identity});
 const editor=await createAppearance({prepareImage,onApply:async()=>{},onOpen(){},onRoomKey:()=>key.open()});
-document.querySelector('#entry').onclick=()=>editor.enter({onCheckName:async()=>{},onEnter:async()=>{},agents:{key:async()=>({agentToken:'preview'}),attached:callback=>{callback([]);return ()=>{};}},onReturn:async()=>{await key.open('return');return null;}});
+document.querySelector('#entry').onclick=()=>editor.enter({onCheckName:async()=>{},onEnter:async()=>{},agents:{key:async()=>({agentToken:'preview'}),attached:callback=>{callback([]);return ()=>{};}},onReturn:async()=>{const restored=await key.open('return');if(restored)results.textContent='PASS: returning character bypassed new-character entry.';return restored?{name:'Visitor',look:previewLook}:null;}});
 document.querySelector('#guest').onclick=()=>{saved=false;editor.open();};
-document.querySelector('#saved').onclick=()=>{saved=true;key.open();};
+document.querySelector('#saved').onclick=()=>{saved=true;passkeyCount=1;key.open();};
 document.querySelector('#return').onclick=()=>key.open('return');
 key.open();
 </script>

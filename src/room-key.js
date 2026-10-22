@@ -21,7 +21,7 @@ export function createRoomKey({identity}){
   document.body.append(dialog);makeDraggable(dialog,dialog.querySelector('header'));
   const find=selector=>dialog.querySelector(selector),heading=find('.room-key-heading'),description=find('.room-key-description'),passkey=find('.room-key-passkey'),support=find('.room-key-support'),backup=find('.room-key-backup'),form=find('form'),input=find('#room-key-recover'),status=find('.room-key-status'),done=find('.room-key-done'),code=find('#room-key-code'),codePanel=find('.room-key-code');
   let mode='save',busy=false,resolve=null,successful=false;
-  function close(){if(busy)return;dialog.close();resolve?.(successful);resolve=null;}
+  function close(){if(busy)return;code.value='';input.value='';dialog.close();resolve?.(successful);resolve=null;}
   find('.appearance-close').onclick=close;done.onclick=close;
   dialog.addEventListener('cancel',event=>{event.preventDefault();close();});
   function message(error){
@@ -34,7 +34,10 @@ export function createRoomKey({identity}){
     if(busy)return;busy=true;dialog.setAttribute('aria-busy','true');
     dialog.querySelectorAll('button,textarea').forEach(el=>el.disabled=true);
     try{await task();}catch(error){status.textContent=message(error);}
-    finally{busy=false;dialog.removeAttribute('aria-busy');dialog.querySelectorAll('button,textarea').forEach(el=>el.disabled=false);passkey.disabled=!browserSupportsWebAuthn();}
+    finally{
+      busy=false;dialog.removeAttribute('aria-busy');dialog.querySelectorAll('button,textarea').forEach(el=>el.disabled=false);passkey.disabled=!browserSupportsWebAuthn();
+      if(dialog.open&&!dialog.contains(document.activeElement))dialog.focus();
+    }
   }
   async function savedState(){
     const data=await identity.status();
