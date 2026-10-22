@@ -5,11 +5,36 @@ import {programVisual,programState,programHost} from '../shared/asset-program.js
 // The program has no game-origin DOM, storage, credentials, or network access.
 // Blob workers inherit the iframe CSP; never add allow-same-origin to this sandbox.
 export function createProgramSandbox({program,views,frameCount=0,onVisual,onSave,onError}){
+  let connection,latest=null,ended=false,failed=false,retryOnWake=document.hidden;
+  function connect(){
+    failed=false;
+    connection=createProgramConnection({program,views,frameCount,onVisual,onSave,onError:(message,{recoverable=false}={})=>{
+      failed=true;
+      // One fresh worker per return, including a timeout detected after visibility
+      // changes. Never retry a broken program continuously on animation ticks.
+      if(recoverable&&retryOnWake&&!document.hidden){retryOnWake=false;connect();return;}
+      onError(message);
+    }});
+    if(latest)connection.update(latest);
+  }
+  function visibilityChanged(){
+    if(document.hidden){retryOnWake=true;return;}
+    if(failed&&retryOnWake){retryOnWake=false;connect();}
+  }
+  document.addEventListener('visibilitychange',visibilityChanged);
+  connect();
+  return {
+    update(world){if(ended)return;latest=world;connection.update(world);},
+    dispose(){if(ended)return;ended=true;document.removeEventListener('visibilitychange',visibilityChanged);connection.dispose();},
+  };
+}
+
+function createProgramConnection({program,views,frameCount,onVisual,onSave,onError}){
   const iframe=document.createElement('iframe');iframe.hidden=true;iframe.title='Furniture program';iframe.sandbox='allow-scripts';
   const bootstrap=`(${assetProgramBridge.toString()})(${JSON.stringify(workerSource)});`;
   iframe.srcdoc=`<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob:; worker-src blob:; connect-src 'none';"><script>${bootstrap.replaceAll('</script','<\\/script')}</script>`;
   const channel=new MessageChannel();let ready=false,busy=false,ended=false,initialized=false,sequence=0,pending=null,heartbeat=performance.now(),sentAt=0,saving=false;
-  function fail(message){if(ended)return;dispose();onVisual({});onError(message);}
+  function fail(message,recoverable=false){if(ended)return;dispose();if(!recoverable&&!document.hidden)onVisual({});onError(message,{recoverable});}
   function flush(){
     if(!ready||busy||!pending||ended)return;
     busy=true;sentAt=performance.now();
@@ -19,7 +44,7 @@ export function createProgramSandbox({program,views,frameCount=0,onVisual,onSave
     if(ended||!data||typeof data!=='object')return;
     if(data.type==='heartbeat'){heartbeat=performance.now();return;}
     if(data.type==='ready'){ready=true;heartbeat=performance.now();flush();return;}
-    if(data.type==='error'){fail(String(data.message).slice(0,300));return;}
+    if(data.type==='error'){fail(String(data.message).slice(0,300),data.recoverable===true);return;}
     if(data.type==='frame'){
       if(!busy||data.sequence!==sequence){fail('Unexpected program response.');return;}
       try{onVisual(programVisual(data.visual,views,frameCount));}catch(error){fail(error.message);return;}
@@ -45,7 +70,7 @@ export function createProgramSandbox({program,views,frameCount=0,onVisual,onSave
   const watchdog=setInterval(()=>{
     if(document.hidden){resetDeadline();return;}
     const now=performance.now();
-    if(now-heartbeat>(ready?2500:10000)||(busy&&now-sentAt>15000))fail('Furniture program stopped responding.');
+    if(now-heartbeat>(ready?2500:10000)||(busy&&now-sentAt>15000))fail('Furniture program stopped responding.',true);
   },500);
   function dispose(){
     if(ended)return;ended=true;clearInterval(watchdog);
