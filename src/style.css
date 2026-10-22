@@ -90,9 +90,7 @@ html, body {
 #scene:focus-visible {outline:2px solid #69865d;outline-offset:-2px}
 canvas{display:block;image-rendering:pixelated}
 #scene>canvas{width:100%;height:100%}
-/* Covers the room across a deployment reload; fades away once the restored room is ready. */
-#update-veil{position:fixed;inset:0;background:#121212;z-index:30;pointer-events:none;opacity:1;transition:opacity .4s ease}
-#update-veil.lifting{opacity:0}
+/* First-paint loading styles live in index.html to cover loading the app itself. */
 #load-error{position:fixed;inset:35% 20% auto;padding:24px;color:#604e42;background:#fff8e7;border-radius:12px;z-index:20}
 /* Explicit colour and no platform chrome: iOS otherwise paints button text blue and adds its own bevels. */
 button{font:inherit;cursor:pointer;color:inherit;appearance:none;-webkit-appearance:none}

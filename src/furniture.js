@@ -402,6 +402,10 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
   render();
   return {open,pointer,key,roomChanged,redraw,seat,animate,debugVisuals:()=>visuals.map(v=>({id:v.item.id.slice(0,6),type:v.item.type.slice(0,22),x:v.item.x,z:v.item.z,u:v.item.u,h:v.item.height,on:v.item.supportId?.slice(0,6)??null,order:v.mesh.renderOrder,meshX:v.mesh.position.x,meshY:v.mesh.position.y,w:v.frame.canvas.width/v.frame.density,height:v.frame.canvas.height/v.frame.density,top:v.frame.top,left:v.frame.left})),approach:(id,from,canWalk)=>{const item=items.find(i=>i.id===id);return item&&visible(item)?approachFor(item,items,definitions,from,canWalk):null;},blocks:(x,z)=>blocksTile(x,z,items,definitions),close:()=>{cancel();selected=null;panel.hidden=true;render();},get placing(){return !!pending;},
     getItems:()=>structuredClone(items),
+    async whenReady(){
+      await Promise.all([...new Set(items.filter(isPlaced).map(item=>item.type))].filter(id=>definitions.has(id)).map(id=>loadDefinition(definitions.get(id))));
+      redraw();
+    },
     typeOf:id=>items.find(i=>i.id===id)?.type??null,
     // Show a piece's open state until the given time, then fall back to its resting frame.
     setOpen(id,until){openUntil.set(id,until);redraw();setTimeout(()=>{if(openUntil.get(id)===until){openUntil.delete(id);redraw();}},Math.max(0,until-Date.now())+30);},

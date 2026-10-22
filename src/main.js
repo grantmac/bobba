@@ -23,12 +23,12 @@ import {createDiscoLights} from './disco-lights.js';
 import {loadDeckSign,SIGN_LIFT,SIGN_DENSITY} from './deck-sign.js';
 import {createRoomRadio} from './room-radio.js';
 import {installAutoUpdate,saveUpdateSession,takeUpdateSession,peekUpdateSession} from './auto-update.js';
-// The update veil hides the cold start after a deployment reload. It lifts once the room is
-// ready (or if the join flow needs the screen), and drops again just before the next reload.
+// Cover every cold start until the furnished room and entry UI are ready together.
+// Slow connections must not reveal unfinished rooms after an arbitrary timeout.
 const veil=document.querySelector('#update-veil');
-let veilTimer=setTimeout(liftVeil,6000);
-function liftVeil(){clearTimeout(veilTimer);if(!veil||veil.hidden)return;veil.classList.add('lifting');setTimeout(()=>{veil.hidden=true;veil.classList.remove('lifting');},450);}
-function dropVeil(){if(!veil)return;clearTimeout(veilTimer);veil.classList.remove('lifting');veil.hidden=false;}
+function liftVeil(){document.body.removeAttribute('data-loading');document.body.removeAttribute('aria-busy');if(veil)veil.hidden=true;}
+function dropVeil(){if(!veil)return;veil.textContent='Updating the room…';veil.hidden=false;}
+const nextPaint=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
 import {createPool,createWoodDeck,loadPoolAssets} from './pool.js';
 import {createPlantWall} from './plant-wall.js';
 import {createLoungeFloor,loadSunkenSofa} from './lounge.js';
@@ -47,6 +47,7 @@ let renderer;
 try {
   renderer = new THREE.WebGLRenderer({ antialias: false });
 } catch (error) {
+  liftVeil();
   document.querySelector('#load-error').hidden = false;
   throw error;
 }
@@ -803,7 +804,7 @@ try{
   stickies.receive(initialRoom.room.stickies??[]);
   const furnitureMarks=new THREE.Group();scene.add(furnitureMarks);
   const agentLink=createAgentLink({network,focusRoom:()=>container.focus({preventScroll:true})});
-  const initialAssets=await network.assets.list().catch(()=>[]);
+  const initialAssets=await network.assets.list();
   furniture=await createFurniture({initialItems:initialRoom.room.furniture,initialAssets,onAttachAgent:()=>agentLink.open(),
     prepareImage,worldPoint:iso,isTile:(x,z)=>valid(x,z)&&!isPoolWater(layout,x,z)&&!onWalkway(layout,x,z),floorHeight,getAvatar:()=>position,stopWalking,onChanged:()=>{ensureFreeTile();positionAwayPoster();positionDeckSign();},onSit:sitOn,onUse:useItem,
     // Clicking a player-built piece names it and its builder on the info stand; stock pieces clear it.
@@ -831,20 +832,25 @@ try{
   else {
     let stopPreview;
     await new Promise((resolve,reject)=>{
-      let roomKey='',furnitureKey='';
+      let roomKey='',furnitureKey='',roomPrepared=Promise.resolve();
       stopPreview=network.preview(state=>{
         receiveDanceFloor(state.room.danceFloorOn);receiveFridge(state.room.fridge);
         const rk=JSON.stringify([state.room.options,state.room.spaces??[]]),fk=state.room.revision;
         // Furniture lands only after the room it belongs to is built: a resized space moves what hangs on the spaces after it.
         const applyFurniture=()=>{if(fk!==furnitureKey){furnitureKey=fk;furniture.receive(state.room.furniture);positionAwayPoster();positionDeckSign();}};
-        if(rk!==roomKey){roomKey=rk;const spaces=state.room.spaces??[],options=state.room.options;loadSpacePictures(spaces).then(()=>{if(roomKey!==rk)return;roomSpaces=spaces;roomEditor.receive(options);applyFurniture();});}
-        else applyFurniture();
+        if(rk!==roomKey){roomKey=rk;const spaces=state.room.spaces??[],options=state.room.options;roomPrepared=loadSpacePictures(spaces).then(()=>{if(roomKey!==rk)return;roomSpaces=spaces;roomEditor.receive(options);});}
+        roomPrepared.then(async()=>{
+          if(roomKey!==rk)return;
+          applyFurniture();await furniture.whenReady();
+          if(roomKey===rk&&furnitureKey===fk)resolve();
+        }).catch(reject);
         receiveStickies(state.room.stickies);
-        updatePeers(state.players);resolve();
+        updatePeers(state.players);
       },message=>reject(new Error(message)));
     });
     if(network.adminEntry){const saved=await network.entryAppearance();if(saved)setAppearance(await appearance.useLook(saved));}
-    liftVeil();
+    // The room has rendered before the welcome dialog and room are revealed in one task.
+    await nextPaint();liftVeil();
     await appearance.enter({admin:network.adminEntry,onCheckName:name=>network.checkName(name),agents:network.agents,onEnter:(name,look,options)=>network.join(name,look,options)});
     stopPreview();
   }
@@ -866,17 +872,24 @@ try{
   let roomKey='',furnitureKey='',ownLook=JSON.stringify(network.me.look),lookVersion=0;
   const seenMessages=new Set();
   await new Promise((resolve,reject)=>{
-    let first=true;
+    let first=true,roomPrepared=false,playerPrepared=false,roomBuild=Promise.resolve();
+    const finishInitialLoad=()=>{if(first&&roomPrepared&&playerPrepared){first=false;resolve();}};
     // Room contents (furniture, options, stickies) come on their own subscription so player
     // movement updates no longer carry the whole room.
     const onRoom=room=>{
+      roomPrepared=false;
       receiveDanceFloor(room.danceFloorOn);receiveFridge(room.fridge);
       // The server bumps room.revision on every furniture, power and options change, so that one number stands in for the whole list.
       const nextRoom=JSON.stringify([room.options,room.spaces??[]]),nextFurniture=room.revision;
       // Furniture lands only after the room it belongs to is built: a resized space moves what hangs on the spaces after it.
       const applyFurniture=()=>{if(nextFurniture!==furnitureKey){furnitureKey=nextFurniture;furniture.receive(room.furniture);positionAwayPoster();positionDeckSign();radio.receive(room.furniture,true);}};
-      if(nextRoom!==roomKey){roomKey=nextRoom;const spaces=room.spaces??[],options=room.options;loadSpacePictures(spaces).then(()=>{if(roomKey!==nextRoom)return;roomSpaces=spaces;roomEditor.receive(options);applyFurniture();});}
-      else applyFurniture();
+      if(nextRoom!==roomKey){roomKey=nextRoom;const spaces=room.spaces??[],options=room.options;roomBuild=loadSpacePictures(spaces).then(()=>{if(roomKey!==nextRoom)return;roomSpaces=spaces;roomEditor.receive(options);});}
+      roomBuild.then(async()=>{
+        if(roomKey!==nextRoom)return;
+        applyFurniture();if(first)await furniture.whenReady();
+        if(roomKey!==nextRoom||furnitureKey!==nextFurniture)return;
+        roomPrepared=true;finishInitialLoad();
+      }).catch(error=>{if(first)reject(error);else toolbar.status(error.message);});
       receiveStickies(room.stickies);
     };
     network.watch(state=>{
@@ -892,11 +905,11 @@ try{
       // Bound deduplication memory to the server's current message window.
       const recentIds=new Set(state.messages.map(m=>m.id));for(const id of seenMessages)if(!recentIds.has(id))seenMessages.delete(id);
       avatar.visible=true;ready=true;toolbar.setVoiceEnabled(true);toolbar.setAppearanceEnabled(true);centreViewOnAvatar();
-      // Two frames later the restored avatar and furniture have been drawn at least once.
-      requestAnimationFrame(()=>requestAnimationFrame(liftVeil));
-      if(first){first=false;resolve();}
+      playerPrepared=true;finishInitialLoad();
     },message=>{voice.leave();radio.close();toolbar.setVoiceEnabled(false);toolbar.status(message);if(first)reject(new Error(message));},onRoom,state=>pong?.receive(state));
   });
+  // Both subscriptions and the restored avatar have rendered before returning visitors see it.
+  await nextPaint();liftVeil();
   // Everyone hears the room: connect listen-only unless a pre-reload snapshot says they had left.
   if(previousUpdate?.voice)void voice.restore(previousUpdate.voice);else void voice.listen();
   if(import.meta.env.PROD){
