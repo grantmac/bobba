@@ -38,13 +38,18 @@ export function createProgramSandbox({program,views,frameCount=0,onVisual,onSave
   };
   iframe.onload=()=>{if(!ended)iframe.contentWindow.postMessage({type:'connect'},'*',[channel.port2]);};
   document.body.append(iframe);
+  // Background tabs can freeze both the worker and this watchdog. Give pending
+  // work a fresh deadline on return, before a delayed watchdog callback runs.
+  function resetDeadline(){heartbeat=sentAt=performance.now();}
+  document.addEventListener('visibilitychange',resetDeadline);
   const watchdog=setInterval(()=>{
-    if(document.hidden){heartbeat=performance.now();sentAt=performance.now();return;}
+    if(document.hidden){resetDeadline();return;}
     const now=performance.now();
     if(now-heartbeat>(ready?2500:10000)||(busy&&now-sentAt>15000))fail('Furniture program stopped responding.');
   },500);
   function dispose(){
     if(ended)return;ended=true;clearInterval(watchdog);
+    document.removeEventListener('visibilitychange',resetDeadline);
     // Cleanup is best effort; removing the frame destroys its workers even for infinite loops.
     channel.port1.postMessage({type:'dispose'});
     setTimeout(()=>{channel.port1.postMessage({type:'terminate'});channel.port1.close();iframe.remove();},50);
