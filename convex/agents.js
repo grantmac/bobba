@@ -11,7 +11,7 @@ import {playerFor,sessionFor} from './room.js';
 import {seatReport} from '../shared/asset-geometry.js';
 import {isWallItem} from '../shared/furniture-model.js';
 import {furnitureControls} from '../shared/furniture-controls.js';
-import {SPACE_LIMIT,SPACES_PER_PLAYER,SPACE_SIZE,SPACE_MIN_WIDTH,SPACE_MAX_WIDTH,SPACE_FLOORS,SPACE_WALLS,SPACE_FITS,SPACE_IMAGE_MAX} from '../shared/spaces.js';
+import {SPACES_PER_PLAYER,SPACE_SIZE,SPACE_MIN_WIDTH,SPACE_MAX_WIDTH,SPACE_FLOORS,SPACE_WALLS,SPACE_FITS,SPACE_IMAGE_MAX} from '../shared/spaces.js';
 // A space's styling as agents see it: pictures as yes/no, the storage ids stay private.
 const spaceStyle=s=>({floor:s.floor,floorColor:s.floorColor,floorFit:s.floorFit??null,floorImage:!!s.floorImage,wall:s.wall??null,wallColor:s.wallColor??null,wallFit:s.wallFit??null,wallImage:!!s.wallImage});
 
@@ -68,7 +68,7 @@ export const status=query({args:{agentToken:v.string()},handler:async(ctx,{agent
   return {playerName:player.name,playerId:player._id,assets:assets.map(a=>({id:a._id,type:assetType(a),name:a.name,category:a.category,width:a.width,depth:a.depth,views:a.views,...(a.category==='Seating'?{seat:a.seat??null,positions:seatReport(a)}:{}),...(a.frameDuration?{animated:true,frameMs:a.frameDuration,switchable:!!a.switchable}:{}),programRevision:a.programRevision??0,programmable:!!a.program,controls:furnitureControls(a),createdAt:a.createdAt})),
     placed:placed.map(({id,type,x,z,rotation})=>({id,type,x,z,rotation})),categories:ASSET_CATEGORIES,
     spaces:(room.spaces??[]).filter(s=>s.owner===player._id).map(s=>({id:s.id,name:s.name,width:s.width,depth:s.depth,...spaceStyle(s)})),
-    spaceOptions:{perPlayer:SPACES_PER_PLAYER,limit:SPACE_LIMIT,size:`${SPACE_SIZE} by ${SPACE_SIZE} tiles to start; resize_space makes it ${SPACE_MIN_WIDTH} to ${SPACE_MAX_WIDTH} tiles wide`,floors:SPACE_FLOORS,walls:SPACE_WALLS,colors:'any hex colour like #b59232 (floorColors are the room palette)',floorColors,pictures:`PNG, JPEG, WebP or GIF up to ${SPACE_IMAGE_MAX/1024/1024} MB, uploaded through upload_url; fit 'tile' repeats it on every tile or wall segment, 'cover' stretches one copy over the whole floor or wall`}};
+    spaceOptions:{perPlayer:SPACES_PER_PLAYER,limit:null,size:`${SPACE_SIZE} by ${SPACE_SIZE} tiles to start; resize_space makes it ${SPACE_MIN_WIDTH} to ${SPACE_MAX_WIDTH} tiles wide`,floors:SPACE_FLOORS,walls:SPACE_WALLS,colors:'any hex colour like #b59232 (floorColors are the room palette)',floorColors,pictures:`PNG, JPEG, WebP or GIF up to ${SPACE_IMAGE_MAX/1024/1024} MB, uploaded through upload_url; fit 'tile' repeats it on every tile or wall segment, 'cover' stretches one copy over the whole floor or wall`}};
 }});
 export const uploadUrl=mutation({args:{agentToken:v.string()},handler:async(ctx,{agentToken})=>{
   await agentFor(ctx,agentToken);return await ctx.storage.generateUploadUrl();

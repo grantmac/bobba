@@ -3,7 +3,7 @@ import {choices as appearanceChoices,colors as appearanceColors} from './appeara
 import {shapes,wallColors,floorColors,furniture} from './catalog.js';
 import {canPlace,isWallItem,canHang,takesFloor} from '../../shared/furniture-model.js';
 import {roomLayout,tileDrop,pitSeat,backWallTiles,onWalkway,zoneAt,zoneTiles,zoneTileSet,MAIN_ZONE,ZONE_CAP} from '../../shared/room-layout.js';
-import {SPACE_LIMIT,SPACES_PER_PLAYER,SPACE_SIZE,SPACE_NAME_MAX,SPACE_FLOORS,SPACE_WALLS,SPACE_FITS,isHexColor} from '../../shared/spaces.js';
+import {SPACES_PER_PLAYER,SPACE_SIZE,SPACE_NAME_MAX,SPACE_FLOORS,SPACE_WALLS,SPACE_FITS,isHexColor} from '../../shared/spaces.js';
 export {pitSeat,zoneAt,MAIN_ZONE,ZONE_CAP};
 export const isOnline=(player,now=Date.now())=>!!player&&(player.online??player.lastSeen>now-45000);
 // Everyone online, world-wide: only for rare admin-wide operations, never a hot path.
@@ -105,7 +105,6 @@ export function validateFurniture(items,options,defs=furniture,spaces=[],zone=nu
 }
 // A block of floor a player adds through their agent. Its position follows from the chain order.
 export function validateSpace(space,spaces,playerId,isAdmin=false){
-  if(spaces.length>=SPACE_LIMIT)fail(`The room can take up to ${SPACE_LIMIT} added spaces.`);
   if(!isAdmin&&spaces.filter(s=>s.owner===playerId).length>=SPACES_PER_PLAYER)fail(`You can add up to ${SPACES_PER_PLAYER} space${SPACES_PER_PLAYER===1?'':'s'}; remove yours first to add another.`);
   const name=validSpaceName(space.name),floor=space.floor??'carpet',floorColor=space.floorColor??floorColors[0];
   if(!SPACE_FLOORS.includes(floor))fail(`Floor must be one of ${SPACE_FLOORS.join(', ')}.`);

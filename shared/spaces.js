@@ -2,7 +2,7 @@
 // end of the back wall: the first joins the lounge, every later one joins the space before it.
 // Positions are never stored; they follow from the order the spaces were added in. Every space
 // is the same fixed size, so the chain stays even and a player only chooses a name and a floor.
-export const SPACE_LIMIT=8,SPACES_PER_PLAYER=1,SPACE_SIZE=8,SPACE_NAME_MAX=24;
+export const SPACES_PER_PLAYER=1,SPACE_SIZE=8,SPACE_NAME_MAX=24;
 // A space starts SPACE_SIZE wide and deep; its owner can later make it wider or narrower.
 export const SPACE_MIN_WIDTH=4,SPACE_MAX_WIDTH=16;
 export const SPACE_FLOORS=['plain','wood','tiles','carpet'],SPACE_WALLS=['plain','tiles','checks','stripes'];

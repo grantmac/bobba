@@ -1342,6 +1342,20 @@ describe('agents adding spaces',()=>{
     expect((await t.mutation(api.agents.addSpace,{agentToken:adminAgent,name:'Two'})).x).toBe(45);
     expect((await t.query(api.agents.map,{agentToken})).spaces.map(s=>[s.name,s.mine,s.latest])).toEqual([['Mine',true,false],['Theirs',false,false],['One',false,false],['Two',false,true]]);
   });
+  it('allows players to add spaces beyond eight and reports no room-wide limit',async()=>{
+    await admin();const adminAgent=await key(adminToken,'Grant');
+    for(let i=0;i<8;i++)await t.mutation(api.agents.addSpace,{agentToken:adminAgent,name:`Space ${i+1}`});
+    await guest();const agentToken=await key();
+    const ninth=await t.mutation(api.agents.addSpace,{agentToken,name:'Ninth space'});
+    expect(ninth).toMatchObject({x:85,z:0,width:8,depth:8});
+    expect(ninth.tiles).toHaveLength(64);
+    const tenth=await t.mutation(api.agents.addSpace,{agentToken:adminAgent,name:'Tenth space'});
+    expect(tenth).toMatchObject({x:93,z:0,width:8,depth:8});
+    expect((await t.query(api.agents.map,{agentToken})).spaces).toHaveLength(10);
+    expect((await t.query(api.room.scene,{})).spaces).toHaveLength(10);
+    expect((await t.query(api.agents.status,{agentToken})).spaceOptions.limit).toBeNull();
+    await expect(t.mutation(api.agents.addSpace,{agentToken,name:'Another'})).rejects.toThrow('up to 1 space');
+  });
   it('lets the owner restyle a space with colours, wallpaper and uploaded pictures',async()=>{
     await guest();const agentToken=await key();
     await t.mutation(api.room.join,{token:otherToken,name:'Friend',look});const other=await key(otherToken,'Other');
