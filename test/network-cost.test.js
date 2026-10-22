@@ -23,6 +23,13 @@ const pulses=()=>fake.client.mutation.mock.calls.filter(([fn])=>getFunctionName(
 const watch=async(options={})=>{network=createMultiplayer();await network.resume();await network.watch({onState:vi.fn(),onError:vi.fn(),...options});};
 
 describe('room network budget',()=>{
+  it('receives a single world-wide count without subscribing to off-screen player records',async()=>{
+    await watch();expect(network.population).toEqual({people:null});
+    const calls=fake.client.onUpdate.mock.calls.filter(([fn])=>getFunctionName(fn)==='room:population');
+    expect(calls).toHaveLength(1);calls[0][2]({people:14});expect(network.population).toEqual({people:14});
+    const copy=network.population;copy.people=99;expect(network.population.people).toBe(14);
+    calls[0][3](new Error('offline'));expect(network.population.people).toBeNull();
+  });
   it('only watches programs in zones with custom furniture and ignores retired callbacks',async()=>{
     const onPrograms=vi.fn();await watch({onPrograms});
     const calls=name=>fake.client.onUpdate.mock.calls.filter(([fn])=>getFunctionName(fn)===name);

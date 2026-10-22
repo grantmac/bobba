@@ -6,6 +6,7 @@ import {prepareCarGlass} from './car-glass.js';
 import {createBalloonMotion} from './balloon-motion.js';
 import {createSpeakerMotion} from './speaker-motion.js';
 import {createAssetPrograms} from './asset-program-runtime.js';
+import {createProgramDisplays} from './program-display.js';
 import {furnitureControls} from '../shared/furniture-controls.js';
 import {createFurnitureViewLoader} from './furniture-view-loader.js';
 
@@ -18,7 +19,7 @@ const load=(image,file)=>{if(/^https?:\/\//.test(file))image.crossOrigin='anonym
 // The wall face is 117 px tall above the floor line; hung pieces are kept within it.
 const WALL_FACE=117;
 const USABLE=new Set(['custom_dj_decks','fridge','dmg_fridge','custom_logbook','asset_kd7acza4w9bg93w99rxrd5346x8gpfwq']);
-export async function createFurniture({prepareImage,makeVisual,disposeVisual,positionVisual,markTiles,worldPoint,isTile,getAvatar,stopWalking,onChanged,onSit,onUse=()=>{},onInspect=()=>{},canBuildAt=()=>true,focusRoom,onAttachAgent,floorHeight=()=>0,hasWall=()=>false,walls=()=>[],initialItems=[],initialAssets=[],programPlayers=()=>[],programMe=()=>null,programNow=null,programReducedMotion=()=>false,onProgramSave=()=>Promise.reject(new Error('Enter the room first.')),onProgramUse=()=>{}}){
+export async function createFurniture({prepareImage,makeVisual,disposeVisual,positionVisual,markTiles,worldPoint,isTile,getAvatar,stopWalking,onChanged,onSit,onUse=()=>{},onInspect=()=>{},canBuildAt=()=>true,focusRoom,onAttachAgent,floorHeight=()=>0,hasWall=()=>false,walls=()=>[],initialItems=[],initialAssets=[],programPlayers=()=>[],programRoom=()=>({people:null}),programMe=()=>null,programNow=null,programReducedMotion=()=>false,onProgramSave=()=>Promise.reject(new Error('Enter the room first.')),onProgramUse=()=>{}}){
   const response=await fetch(ROOT+'catalog.json');
   if(!response.ok)throw new Error('Furniture could not be loaded.');
   let catalog=[...await response.json(),...initialAssets];const definitions=new Map(catalog.map(d=>[d.id,d]));
@@ -101,9 +102,10 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
   const canEdit=item=>admin||(!!me&&item.owner===me);
   // Pieces with a power switch: the decks, and built animations marked switchable.
   const switchable=item=>item?.type==='custom_dj_decks'||!!definitions.get(item?.type)?.switchable;
-  const programs=createAssetPrograms({getPlayers:programPlayers,getMe:programMe,getTime:programNow,getReducedMotion:programReducedMotion,saveState:onProgramSave,onError:message=>{console.warn(message);onPowerError(message);}});
+  const displays=createProgramDisplays();
+  const programs=createAssetPrograms({getPlayers:programPlayers,getRoom:programRoom,getMe:programMe,getTime:programNow,getReducedMotion:programReducedMotion,saveState:onProgramSave,onError:message=>{console.warn(message);onPowerError(message);}});
   let lastEffects='',reduceProgramMotion=false;
-  const effectFor=id=>{const effect=programs.visual(id);return reduceProgramMotion?{opacity:effect.opacity,animation:false}:effect;};
+  const effectFor=id=>{const effect=programs.visual(id);return reduceProgramMotion?{opacity:effect.opacity,display:effect.display,animation:false}:effect;};
   // Builders drop pieces only inside their own space; Grant anywhere. Loading never applies this.
   const buildTile=(x,z)=>isTile(x,z)&&(admin||canBuildAt(x,z));
   items=restoreItems(initialItems,definitions);
@@ -159,7 +161,13 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     }
   }
   const openUntil=new Map();
-  function frameFor(item){const effect=effectFor(item.id),frame=frames.get(`${item.type}:${effect.direction??item.rotation}`);if(frame?.open&&openUntil.get(item.id)>Date.now())return frame.open;return (item.on===false||effect.animation===false)&&frame?.off?frame.off:frame;}
+  function frameFor(item){
+    const effect=effectFor(item.id),frame=frames.get(`${item.type}:${effect.direction??item.rotation}`);
+    if(frame?.open&&openUntil.get(item.id)>Date.now())return frame.open;
+    if((item.on===false||effect.animation===false)&&frame?.off)return frame.off;
+    // Numeric displays currently apply to static wall pieces only.
+    return displays.frame(item.id,frame,item.on!==false&&isWallItem(definitions.get(item.type))&&!frame?.animate?effect.display:null);
+  }
   function animate(now,reducedMotion=false,musicPlaying=false){
     reduceProgramMotion=reducedMotion;programs.tick(now,reducedMotion);
     const effects=JSON.stringify(items.filter(i=>definitions.get(i.type)?.program).map(i=>[i.id,effectFor(i.id)]));
@@ -233,6 +241,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     }
     for(const [key,entry] of meshes){if(!kept.has(key)){disposeVisual(entry.mesh);meshes.delete(key);}}
     for(const id of lastFrames.keys())if(!visibleIds.has(id))lastFrames.delete(id);
+    displays.retain(visibleIds);
     refreshPositions();
   }
   function refreshPositions(){

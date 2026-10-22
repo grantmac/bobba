@@ -1,10 +1,11 @@
 import {beforeEach,afterEach,describe,it,expect,vi} from 'vitest';
 import {convexTest} from 'convex-test';
 import schema from '../convex/schema.js';
-import {api} from '../convex/_generated/api.js';
+import {api,internal} from '../convex/_generated/api.js';
 import {validateProgram,programState,programVisual,programHost} from '../shared/asset-program.js';
 import {createAssetPrograms} from '../src/asset-program-runtime.js';
 import {spinningChairProgram} from '../shared/program-examples.js';
+import {drawProgramDisplay} from '../src/program-display.js';
 const modules=import.meta.glob('../convex/**/*.js');
 const token='a'.repeat(64),otherToken='b'.repeat(64);
 const look={hair:{model:'1',color:'#624631'},skin:{model:'1',color:'#e8b18a'},top:{model:'1',color:'#6b8c64'},bottom:{model:'1',color:'#55677e'},shoes:{model:'1',color:'#42454c'}};
@@ -117,6 +118,23 @@ describe('saved asset programs',()=>{
   });
 });
 describe('runtime boundary',()=>{
+  it('validates numeric display bounds and draws its projected digits',()=>{
+    const display={text:'012',color:'#ffbe55',corners:[.1,.2,.9,.6,.1,.4]};
+    expect(programVisual({display},[2,4])).toEqual({display});
+    expect(programVisual({display:null},[2,4])).toEqual({display:null});
+    for(const change of [{text:'<img>'},{text:'1234567'},{color:'red'},{corners:[0,0,1,0,0,2]},{corners:[.5,.5,1,.8,.5,.8]},{corners:[0,0,0,0,0,0]},{url:'https://example.com'}])expect(()=>programVisual({display:{...display,...change}},[4])).toThrow();
+    const ctx={save:vi.fn(),restore:vi.fn(),transform:vi.fn(),beginPath:vi.fn(),rect:vi.fn(),clip:vi.fn(),fillRect:vi.fn()};
+    drawProgramDisplay(ctx,100,100,display);
+    expect(ctx.transform).toHaveBeenCalledWith(1.25,expect.closeTo(.625),0,expect.closeTo(5/6),10,20);
+    expect(ctx.fillRect.mock.calls.length).toBeGreaterThan(20);expect(ctx.fillStyle).toBe('#ffbe55');expect(ctx.restore).toHaveBeenCalledOnce();
+  });
+  it('passes the global room count independently of visible occupants and the elected host',()=>{
+    let room={people:null};const update=vi.fn();
+    const runtime=createAssetPrograms({getPlayers:()=>[],getMe:()=>null,getRoom:()=>room,saveState:vi.fn(),sandbox:()=>({update,dispose:vi.fn()})});
+    runtime.receive([]);runtime.sync([{id:'counter',type:'asset_a',x:0,z:0}],new Map([['asset_a',{name:'Counter',views:[{direction:4}],program:{revision:1,initialState:{},source:'x'}}]]));
+    runtime.tick(100,false);expect(update.mock.lastCall[0].room).toEqual({people:null});
+    room={people:12};runtime.tick(200,true);expect(update.mock.lastCall[0]).toMatchObject({room:{people:12},occupants:[],isHost:false,reducedMotion:true});runtime.dispose();
+  });
   it('bounds code, JSON state and visual effects',()=>{
     expect(()=>validateProgram({source:'x'.repeat(65537)})).toThrow();
     expect(()=>validateProgram({source:'x',apiVersion:2})).toThrow();
@@ -145,5 +163,25 @@ describe('runtime boundary',()=>{
       vi.advanceTimersByTime(100);expect(update).toHaveBeenCalledOnce();expect(update.mock.calls[0][0].state).toBeNull();
       runtime.dispose();vi.advanceTimersByTime(1000);expect(update).toHaveBeenCalledOnce();
     }finally{vi.useRealTimers();}
+  });
+});
+
+describe('world-wide people count',()=>{
+  it('counts connected humans once across zones and tracks clean and expired departures',async()=>{
+    const a=await t.mutation(api.room.join,{token,name:'First',look});
+    const b=await t.mutation(api.room.join,{token:otherToken,name:'Second',look});
+    expect(await t.query(api.room.population,{})).toEqual({people:0});
+    const ca='1'.repeat(64),ca2='2'.repeat(64),cb='3'.repeat(64);
+    await t.mutation(api.room.heartbeat,{token,connectionId:ca});
+    await t.mutation(api.room.heartbeat,{token,connectionId:ca2});
+    await t.mutation(api.room.heartbeat,{token:otherToken,connectionId:cb});
+    await t.run(async ctx=>{await ctx.db.patch(b.id,{zone:'far-away'});await ctx.db.insert('players',{kind:'bot',online:true,zone:'main',name:'Robot',nameKey:'robot',role:'guest',look,route:[{x:0,z:0}],startedAt:0,direction:2,seatId:null,lastSeen:Date.now(),lastChat:0});});
+    expect(await t.query(api.room.population,{})).toEqual({people:2});
+    await t.mutation(internal.room.disconnect,{token,connectionId:ca});expect(await t.query(api.room.population,{})).toEqual({people:2});
+    await t.mutation(api.room.leave,{token});expect(await t.query(api.room.population,{})).toEqual({people:1});
+    const lease=await t.run(ctx=>ctx.db.query('connections').withIndex('by_connection',q=>q.eq('connectionId',cb)).unique());
+    vi.spyOn(Date,'now').mockReturnValue(lease.lastSeen+90001);
+    await t.mutation(internal.room.expireConnection,{connectionId:cb,seenAt:lease.lastSeen});
+    expect(await t.query(api.room.population,{})).toEqual({people:0});expect(a.id).not.toBe(b.id);
   });
 });

@@ -7,6 +7,7 @@ function assetProgramWorker(){
   const emit=async(name,value)=>{for(const fn of handlers.get(name)??[])await fn(copy(value));};
   const api=Object.freeze({
     get item(){return copy(world.item);},get occupants(){return copy(world.occupants);},
+    get room(){return copy(world.room??{people:null});},
     get state(){return copy(state);},get isHost(){return world.isHost;},
     get time(){return world.time;},get reducedMotion(){return world.reducedMotion;},
     on(name,fn){

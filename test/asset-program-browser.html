@@ -3,7 +3,8 @@
 <h1>Furniture programs</h1><p id="result">Running…</p><ol id="checks"></ol><canvas id="preview" width="480" height="180"></canvas>
 <script type="module">
 import {createProgramSandbox} from '/src/asset-program-runtime.js';
-import {spinningChairProgram} from '/shared/program-examples.js';
+import {spinningChairProgram,programReference} from '/shared/program-examples.js';
+import {createProgramDisplays} from '/src/program-display.js';
 import {createFurniture} from '/src/furniture.js';
 import {prepareImage} from '/src/sprite-image.js';
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -26,6 +27,22 @@ try{
  chair.runtime.update({...world,occupants:[],time:1000});await wait(100);assert(chair.frames.at(-1).direction===2,'empty chair spins');
  chair.runtime.update({...world,reducedMotion:true,time:1250});await wait(100);assert(chair.frames.at(-1).direction===2,'reduced motion ignored');
  check('Live module import, occupied spin, carried avatar direction, power off, stand, reduced motion');chair.runtime.dispose();
+ const counter=start(programReference.examples.peopleCounter);
+ counter.runtime.update({...world,room:{people:null}});await until(()=>counter.frames.length||counter.errors.length,'counter init');assert(!counter.errors.length,counter.errors[0]);
+ assert(counter.frames.at(-1).display.text==='---','unknown count shown as zero');
+ counter.runtime.update({...world,time:500,room:{people:12},reducedMotion:true});await until(()=>counter.frames.at(-1)?.display.text==='012','counter update');
+ counter.runtime.update({...world,time:750,room:{people:0}});await until(()=>counter.frames.at(-1)?.display.text==='000','empty room');
+ assert(counter.saved.length===0,'counter wrote shared state');counter.runtime.dispose();
+ check('Read-only live count handles loading, updates, zero, and reduced motion without state writes');
+ const baseCanvas=document.createElement('canvas');baseCanvas.width=128;baseCanvas.height=80;const bc=baseCanvas.getContext('2d');bc.fillStyle='#111';bc.fillRect(0,0,128,80);
+ const base={canvas:baseCanvas},displays=createProgramDisplays(),display={text:'012',color:'#ffbe55',corners:[.1,.1,.9,.5,.1,.5]};
+ const one=displays.frame('one',base,display),two=displays.frame('two',base,{...display,text:'999'});
+ assert(one.canvas!==two.canvas&&one.canvas!==baseCanvas,'copies share their display canvas');
+ assert(one===displays.frame('one',base,display),'unchanged display redraws');
+ assert(one.canvas.toDataURL()!==two.canvas.toDataURL(),'different counts look identical');
+ assert(bc.getImageData(64,40,1,1).data[0]===17,'source sprite changed');
+ assert(displays.frame('one',base,null)===base,'reset does not restore source');displays.retain(new Set());
+ check('Projected pixel displays are cached per copy and preserve the original sprite');
  const state=start(`export default function(api){let count=0;api.on('tick',()=>api.setVisual({offsetX:++count}));api.on('interact',async()=>{if(api.isHost)await api.saveState({n:api.state.n+1});});}`);
  state.runtime.update(world);await until(()=>state.frames.length||state.errors.length,'state init');assert(!state.errors.length,state.errors[0]);
  state.runtime.update({...world,time:500,serial:1,events:[{serial:1,at:500,playerId:'person'}]});await until(()=>state.saved.length,'save');await until(()=>state.frames.length===2,'second frame');

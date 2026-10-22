@@ -34,7 +34,7 @@ export function createMultiplayer(){
     }catch(error){throw new Error(errorMessage(error));}
   }
   function randomToken(){return [...crypto.getRandomValues(new Uint8Array(32))].map(b=>b.toString(16).padStart(2,'0')).join('');}
-  const connectionId=randomToken();
+  const connectionId=randomToken();let population={people:null};
   let pendingHeartbeat=null;
   function pulse(){
     if(!pendingHeartbeat)pendingHeartbeat=mutate('heartbeat',{connectionId,pageOrigin:location.origin}).finally(()=>{pendingHeartbeat=null;});
@@ -45,6 +45,7 @@ export function createMultiplayer(){
   window.addEventListener('pageshow',event=>{if(event.persisted&&me)pulse().catch(()=>{});});
   return {
     get adminEntry(){return !!entryCode;},get me(){return me;},get state(){return state;},now:()=>Date.now()+offset,
+    get population(){return {...population};},
     async resume(){
       if(entryCode||!token)return null;
       try{
@@ -123,6 +124,7 @@ export function createMultiplayer(){
         queueMicrotask(()=>{furnitureQueued=false;onFurniture?.({zones:new Map([...zones].filter(([,z])=>z.furniture).map(([id,z])=>[id,z.furniture])),inventory:inventory??[]});});
       };
       const stops=[
+        client.onUpdate(api.room.population,{},value=>{population=value;},()=>{population={people:null};}),
         client.onUpdate(api.room.me,{token},value=>{me=value;emit();},error),
         client.onUpdate(api.room.roomMap,{token},value=>{room=value;onMap?.(value);},error),
         client.onUpdate(api.room.signals,{},value=>onSignals?.(value),error),
@@ -254,7 +256,7 @@ export function createMultiplayer(){
       finish:(id,storageId)=>client.mutation(api.captures.finish,{token,id,storageId}),
       failed:(id,reason)=>client.mutation(api.captures.failed,{token,id,reason}),
     },
-    close(){depart();window.removeEventListener('pagehide',depart);unsubscribe?.();unsubscribeRoom?.();clearInterval(heartbeat);client.close();},
+    close(){population={people:null};depart();window.removeEventListener('pagehide',depart);unsubscribe?.();unsubscribeRoom?.();clearInterval(heartbeat);client.close();},
   };
 }
 export function samplePlayer(player,now){

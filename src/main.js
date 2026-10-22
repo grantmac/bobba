@@ -858,7 +858,7 @@ try{
       return all;
     },
     programMe:()=>network.me?.id??null,onProgramSave:(itemId,version,revision,state)=>network.programs.save(itemId,version,revision,state),onProgramUse:itemId=>network.programs.interact(itemId),
-    programNow:()=>network.now(),programReducedMotion:()=>reducedMotion.matches,
+    programNow:()=>network.now(),programReducedMotion:()=>reducedMotion.matches,programRoom:()=>network.population,
     prepareImage,worldPoint:iso,isTile:(x,z)=>valid(x,z)&&!isPoolWater(layout,x,z)&&!onWalkway(layout,x,z),floorHeight,getAvatar:()=>position,stopWalking,onChanged:()=>{ensureFreeTile();positionAwayPoster();positionDeckSign();},onSit:sitOn,onUse:useItem,
     // Furniture carries its own builder credit; dismiss the character/space stand.
     onInspect:()=>infoStand.hide(),

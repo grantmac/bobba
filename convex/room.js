@@ -159,6 +159,13 @@ export const livePresence=query({args:{zone:v.string()},handler:async(ctx,{zone}
   const players=await ctx.db.query('players').withIndex('by_zone',q=>q.eq('zone',zone).eq('online',true)).take(ZONE_CAP+1);
   return {zone,players:players.map(p=>publicPlayer(p))};
 }});
+// A shared scalar subscription, independent of camera zones and avatar movement.
+// Connections contain one lease per browser tab; count each human once. Bots have no leases.
+// Existing disconnect/expiry mutations invalidate this query when a tab goes away.
+export const population=query({args:{},handler:async ctx=>{
+  const now=Date.now(),connections=await ctx.db.query('connections').collect();
+  return {people:new Set(connections.filter(c=>connectionAlive(c,now)).map(c=>c.playerId)).size};
+}});
 // One player's appearance, fetched when their lookVersion changes rather than sent with every move.
 export const look=query({args:{id:v.id('players')},handler:async(ctx,{id})=>{
   const p=await ctx.db.get(id);if(!p)return null;

@@ -96,6 +96,32 @@ the instance's state; deleting a copy discards it.
 
 ## Runtime and multiplayer
 
+### Live room counter
+
+`api.room.people` is a read-only count of distinct connected humans throughout
+the shared room, including off-screen spaces and the viewer. Duplicate tabs
+count once; bots are excluded. `null` means the count is not loaded or unavailable.
+Clean departures update immediately; lost connections expire after the existing
+lease (up to 90 seconds). A shared `room.population` subscription reads connection
+leases rather than player records, so walking and appearance changes do not
+invalidate it. It performs no extra writes and exposes no identities to programs.
+
+Static wall sprites can use `setVisual({display:{text,color,corners}})`. `text`
+contains 1–6 digits or hyphens; `color` is a six-digit hex color. `corners` contains
+the normalized x/y pairs of the top-left, top-right and bottom-left of the screen
+within the trimmed sprite. All four corners must stay within that sprite. Supply
+the appropriate coordinates for each wall direction. The host draws pixel digits
+in that parallelogram, without mirroring their text. Set `display:null` to clear it.
+Power off hides the display; reduced motion preserves it. Animated sprites and
+non-wall furniture do not support the display. Each copy has its own composited
+sprite; source artwork and catalogue thumbnails are unchanged.
+
+Read `api.room.people` on `tick`, format it with `String(count).padStart(3,'0')`,
+and show `---` when it is null. No shared-state writes or host election are needed.
+The `program_api` tool includes a complete example; fit its screen corners to
+your own artwork. Server-rendered room pictures do not run programs; use a live
+tab picture to inspect the changing digits.
+
 Arbitrary JavaScript runs inside a dedicated worker created by a sandboxed,
 opaque-origin iframe. Programs import from an in-memory blob. The frame's CSP
 blocks network requests and remote modules; programs never receive the DOM,

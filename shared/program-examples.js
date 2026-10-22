@@ -21,6 +21,14 @@ export const programReference={
     'await saveState(json)':'Host only; persist this copy’s JSON state (8 KiB, depth 16). Await each save; at most once per second. Catch failures (rate limit, version conflict, lost host, disconnect). Only successful saves update api.state. All viewers receive state. Do not save every animation frame; keep temporary variables in the module closure.'
   },
   multiplayer:'Programs render on each viewer. Only api.isHost may save state; server checks host, program version and state revision. New viewers reconstruct from state/current occupants, not past interaction replay. Programs pause when no room is open. These browser programs are for furniture behaviour, not trusted server game rules. Shared state is public room data; never put secrets in it.',
-  examples:{spinningChair:spinningChairProgram},
+  room:'api.room.people is the number of distinct connected humans across ALL spaces, including the viewer, excluding bots and duplicate tabs. Null means not loaded/unavailable. Departures without a clean disconnect expire after the existing connection lease (up to 90 seconds). This read-only aggregate does not expose identities. Read it on tick; do not save a copy into shared state.',
+  display:'setVisual({display:{text:"003",color:"#ffbe55",corners:[0.1,0.2,0.9,0.6,0.1,0.4]}}) draws a pixel numeric display on a STATIC WALL sprite. text is 1–6 digits or hyphens; corners are normalized top-left, top-right, bottom-left points on the trimmed sprite (six numbers 0..1); fourth corner must also be within the sprite. Use the correct corners for each direction. Text is drawn normally, never mirrored. Null clears the display; power off hides it; reduced motion keeps it visible. Other sprite kinds and animations do not support this display yet.',
+  examples:{spinningChair:spinningChairProgram,peopleCounter:`export default function counter(api) {
+  api.on('tick', () => api.setVisual({display: {
+    text: api.room.people === null ? '---' : String(Math.min(999999, api.room.people)).padStart(3, '0'),
+    color: '#ffbe55',
+    corners: api.item.direction === 4 ? [0.1,0.2,0.9,0.6,0.1,0.4] : [0.1,0.6,0.9,0.2,0.1,0.8]
+  }}));
+}`},
   spinningChairRequirements:'A 1×1 seat with four views at 0,2,4,6. Use set_seat to align the seated avatar. Call set_controls with use:null and power:{onLabel:"Start spinning",offLabel:"Stop spinning"}. Programs do not automatically add buttons.',
 };

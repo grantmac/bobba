@@ -52,7 +52,7 @@ export function createProgramSandbox({program,views,onVisual,onSave,onError}){
   return {update(world){pending=world;flush();},dispose};
 }
 
-export function createAssetPrograms({getPlayers,getMe,saveState,getTime=null,getReducedMotion=()=>false,onError=console.warn,sandbox=createProgramSandbox}){
+export function createAssetPrograms({getPlayers,getMe,saveState,getRoom=()=>({people:null}),getTime=null,getReducedMotion=()=>false,onError=console.warn,sandbox=createProgramSandbox}){
   const instances=new Map(),visuals=new Map();let records=new Map(),lastTick=-Infinity,received=false,timer=null;
   function stop(id,entry){entry.runtime.dispose();instances.delete(id);visuals.delete(id);}
   const runtime={
@@ -91,7 +91,7 @@ export function createAssetPrograms({getPlayers,getMe,saveState,getTime=null,get
         const row=records.get(id),stored=row?.version===entry.version?row:null;
         const occupants=players.filter(p=>p.seatId===id&&!p.moving).map(({id,direction})=>({id,direction}));
         entry.runtime.update({item:{id,type:entry.item.type,x:entry.item.x,z:entry.item.z,direction:entry.item.rotation,on:entry.item.on!==false},occupants,
-          time,reducedMotion,isHost:!!host&&host===getMe(),state:stored?stored.state:entry.program.initialState,revision:stored?.revision??0,serial:stored?.serial??0,events:stored?.events??[]});
+          room:getRoom(),time,reducedMotion,isHost:!!host&&host===getMe(),state:stored?stored.state:entry.program.initialState,revision:stored?.revision??0,serial:stored?.serial??0,events:stored?.events??[]});
       }
     },
     visual:id=>visuals.get(id)??{},

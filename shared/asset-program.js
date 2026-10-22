@@ -26,6 +26,15 @@ export function programVisual(value,views){
   for(const [key,v] of Object.entries(value)){
     if(key==='direction'){
       if(!views.includes(v))throw new Error('Program direction must be an available asset view.');
+    }else if(key==='display'){
+      if(v!==null){
+        if(!v||typeof v!=='object'||Array.isArray(v)||Object.keys(v).some(k=>!['text','color','corners'].includes(k)))throw new Error('Invalid program display.');
+        if(typeof v.text!=='string'||!/^[-0-9]{1,6}$/.test(v.text)||typeof v.color!=='string'||!/^#[0-9a-f]{6}$/i.test(v.color))throw new Error('Invalid program display text or color.');
+        const p=v.corners;
+        if(!Array.isArray(p)||p.length!==6||p.some(n=>!Number.isFinite(n)||n<0||n>1))throw new Error('Invalid program display corners.');
+        const x=p[2]+p[4]-p[0],y=p[3]+p[5]-p[1];
+        if(x<0||x>1||y<0||y>1||(p[2]-p[0])*(p[5]-p[1])-(p[3]-p[1])*(p[4]-p[0])<=.001)throw new Error('Invalid program display area.');
+      }
     }else if(key==='animation'||key==='carryOccupants'){
       if(typeof v!=='boolean')throw new Error(`Invalid ${key}.`);
     }else{
