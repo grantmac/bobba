@@ -110,7 +110,7 @@ Anyone can build into the room through an agent: the Catalogue (now open to ever
 
 ## Resident bot
 
-Lobby is a permanent, visibly identified room bot. It reads typed room chat, greets arrivals, replies through Fireworks, walks and sits using the same checked routes as players, and waves. A minute timer keeps it present, wanders while people are around, and recovers interrupted turns. Pausing responses leaves its character in the room. Voice transcription is not connected yet; the bot never receives microphone audio.
+Lobby is a permanent, visibly identified room bot. It reads typed room chat, greets arrivals, replies through Fireworks, walks and sits using the same checked routes as players, waves, dances, and breakdances. It can choose to dance when it suits the conversation or join other dancers, and responds to requests to dance or stop. A minute timer keeps it present, wanders while people are around, and recovers interrupted turns. Pausing responses leaves its character in the room. Voice transcription is not connected yet; the bot never receives microphone audio.
 
 The **Bot** button opens its status and explains what it can read. Grant also gets name, personality, response/roaming switches, moderation settings, editable memories, and a moderation history with **Allow back**. Clicking Lobby opens the same panel. Visitors can ask it by name to remember, update, or forget their own preferences. Memories added through Grant's panel are protected from visitor changes. Memories are stored in Convex, attributed to their source, and never reassigned when a guest name is reused; there is a 100-memory limit, with deletion available in the panel.
 
@@ -164,9 +164,9 @@ The Record Cabinet uses the updated supplied artwork, has the same two-by-one fo
 
 Powered decks play the public Poolsuite ON AIR feed (`https://s5.radio.co/sc9cb59935/listen`, verified in the public player at https://poolsuite.net/). Each visitor listens directly after joining; this does not capture the host computer or pass music through voice chat. One audio element serves all powered decks. Turning all decks off, picking them up, or leaving stops it. Browsers that block radio autoplay retry on the next interaction. This is live radio, so buffering may differ slightly between listeners.
 
-## Automatic deployment updates
+## Deployment updates
 
-Production builds expose a unique version in `/version.json`. Open rooms check every 30 seconds and when returning to a tab or reconnecting to the internet, then refresh once a new deployment is available. Reload waits for open dialogs, furniture editing/placement and unsent chat text to finish. The reload is covered by a fade: the page dims before reloading, an inline script keeps the cover up from the first paint when a fresh snapshot exists, the saved camera is applied before anything is drawn, and the cover lifts two frames after the restored room is ready (or at once if the join flow or an error needs the screen). The player’s existing session is resumed, and a short-lived per-tab snapshot restores camera and music volume/mute settings. Browser audio permissions can still require a click to resume playback. Local Vite development keeps its normal hot updates. People on versions from before this feature need one manual refresh first.
+Deployments leave open rooms running. There is no version polling or automatic refresh; visitors get the latest client when they refresh or reopen the room. Local Vite development keeps its normal hot updates.
 
 ## Whiteboard
 

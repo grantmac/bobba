@@ -14,10 +14,6 @@
       "headers": [{"key":"Content-Type","value":"text/plain; charset=utf-8"},{"key":"Cache-Control","value":"no-store"}]
     },
     {
-      "source": "/version.json",
-      "headers": [{"key": "Cache-Control", "value": "no-store"}]
-    },
-    {
       "source": "/",
       "headers": [{"key": "Cache-Control", "value": "no-store"}]
     },

@@ -128,7 +128,7 @@ export const claim=internalMutation({args:{},handler:async ctx=>{
   const at=atTime(bot,now),occupied=playerTiles(players,now,bot._id);
   const tiles=zoneTiles(layoutFor(room.options,room.spaces??[]),zone).filter(([x,z])=>!occupied.has(`${x},${z}`)&&!blocked(room,x,z)).sort((a,b)=>Math.hypot(a[0]-at.x,a[1]-at.z)-Math.hypot(b[0]-at.x,b[1]-at.z)).slice(0,80);
   const seats=room.furniture.filter(i=>i.x!==null).flatMap(i=>{const seat=seatFor(i,room.definitions[i.type]);return seat?seat.cells.map(([x,z])=>({seatId:i.id,x,z})):[];}).slice(0,40);
-  return {run,revision:state.revision,state,model:model(),context:{events:events.map(e=>({id:e._id,kind:e.kind,playerId:e.playerId,name:e.name,role:e.role,body:e.body})),recent:recent.map(m=>({name:m.name,body:m.body,bot:m.playerId===state.playerId})),players:players.map(p=>({id:p._id,name:p.name,kind:p.kind??'human',...atTime(p,now)})),memories:memories.map(m=>({id:m._id,text:m.text,playerId:m.playerId??null,locked:m.locked})),position:at,nearbyTiles:tiles,seats}};
+  return {run,revision:state.revision,state,model:model(),context:{events:events.map(e=>({id:e._id,kind:e.kind,playerId:e.playerId,name:e.name,role:e.role,body:e.body})),recent:recent.map(m=>({name:m.name,body:m.body,bot:m.playerId===state.playerId})),players:players.map(p=>({id:p._id,name:p.name,kind:p.kind??'human',action:p.action==='wave'&&now-(p.actionStarted??0)>=3000?null:p.action??null,...atTime(p,now)})),memories:memories.map(m=>({id:m._id,text:m.text,playerId:m.playerId??null,locked:m.locked})),position:at,action:bot.action==='wave'&&now-(bot.actionStarted??0)>=3000?null:bot.action??null,nearbyTiles:tiles,seats}};
 }});
 
 export const finish=internalMutation({args:{run:v.number(),revision:v.number(),turn:v.any()},handler:async(ctx,{run,revision,turn})=>{
@@ -160,7 +160,22 @@ export const finish=internalMutation({args:{run:v.number(),revision:v.number(),t
     }
     const bot=await ctx.db.get(state.playerId);
     if(turn.move)try{await movePlayer(ctx,bot,turn.move);}catch{/* Occupancy can change while the model is thinking. Keep the current position. */}
-    if(turn.wave===true)await ctx.db.patch(bot._id,{action:'wave',actionStarted:Date.now()});
+    if(turn.dance==='stop'){
+      const current=await ctx.db.get(bot._id);
+      if(current.action==='dance'||current.action==='breakdance')await ctx.db.patch(bot._id,{action:null,actionStarted:Date.now()});
+    }else if(turn.dance==='dance'||turn.dance==='breakdance'){
+      try{
+        const current=await ctx.db.get(bot._id),now=Date.now();
+        if(current.seatId){
+          const zone=playerZone(current),room=await roomFor(ctx);
+          await loadZones(ctx,room,[zone]);
+          const players=await zonePlayers(ctx,zone,now);
+          const position=freePosition(room,atTime(current,now),playerTiles(players,now,current._id),zone);
+          await ctx.db.patch(current._id,{route:[position],startedAt:now,seatId:null});
+        }
+        await ctx.db.patch(bot._id,{action:turn.dance,actionStarted:current.action===turn.dance?current.actionStarted??now:now});
+      }catch{/* Stay seated if there is no free floor tile. */}
+    }else if(turn.wave===true)await ctx.db.patch(bot._id,{action:'wave',actionStarted:Date.now()});
     if(turn.reply.trim()&&Date.now()-state.lastReplyAt>=3000&&!turn.violations.length)await say(ctx,state,turn.reply.trim());
   }
   for(const event of events)await ctx.db.patch(event._id,{status:'done'});

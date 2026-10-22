@@ -26,12 +26,10 @@ import {createDiscoBall} from './disco-ball.js';
 import {createDiscoLights} from './disco-lights.js';
 import {loadDeckSign,SIGN_LIFT,SIGN_DENSITY} from './deck-sign.js';
 import {createRoomRadio} from './room-radio.js';
-import {installAutoUpdate,saveUpdateSession,takeUpdateSession,peekUpdateSession} from './auto-update.js';
 // Cover every cold start until the furnished room and entry UI are ready together.
 // Slow connections must not reveal unfinished rooms after an arbitrary timeout.
 const veil=document.querySelector('#update-veil');
 function liftVeil(){document.body.removeAttribute('data-loading');document.body.removeAttribute('aria-busy');if(veil)veil.hidden=true;}
-function dropVeil(){if(!veil)return;veil.textContent='Updating the room…';veil.hidden=false;}
 const nextPaint=()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
 import {createPool,createWoodDeck,loadPoolAssets} from './pool.js';
 import {createPlantWall} from './plant-wall.js';
@@ -63,7 +61,7 @@ let CENTER_Y = 70;
 const ROOT = '/assets/private-room/';
 let displayScale = 1,zoom=1;
 let editingRoom=false,viewOffsetX=0,viewOffsetY=0,panX=0,panY=0,positionBeforeEdit;
-let viewRestored=false,viewCentred=false;
+let viewCentred=false;
 let logbook=null;
 let blimp=null,blimpMesh=null,whiteboard=null,whiteboardMesh=null,whiteboardFrame=null;
 // The whiteboard is centered on the lounge's back wall.
@@ -83,7 +81,7 @@ function whiteboardAt(point){
 const view={halfW:0,halfH:0,top:0,left:0};
 // Phones open on the player's own avatar, since the room is larger than their screen.
 function centreViewOnAvatar(){
-  if(viewCentred||viewRestored||!(matchMedia('(pointer: coarse)').matches||container.clientWidth<=640))return;
+  if(viewCentred||!(matchMedia('(pointer: coarse)').matches||container.clientWidth<=640))return;
   viewCentred=true;const p=characterPoint(position.x,position.z);panX=-p.x*displayScale;panY=-(p.y-CENTER_Y-30)*displayScale;resize();
 }
 const iso = (x, z) => ({ x: (x-z)*32-roomCenterX, y: (x+z)*16 });
@@ -827,9 +825,6 @@ try{
   }});
   // Spaces draw themselves as the camera reaches them; nothing waits on their pictures.
   roomSpaces=initialRoom.room.spaces??[];buildRoom(roomEditor.initial);
-  // Restore the camera from an update snapshot before anything is drawn, so nothing jumps.
-  const earlyView=peekUpdateSession()?.view;
-  if(earlyView&&[earlyView.zoom,earlyView.panX,earlyView.panY].every(Number.isFinite)){zoom=earlyView.zoom;panX=earlyView.panX;panY=earlyView.panY;viewRestored=true;resize();}
   deckSignImages=await loadDeckSign();positionDeckSign();
   blimp=createBlimp({texts:['SUPERHANDS']});blimpMesh=sprite(blimp.canvas,0,0,1);blimpMesh.visible=false;
   whiteboard=createWhiteboard({send:{draw:stroke=>network.whiteboard.draw(stroke),clear:()=>network.whiteboard.clear()},onError:message=>toolbar.status(message)});
@@ -916,13 +911,6 @@ try{
   }
   const admin=network.me.role==='admin';
   botPanel=createBotPanel({api:network.bot,admin});
-  const previousUpdate=takeUpdateSession(network.me.id);
-  if(previousUpdate){
-    radio.restore(previousUpdate.music);
-    const view=previousUpdate.view;
-    if(view&&[view.zoom,view.panX,view.panY].every(Number.isFinite)){zoom=view.zoom;panX=view.panX;panY=view.panY;resize();}
-  }
-  viewRestored=viewRestored||!!previousUpdate?.view;
   network.whiteboard.all().then(all=>{whiteboard.load(all);network.whiteboard.watch(all.serial,update=>whiteboard.receive(update));}).catch(error=>toolbar.status(error.message));
   stickies.connect(admin);
   furniture.connect({admin,me:network.me.id,onSave:changes=>network.furniture(changes),onPower:(id,on)=>network.deckPower(id,on),onError:message=>toolbar.status(message)});
@@ -973,16 +961,6 @@ try{
   });
   // Both subscriptions and the restored avatar have rendered before returning visitors see it.
   await nextPaint();liftVeil();
-  if(import.meta.env.PROD){
-    let lastInput=0;
-    document.addEventListener('input',()=>{lastInput=performance.now();});
-    const updater=installAutoUpdate({version:__ROOM_BUILD_ID__,
-      canReload:()=>!editingRoom&&!furniture.placing&&performance.now()-lastInput>2000&&!document.querySelector('dialog[open],.furniture-placement:not([hidden]),.furniture-panel:not([hidden])')&&!document.querySelector('#chat-message')?.value.trim(),
-      beforeReload:()=>saveUpdateSession({playerId:network.me.id,music:radio.snapshot(),view:{zoom,panX,panY}}),
-      reload:()=>{dropVeil();setTimeout(()=>location.reload(),420);}
-    });
-    window.addEventListener('pagehide',event=>{if(!event.persisted)updater.stop();});
-  }
   container.focus({preventScroll:true});
   openAgentEntry(network);
   }

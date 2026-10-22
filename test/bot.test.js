@@ -2,6 +2,7 @@ import {beforeEach,afterEach,it,expect,vi} from 'vitest';
 import {convexTest} from 'convex-test';
 import schema from '../convex/schema.js';
 import {api,internal} from '../convex/_generated/api.js';
+import {parseTurn} from '../convex/lib/bot_policy.js';
 const modules=import.meta.glob('../convex/**/*.js');
 const look={hair:{model:'1',color:'#624631'},skin:{model:'1',color:'#e8b18a'},top:{model:'1',color:'#6b8c64'},bottom:{model:'1',color:'#55677e'},shoes:{model:'1',color:'#42454c'}};
 const token='a'.repeat(64),adminToken='b'.repeat(64),otherToken='c'.repeat(64);
@@ -22,6 +23,58 @@ async function message(body='Lobby, hello!'){
   return t.mutation(internal.bot.claim,{});
 }
 const finish=(job,turn)=>t.mutation(internal.bot.finish,{run:job.run,revision:job.revision,turn});
+const resident=async()=> (await t.query(api.room.presence,{})).players.find(p=>p.kind==='bot');
+
+it('shares a spontaneous dance, keeps it across turns, switches styles and stops on request',async()=>{
+  await setup();await t.mutation(api.room.gesture,{token,action:'dance'});
+  const job=await message('This is a great party!');
+  expect(job.context.players.find(p=>p.name==='Visitor').action).toBe('dance');
+  expect(job.context.action).toBeNull();
+  await finish(job,{...emptyTurn(),dance:'dance'});
+  const started=await resident();expect(started.action).toBe('dance');expect(started.actionStarted).toBe(Date.now());
+  const next=await message('Keep dancing!');expect(next.context.action).toBe('dance');
+  await finish(next,{...emptyTurn(),dance:'dance'});
+  expect((await resident()).actionStarted).toBe(started.actionStarted);
+  await finish(await message('Nice moves!'),emptyTurn());expect((await resident()).action).toBe('dance');
+  await finish(await message('Now breakdance!'),{...emptyTurn(),dance:'breakdance',wave:true});
+  expect((await resident()).action).toBe('breakdance');
+  await finish(await message('Stop dancing please.'),{...emptyTurn(),dance:'stop'});
+  expect((await resident()).action).toBeNull();
+});
+
+it('dances after walking, stops when sitting, and leaves a seat safely to dance again',async()=>{
+  await setup();
+  await t.mutation(api.room.setFurniture,{token:adminToken,items:[{id:'seat',type:'small_chair_armas',rotation:0,x:1,z:1}],revision:0});
+  await finish(await message('Walk over and dance.'),{...emptyTurn(),move:{x:7,z:7},dance:'dance'});
+  let bot=await resident();expect(bot.action).toBe('dance');expect(bot.route.at(-1)).toEqual({x:7.5,z:7.5});
+  await finish(await message('Take a seat.'),{...emptyTurn(),move:{x:1,z:1,seatId:'seat'}});
+  bot=await resident();expect(bot.seatId).toBe('seat');expect(bot.action).toBeNull();
+  vi.setSystemTime(Date.now()+10000);
+  await finish(await message('Dance again!'),{...emptyTurn(),dance:'dance'});
+  bot=await resident();expect(bot.action).toBe('dance');expect(bot.seatId).toBeNull();
+  expect(bot.route).toHaveLength(1);expect(bot.route[0]).not.toEqual({x:1.5,z:1.5});
+  const players=(await t.query(api.room.presence,{})).players.filter(p=>p.kind!=='bot');
+  expect(players.some(p=>p.route.some(at=>at.x===bot.route[0].x&&at.z===bot.route[0].z))).toBe(false);
+});
+
+it('executes a dance requested through the model tool response',async()=>{
+  await setup();vi.stubEnv('FIREWORKS_API_KEY','test-key');
+  await t.mutation(api.room.chat,{token,body:'Lobby, dance with us!',mode:'Say'});
+  vi.stubGlobal('fetch',vi.fn(async(url,options)=>{
+    const request=JSON.parse(options.body);
+    expect(request.tools[0].function.parameters.properties.dance.enum).toEqual(['dance','breakdance','stop']);
+    expect(request.messages[0].content).toContain('dance spontaneously');
+    return {ok:true,json:async()=>({choices:[{message:{tool_calls:[{function:{name:'room_turn',arguments:JSON.stringify({...emptyTurn(),dance:'dance'})}}]}}]})};
+  }));
+  await t.action(internal.botBrain.respond,{});
+  expect((await resident()).action).toBe('dance');
+});
+
+it('rejects invalid dance tool arguments before applying a turn',()=>{
+  const parse=dance=>parseTurn({tool_calls:[{function:{name:'room_turn',arguments:JSON.stringify({...emptyTurn(),dance})}}]});
+  for(const dance of ['dance','breakdance','stop',undefined])expect(()=>parse(dance)).not.toThrow();
+  for(const dance of [true,false,null,1,{},'spin'])expect(()=>parse(dance)).toThrow('invalid dance action');
+});
 
 it('stops scheduled roaming when empty and restarts on arrival without an AI key',async()=>{
   await setup();
