@@ -1,3 +1,4 @@
+import {createRobotDance,robotFloorPose} from './robot-dance.js';
 const SHEET='/assets/bot/tnarg-robot-v3.png';
 const COLUMNS=[3,0,0,1,1,2,2,3];
 let loading;
@@ -20,6 +21,7 @@ export function robotFrames(){
         }else ctx.drawImage(image,x,y,96,112,0,bob,96,112);
         return canvas;
       }
+      const dance=createRobotDance([2,4,6,0].map(direction=>pose(direction,0)));
       for(let direction=0;direction<8;direction++){
         frames.set(`${direction}:-1`,pose(direction,0));
         frames.set(`${direction}:sit`,pose(direction,2));
@@ -28,8 +30,11 @@ export function robotFrames(){
           frames.set(`${direction}:wave:${step}`,pose(direction,step===0?1:0));
           frames.set(`${direction}:sit-wave:${step}`,pose(direction,2,{bob:step?-1:0}));
         }
-        for(let step=0;step<8;step++)frames.set(`${direction}:dance:${step}`,pose(direction,step%2,{bob:step%2?-2:0}));
-        for(let step=0;step<16;step++)frames.set(`${direction}:breakdance:${step}`,pose((direction+2*step)%8,2,{bob:14}));
+        for(let step=0;step<8;step++)frames.set(`${direction}:dance:${step}`,dance(COLUMNS[direction],step));
+        for(let step=0;step<16;step++){
+          const floor=robotFloorPose(direction,step);
+          frames.set(`${direction}:breakdance:${step}`,pose(floor.direction,2,{bob:floor.bob}));
+        }
       }
       resolve(frames);
     };
