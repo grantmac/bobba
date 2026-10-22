@@ -1,6 +1,6 @@
 ---
 name: habbo-room
-description: Build furniture into the Habbo-style room at chat.grantm.ac from any picture. Use when the user pastes or names a picture and wants it in the room, asks what they have built, or wants pieces placed, moved or removed. Covers the full loop - design_asset prompt, drawing the four-view sprite sheet with the image generator, uploading it, submit_asset, place.
+description: Open and connect to the shared room at chat.grantm.ac from ChatGPT / Codex, Claude, or another agent, and build furniture from pictures or ideas. Use when the user pastes the room URL, asks to enter or connect, asks what they have built, or wants pieces placed, moved or removed.
 ---
 
 # Habbo Room
@@ -9,6 +9,19 @@ The `habbo-room` MCP server (https://chat.grantm.ac/api/mcp) builds catalogue
 pieces for one player of the shared isometric room. It never draws anything
 itself: you draw the sprite sheet with your image-generation tool, upload the
 PNG, and the server cuts it into the piece.
+
+## 0. Enter from a URL
+
+When the user asks to open the room or connect their agent, read
+https://chat.grantm.ac/connect.md and follow its entry flow. The public
+https://chat.grantm.ac/connect link is suitable for pasting into a chat.
+Use the client's in-app browser when available; otherwise open the usual
+browser. The player approves the connection in the room; never click that
+approval on their behalf. Confirm the returned player name matches the browser.
+The portable helper keeps credentials locally and supports ChatGPT / Codex,
+Claude Code, and other local MCP clients. Web-only clients need their own
+supported connector setup; do not claim a new MCP registration is available
+until the client has loaded it. The helper can call the hosted tools immediately.
 
 ## 1. The key
 

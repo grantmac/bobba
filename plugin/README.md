@@ -1,6 +1,6 @@
 # Habbo Room plugin
 
-The Codex plugin for building pieces into the room through its hosted MCP endpoint,
+The ChatGPT / Codex plugin for building pieces into the room through its hosted MCP endpoint,
 `https://chat.grantm.ac/api/mcp` (`api/mcp.js`, a Vercel function next to the site). It has no
 local parts: `plugin.json` and `.codex-plugin/plugin.json` describe it, `mcp.json` points at the
 endpoint with API-key (Bearer) auth, and `skills/habbo-room/SKILL.md` drives the loop: ask
@@ -46,3 +46,14 @@ Other MCP clients talk to the same endpoint; for Claude Code:
 ```sh
 claude mcp add --transport http habbo-room https://chat.grantm.ac/api/mcp --header "Authorization: Bearer <key>"
 ```
+
+## URL entry (ChatGPT / Codex, Claude and other agents)
+
+Paste **Join this room: https://chat.grantm.ac/connect** into an agent. That URL
+serves instructions directly to the agent, with no extra landing page. The
+entry guide handles temporary browser pairing and stores the
+agent key locally without copying it through chat. A portable stdio bridge
+can be registered with ChatGPT / Codex or Claude Code, or configured in another
+local MCP client. It uses the same hosted endpoint as this plugin. The existing
+API-key plugin connection remains available for clients that require it.
+See `/connect.md` for browser support, tool-reload limits and web-only clients.
