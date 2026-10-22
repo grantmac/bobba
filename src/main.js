@@ -14,6 +14,7 @@ import {createAwayPoster} from './away-poster.js';
 import {createAgentLink} from './agent-link.js';
 import {createStickies} from './stickies.js';
 import {installTouchNavigation} from './touch-navigation.js';
+import {displayScaleForZoom} from './view-scale.js';
 import {createBotPanel} from './bot-panel.js';
 import {robotFrames} from './robot-avatar.js';
 import {createPlayerFrames} from './player-appearance.js';
@@ -660,14 +661,13 @@ function resize(){
   // Every zoom level is a whole number of device pixels per room pixel, so nearest-neighbour
   // sampling stays crisp instead of smearing at fractional scales. The default fit rounds
   // down so the whole room still fits on screen.
-  const physicalScale=fit*zoom*pixelRatio;
-  // Only the untouched default view rounds down; any chosen zoom rounds to its nearest step.
-  const steps=zoom===1?Math.floor(physicalScale+1e-6):Math.round(physicalScale);
-  displayScale=Math.max(1,steps)/pixelRatio;
+  displayScale=displayScaleForZoom(zoom,fit,pixelRatio);
   // Panning may run to the far end of the last space, however far the chain reaches.
   const spread=(boundsWidth-fitWidth)*32*displayScale;
   panX=Math.max(-((fitWidth+roomDepth)*32*displayScale+w)/2+60-spread,Math.min(((fitWidth+roomDepth)*32*displayScale+w)/2-60,panX));
-  panY=Math.max(-((boundsWidth+roomDepth)*16*displayScale+h)/2+60,Math.min(((fitWidth+roomDepth)*16*displayScale+h)/2-60,panY));
+  // Each added tile extends the isometric chain by 32px right and 16px down.
+  // Keep the lobby's centre and add the full downward extent, not half of it.
+  panY=Math.max(-((fitWidth+roomDepth)*16*displayScale+h)/2+60-spread/2,Math.min(((fitWidth+roomDepth)*16*displayScale+h)/2-60,panY));
   viewOffsetX=Math.round((w/2+panX-reserved/2)*pixelRatio)/pixelRatio-w/2;
   viewOffsetY=Math.round((h/2+panY-CENTER_Y*displayScale)*pixelRatio)/pixelRatio-h/2+CENTER_Y*displayScale;
   camera.left=(-w/2-viewOffsetX)/displayScale;camera.right=(w/2-viewOffsetX)/displayScale;
@@ -688,6 +688,7 @@ window.visualViewport?.addEventListener('scroll',updateViewport);
 updateViewport();new ResizeObserver(resize).observe(container);resize();
 installTouchNavigation(container,{
   getView:()=>({zoom,panX,panY}),
+  scaleForZoom:value=>displayScaleForZoom(value,lastFit,Math.min(window.devicePixelRatio,3)),
   setView:view=>{zoom=view.zoom;panX=view.panX;panY=view.panY;resize();},
   cancelTap:()=>{down=null;hover.visible=false;}
 });

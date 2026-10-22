@@ -1,6 +1,7 @@
 import {describe,it,expect} from 'vitest';
 import {randomAppearance} from '../src/random-appearance.js';
 import {pinchView,installTouchNavigation} from '../src/touch-navigation.js';
+import {displayScaleForZoom} from '../src/view-scale.js';
 import {validateLook,validateFurniture,DEFAULT_ROOM} from '../convex/lib/rules.js';
 import catalog from '../public/assets/appearance/catalog.json';
 import furniture from '../public/assets/furniture/catalog.json';
@@ -56,6 +57,21 @@ describe('visitor and touch controls',()=>{
     expect((after.x-origin.x-result.panX)/result.zoom).toBe((before.x-origin.x-view.panX)/view.zoom);
     expect(pinchView(view,before,{...after,distance:10000},origin).zoom).toBe(4);
     expect(pinchView(view,before,{...after,distance:1},origin).zoom).toBe(.75);
+  });
+  it('keeps distant spaces under moving fingers through snapped zoom steps and limits',()=>{
+    for(const pixelRatio of [1,2,3]){
+      const scaleForZoom=zoom=>displayScaleForZoom(zoom,1,pixelRatio),origin={x:195,y:422};
+      let view={zoom:1,panX:-8000,panY:-4000},previous={x:180,y:350,distance:100};
+      const world={x:(previous.x-origin.x-view.panX)/scaleForZoom(view.zoom),y:(previous.y-origin.y-view.panY)/scaleForZoom(view.zoom)};
+      // Small moves within one render step, crossings in both directions, then both limits.
+      for(const distance of [102,110,125,150,200,350,500,300,175,120,100,80,50,40]){
+        const next={x:previous.x+3,y:previous.y-2,distance};
+        view=pinchView(view,previous,next,origin,scaleForZoom);
+        expect(origin.x+view.panX+world.x*scaleForZoom(view.zoom)).toBeCloseTo(next.x,8);
+        expect(origin.y+view.panY+world.y*scaleForZoom(view.zoom)).toBeCloseTo(next.y,8);
+        previous=next;
+      }
+    }
   });
   it('suppresses walking after dragging and pinching but preserves a tap',()=>{
     const handlers={},element={addEventListener:(type,fn)=>handlers[type]=fn,setPointerCapture(){},getBoundingClientRect:()=>({left:0,top:0,width:400,height:600})};let view={zoom:1,panX:0,panY:0},cancelled=0;

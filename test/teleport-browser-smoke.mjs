@@ -2,6 +2,9 @@
 import assert from 'node:assert/strict';
 import puppeteer from 'puppeteer-core';
 const origin=process.env.ROOM_RENDER_ORIGIN??'http://127.0.0.1:5197';
+// Expose the rendered transform only in this intercepted test module.
+const mainSource=await (await fetch(origin+'/src/main.js')).text();
+const cameraProbe='\nwindow.__testCamera=()=>({scale:displayScale,x:view.left+view.halfW+viewOffsetX,y:view.top+view.halfH+viewOffsetY});';
 const mock=`
 export {samplePlayer} from '/src/multiplayer.js?fixture-original';
 export function createMultiplayer(){
@@ -30,12 +33,14 @@ export function createMultiplayer(){
 }`;
 const browser=await puppeteer.launch({executablePath:process.env.CHROME_EXECUTABLE_PATH,headless:true,args:['--no-sandbox','--enable-unsafe-swiftshader']});
 try{
-  for(const mobile of [false,true]){
+  for(const deviceScaleFactor of [1,2,3]){
+    const mobile=deviceScaleFactor!==1;
     const page=await browser.newPage(),errors=[];
-    await page.setViewport({width:mobile?390:1200,height:mobile?844:900,deviceScaleFactor:1,isMobile:mobile,hasTouch:mobile});
+    await page.setViewport({width:mobile?390:1200,height:mobile?844:900,deviceScaleFactor,isMobile:mobile,hasTouch:mobile});
     page.on('pageerror',e=>errors.push(e.message));
     await page.setRequestInterception(true);
     page.on('request',request=>{
+      if(request.url()===origin+'/src/main.js')return request.respond({contentType:'text/javascript',body:mainSource+cameraProbe});
       if(request.url()===origin+'/src/multiplayer.js')return request.respond({contentType:'text/javascript',body:mock});
       if(!request.url().startsWith(origin)&&!request.url().startsWith('data:')&&!request.url().startsWith('blob:'))return request.abort();
       return request.continue();
@@ -66,6 +71,38 @@ try{
     assert.equal(arrival.avatar.x,64.5);assert.equal(arrival.avatar.z,3.5);assert.equal(arrival.moving,'false');
     assert(arrival.zones.visible.includes('space-5'));assert(arrival.zones.drawn.includes('space-5'));assert(arrival.zones.subscribed.includes('space-5'));
     await page.screenshot({path:mobile?'/tmp/teleport-arrival-mobile.png':'/tmp/teleport-arrival-desktop.png'});
+    if(mobile){
+      const cdp=await page.createCDPSession(),before=await page.evaluate(()=>window.__testCamera());
+      const anchor={x:(195-before.x)/before.scale,y:(400-before.y)/before.scale};
+      const points=distance=>[{x:195-distance/2,y:400,id:1},{x:195+distance/2,y:400,id:2}];
+      await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:points(100)});
+      let changedScale=false;
+      for(const distance of [104,110,130,160,200,230,180,140,100,200]){
+        await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:points(distance)});
+        const after=await page.evaluate(()=>window.__testCamera());
+        changedScale ||= after.scale!==before.scale;
+        assert(Math.abs(after.x+anchor.x*after.scale-195)<2,'Distant space stays beneath horizontal pinch centre');
+        assert(Math.abs(after.y+anchor.y*after.scale-400)<2,'Distant space stays beneath vertical pinch centre');
+      }
+      await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+      assert(changedScale,'Pinching changes the rendered zoom');
+      assert.equal(await page.evaluate(()=>window.__room.avatar.x),64.5);
+      // Reach the walkway below the final space while still zoomed in.
+      const floor=await page.evaluate(()=>{const p=window.__room.iso(84.5,8.5);return {x:p.x,y:p.y-window.__room.centerY};});
+      for(let drag=0;drag<16;drag++){
+        const camera=await page.evaluate(()=>window.__testCamera());
+        const dx=195-(camera.x+floor.x*camera.scale),dy=400-(camera.y+floor.y*camera.scale);
+        if(Math.hypot(dx,dy)<2)break;
+        const factor=Math.min(1,180/Math.max(Math.abs(dx),Math.abs(dy)));
+        await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:195,y:400,id:1}]});
+        await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:195+dx*factor,y:400+dy*factor,id:1}]});
+        await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+      }
+      const panned=await page.evaluate(()=>window.__testCamera());
+      assert(Math.abs(panned.x+floor.x*panned.scale-195)<2,'Can pan across to the final space while zoomed in');
+      assert(Math.abs(panned.y+floor.y*panned.scale-400)<2,'Can pan low enough to centre the final walkway while zoomed in');
+      await cdp.detach();
+    }
     await open();await page.evaluate(()=>window.__teleportError='That space is full right now.');
     await page.click('[data-space-id="main"]');
     await page.waitForFunction(()=>document.querySelector('.spaces-status').textContent==='That space is full right now.');
@@ -76,5 +113,5 @@ try{
     assert(await page.evaluate(()=>window.__room.zones.visible.includes('main')));
     assert.deepEqual(errors,[]);await page.close();
   }
-  console.log('PASS: desktop/mobile space list, live rename, focus, pending/error states, avatar teleport, camera streaming and lobby return.');
+  console.log('PASS: desktop/mobile space list, live rename, focus, pending/error states, avatar teleport, distant-space pinch at 2x/3x pixel density, camera streaming and lobby return.');
 }finally{await browser.close();}
