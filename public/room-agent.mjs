@@ -56,12 +56,17 @@ export function createAgent(opts){
         const result=await request('/api/connect',{action:'status'},saved.agentToken);
         if(['pending','approved','connected'].includes(result.state))return startInfo(saved);
       }
-      let token;
       if(saved&&!saved.pending){
         const check=await rpc('tools/call',{name:'status',arguments:{}},saved.agentToken);
-        if(check.result&&!check.result.isError)token=saved.agentToken;
+        if(check.result&&!check.result.isError){
+          const opened=await rpc('tools/call',{name:'open_room',arguments:{}},saved.agentToken);
+          if(opened.error||opened.result?.isError)throw new Error(opened.error?.message??opened.result.content[0]?.text??'The room could not be opened.');
+          const result=JSON.parse(opened.result.content[0].text),url=new URL(result.url);
+          if(url.origin!==opts.origin||!/^#enter=[a-f0-9]{64}$/.test(url.hash))throw new Error('The room returned an invalid sign-in link.');
+          return {...result,launchUrl:result.url,client};
+        }
       }
-      const result=await request('/api/connect',{action:'start',client},token);
+      const result=await request('/api/connect',{action:'start',client});
       if(!/^[a-f0-9]{64}$/.test(result.agentToken)||new URL(result.launchUrl).origin!==opts.origin)throw new Error('The room returned an invalid connection.');
       const next={...result,pending:true};await save(next);return startInfo(next);
     });
@@ -82,7 +87,7 @@ export function createAgent(opts){
   }
   const content=value=>({content:[{type:'text',text:JSON.stringify(value)}]});
   const localTools=[
-    {name:'open_room',description:'Open or reconnect the shared room. Returns a temporary browser URL and verification code; open it for the user, who approves their own connection. Then call connection_status.',inputSchema:{type:'object',properties:{},additionalProperties:false}},
+    {name:'open_room',description:'Open the room when the user asks. An existing connection returns a private two-minute sign-in launchUrl for their character, with no new pairing. A new connection returns a verification code for the player to approve; then call connection_status.',inputSchema:{type:'object',properties:{},additionalProperties:false}},
     {name:'connection_status',description:'Check whether the player approved and confirm the MCP connection. Poll at most once every 3 seconds while waiting.',inputSchema:{type:'object',properties:{},additionalProperties:false}},
   ];
   async function dispatch(method,params={}){
@@ -95,7 +100,7 @@ export function createAgent(opts){
     if(method==='tools/list'){
       const remote=await rpc(method,params);
       if(remote.error)throw new Error(remote.error.message);
-      return {tools:[...localTools,...remote.result.tools]};
+      return {tools:[...localTools,...remote.result.tools.filter(tool=>!localTools.some(local=>local.name===tool.name))]};
     }
     if(method!=='tools/call')throw new Error('Unsupported method.');
     if(params.name==='open_room')return content(await connect());

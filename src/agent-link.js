@@ -22,6 +22,8 @@ Authorization: Bearer ${agentToken}
 
 Use this key only with the MCP server above. Call tools/list to discover its tools, then call status.
 
+When I ask you to open the room in future, call open_room and open its private one-use URL in my browser. It signs in as my connected character; do not start a new pairing or share the URL.
+
 After status succeeds, tell me you're connected${enterRoom?' and remind me to click Enter room on the website':'. I am already in the room'}. Briefly explain that you can create my own space, style its floor and walls, turn pictures or ideas into furniture, and place or rearrange my furniture. Offer a few short examples, such as "make me a cosy reading corner", "turn this picture into a chair", or "give my space a checkerboard floor". Ask what I'd like to create first. Don't start building until I choose.`;
         prompt.hidden=false;
       }
@@ -57,9 +59,9 @@ export function createAgentSetup({network,root,enterRoom=false,onAttached=()=>{}
     root.querySelector('.entry-agent-title').textContent=connected?"You're connected!":'Connect your agent';
     root.querySelector('.entry-agent-description').textContent=connected
       ?(enterRoom?'Enter the room to explore and bring your ideas to life with your agent.':'Bring your ideas to life with your agent.')
-      :'Use an agent to create a space and style it with your own furniture.';
+      :'Connect an agent to build your space and open the room as you when you ask. Your character and name will be saved.';
     root.querySelector('.entry-agent-note').textContent=connected
-      ?(enterRoom?'Your agent will explain what you can create. Head into the room when you’re ready.':'Tell your agent what you’d like to create first.')
+      ?'Next time, ask your agent to open the room for you.'
       :(enterRoom?'You can also do this later from the catalogue.':'Paste the prompt into your agent of choice to connect.');
     onAttached(list);
   }

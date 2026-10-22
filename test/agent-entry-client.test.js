@@ -18,7 +18,8 @@ beforeEach(async()=>{
     let reply;
     if(req.url==='/api/connect')reply=body.action==='start'?{agentToken,launchUrl:`${origin}/#pair=${'e'.repeat(64)}`,verification:'AABBCCDD',expiresAt:Date.now()+600000}:{state:phase};
     else if(body.method==='initialize')reply={jsonrpc:'2.0',id:1,result:{protocolVersion:'2025-06-18',capabilities:{tools:{}},serverInfo:{name:'habbo-room',version:'test'}}};
-    else if(body.method==='tools/list')reply={jsonrpc:'2.0',id:1,result:{tools:[{name:'status',inputSchema:{type:'object',properties:{}}},{name:'room_map',inputSchema:{type:'object',properties:{}}}]}};
+    else if(body.method==='tools/list')reply={jsonrpc:'2.0',id:1,result:{tools:[{name:'open_room',inputSchema:{type:'object',properties:{}}},{name:'status',inputSchema:{type:'object',properties:{}}},{name:'room_map',inputSchema:{type:'object',properties:{}}}]}};
+    else if(body.params?.name==='open_room')reply={jsonrpc:'2.0',id:1,result:text({url:`${origin}/#enter=${'f'.repeat(64)}`,playerName:'Visitor',expiresAt:Date.now()+120000})};
     else reply={jsonrpc:'2.0',id:1,result:phase==='revoked'?{isError:true,content:[{type:'text',text:'Not attached'}]}:text({playerName:'Visitor',playerId:'player-1'})};
     res.setHeader('Content-Type','application/json');res.end(JSON.stringify(reply));
   });
@@ -44,9 +45,12 @@ describe('portable room agent helper',()=>{
   it('reuses a pending launch and an established key without reassigning identities',async()=>{
     const bridge=agent();await bridge.connect();await bridge.connect();
     expect(requests.filter(r=>r.body.action==='start')).toHaveLength(1);
-    phase='approved';await bridge.status();await bridge.connect();
-    expect(requests.at(-1)).toMatchObject({auth:`Bearer ${agentToken}`,body:{action:'start'}});
-    phase='revoked';expect(await bridge.status()).toEqual({state:'revoked'});
+    phase='approved';await bridge.status();const opened=await bridge.connect();
+    expect(requests.at(-1)).toMatchObject({auth:`Bearer ${agentToken}`,body:{method:'tools/call',params:{name:'open_room'}}});
+    expect(opened).toMatchObject({launchUrl:`${origin}/#enter=${'f'.repeat(64)}`,playerName:'Visitor'});
+    expect(opened).not.toHaveProperty('verification');expect(JSON.stringify(opened)).not.toContain(agentToken);
+    expect(requests.filter(r=>r.body.action==='start')).toHaveLength(1);
+    phase='revoked';expect(await bridge.status()).toMatchObject({state:'revoked'});
   });
   it('keeps Claude credentials separate and exposes the same tools to any MCP client',async()=>{
     const chatgpt=agent(),claude=agent('claude');await chatgpt.connect();

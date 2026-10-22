@@ -17,6 +17,12 @@ do not claim it is connected just because you opened the page.
 
 ## Launch
 
+If this agent already has a working room MCP connection, call `open_room` and
+open its returned `url` (or the helper's `launchUrl`). The browser signs in as
+the returned `playerName`, even without a remembered browser session. No new
+pairing or verification code is needed. This private link works once and expires
+after two minutes; request a fresh one if needed. Do not share it with others.
+
 1. Use this page's origin as the room origin. The usual address is
    https://chat.grantm.ac. Download `/room-agent.mjs` from that same origin,
    inspect it, and save it in a permanent local directory such as
@@ -27,14 +33,17 @@ do not claim it is connected just because you opened the page.
    `--client codex` is also accepted. For another room origin, add
    `--origin https://that-origin` to **every** helper command. Use the same
    client option throughout. The helper saves the credential privately on
-   this computer, and only prints a temporary launch URL and verification code.
+   this computer, and only prints a temporary launch URL, plus a verification
+   code for a new connection. An existing connection opens its saved character.
 3. Open the returned `launchUrl` in the current chat's in-app browser when
    available. In ChatGPT / Codex desktop use the browser-opening tool or
    `cua.createBrowserTab("iab", launchUrl, {visible:true})` when that API is
    available. In another agent use its supported browser tool. Otherwise open
    the default browser. If neither is available, give the user the launch link.
    Keep the room open beside the conversation when the client supports it.
-4. Show the returned verification code. New visitors choose their name and
+4. If the result has a `playerName` and no verification code, the connection
+   already exists: opening the link signs in as that character. Go to step 6.
+   Otherwise, show the returned verification code. New visitors choose their name and
    appearance; returning visitors use their saved character. The player clicks
    **Connect** in the room after comparing the code with this chat. Do not
    click that approval yourself. An already-authorized connection can resume
@@ -87,13 +96,15 @@ before building anything. Do not create furniture just to test the connection.
 - The permanent agent credential stays in a mode-0600 file under
   `~/.habbo-room/`, separately for each room origin and agent client. Never
   print that file, paste it into chat, put it in a URL, or commit it.
-- The browser launch link contains only a ten-minute approval code. It cannot
-  be exchanged for the agent credential. The page removes it from the address
-  bar and keeps it only in the current tab until pairing finishes.
+- A first-time launch link contains a ten-minute approval code. A returning
+  connection uses a two-minute, one-use sign-in code instead. Neither reveals
+  the agent credential. The page removes the code from the address bar;
+  first-time pairing keeps it only in the current tab until approval finishes.
 - To disconnect, use **Catalogue → Build with your agent → Disconnect all
   agents**. The local helper will need a new pairing after revocation.
 - To intentionally use a separate character or isolated chat, set
   `ROOM_AGENT_HOME` to a different private directory consistently for that
   helper and its MCP configuration. Never silently switch characters.
-- Connecting gives the agent the player's existing building permissions;
-  it does not change their room role or grant administrator access.
+- Connecting gives the agent the player's existing building permissions and
+  lets it open a browser signed in as that character when asked. It preserves
+  their existing role; a guest never becomes an administrator.

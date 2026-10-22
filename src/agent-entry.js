@@ -14,7 +14,7 @@ export function openAgentEntry(network){
     const state=value.expiresAt<=Date.now()&&value.state!=='connected'?'expired':value.state;
     approve.hidden=state!=='pending';approve.disabled=busy;
     const client=value.client==='ChatGPT'?'ChatGPT / Codex':value.client==='Claude'?'Claude':'your agent';
-    $('.pairing-description').textContent=`Connect ${client} as ${network.me.name}. It will be able to build and manage your pieces and space in this room.`;
+    $('.pairing-description').textContent=`Connect ${client} as ${network.me.name}. It can build and manage your pieces and space, and open the room signed in as you when you ask. Connecting also keeps your character and reserves your name.`;
     $('.pairing-verification').textContent=value.verification?`Match this code with your chat: ${value.verification}`:'';
     approve.textContent=`Connect ${value.client==='Agent'?'agent':value.client??'agent'}`;
     close.textContent=['pending','approved'].includes(state)?'Cancel':'Enter room';
