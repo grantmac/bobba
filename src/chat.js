@@ -17,15 +17,15 @@ export function createChat({getSpeaker,getLayout,onSelectSpeaker}){
     if(element.style.left!==left)element.style.left=left;
     if(element.style.top!==top)element.style.top=top;
   }
-  // Each bubble sits just above its speaker's head (96 room pixels over their feet) and climbs
-  // from there as newer ones arrive, staying over the speaker as the view pans and zooms.
-  function position(item){
-    const layout=getLayout(),width=item.element.offsetWidth,height=item.element.offsetHeight;
+  // Camera movement updates the head anchor immediately. Message scrolling uses a separate
+  // CSS transform so its animation never delays panning or zooming. Keep subpixel coordinates
+  // from the renderer: rounding to CSS pixels makes bubbles wobble on high-density displays.
+  function position(item,layout=getLayout()){
     const head=layout.originY+(item.y-layout.centerY-96)*layout.scale;
-    item.element.style.left=`${Math.round(layout.originX+item.x*layout.scale-width/2)}px`;item.element.style.top=`${Math.round(head-height-item.offset)}px`;
+    item.element.style.left=`${layout.originX+item.x*layout.scale}px`;item.element.style.top=`${head}px`;
   }
   function scroll(){
-    for(const item of bubbles){item.offset+=21;position(item);}
+    for(const item of bubbles){item.offset+=21;item.element.style.setProperty('--chat-rise',`${item.offset}px`);}
     bubbles=bubbles.filter(item=>{if(item.offset>=147){item.element.remove();return false;}return true;});
   }
   function say(message,mode='Say',source){
@@ -38,10 +38,10 @@ export function createChat({getSpeaker,getLayout,onSelectSpeaker}){
     const item={element,x:speaker.x,y:speaker.y??0,offset:0};layer.append(element);bubbles.push(item);position(item);
     nextScroll=performance.now()+4000;
   }
-  window.addEventListener('resize',()=>bubbles.forEach(position));
+  window.addEventListener('resize',()=>bubbles.forEach(item=>position(item)));
   return {say,typing,removeTyping,update(now){
     const layout=getLayout();
-    if(layout.originX!==lastLayout.originX||layout.scale!==lastLayout.scale||layout.baseline!==lastLayout.baseline){lastLayout=layout;bubbles.forEach(position);}
+    if(layout.originX!==lastLayout.originX||layout.originY!==lastLayout.originY||layout.scale!==lastLayout.scale||layout.centerY!==lastLayout.centerY){lastLayout={...layout};bubbles.forEach(item=>position(item,layout));}
     if(bubbles.length&&now>=nextScroll){scroll();nextScroll=now+4000;}
   }};
 }
