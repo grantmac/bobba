@@ -80,8 +80,8 @@ function whiteboardAt(point){
 // Container geometry is read once per resize; per-frame code must not force layout.
 const view={halfW:0,halfH:0,top:0,left:0};
 // Phones open on the player's own avatar, since the room is larger than their screen.
-function centreViewOnAvatar(){
-  if(viewCentred||!(matchMedia('(pointer: coarse)').matches||container.clientWidth<=640))return;
+function centreViewOnAvatar(force=false){
+  if(!force&&(viewCentred||!(matchMedia('(pointer: coarse)').matches||container.clientWidth<=640)))return;
   viewCentred=true;const p=characterPoint(position.x,position.z);panX=-p.x*displayScale;panY=-(p.y-CENTER_Y-30)*displayScale;resize();
 }
 const iso = (x, z) => ({ x: (x-z)*32-roomCenterX, y: (x+z)*16 });
@@ -194,6 +194,7 @@ function buildRoom(options){
   roomOptions={...options};
   roomShape=roomCatalog.shapes.find(s=>s.id===options.shape);
   layout=roomLayout(roomShape.tiles,roomSpaces);mainTiles=new Set(roomShape.tiles.map(([x,z])=>`${x},${z}`));
+  toolbar?.setSpaces(layout.spaces);
   walkable=new Set(layout.tiles.map(([x,z])=>`${x},${z}`));
   roomWidth=layout.width;roomDepth=layout.depth;
   // The lobby is the origin: adding a space beyond it never shifts what is already drawn.
@@ -528,8 +529,22 @@ function ensureFreeTile(){
   const free=roomShape.tiles.filter(([x,z])=>canWalk(x,z)).sort((a,b)=>Math.hypot(a[0]+.5-position.x,a[1]+.5-position.z)-Math.hypot(b[0]+.5-position.x,b[1]+.5-position.z));
   if(free.length){position.x=free[0][0]+.5;position.z=free[0][1]+.5;}
 }
+let teleporting=false;
+async function teleportToSpace(spaceId){
+  if(!ready||teleporting)throw new Error('Please wait until the room is ready.');
+  teleporting=true;
+  // Cancel a pending furniture interaction before it can start a walk after arrival.
+  useRequest++;
+  try{
+    const arrival=await network.teleport(spaceId);
+    selfPlayer={...selfPlayer,...arrival};
+    Object.assign(position,arrival.route[0]);
+    seated=null;target=null;targetMarker.visible=false;
+    centreViewOnAvatar(true);
+  }finally{teleporting=false;}
+}
 async function walkTo(cell,seatId=null,facing=null){
-  if(!ready||!cell||(!seatId&&!canWalk(cell.x,cell.z)))return false;
+  if(teleporting||!ready||!cell||(!seatId&&!canWalk(cell.x,cell.z)))return false;
   try{
     await network.move(cell.x,cell.z,seatId,facing);
     target=cell;const p=characterPoint(cell.x+.5,cell.z+.5);place(targetMarker,p.x-8,p.y-5,16,10);
@@ -802,7 +817,7 @@ function animate(now){
 }
 requestAnimationFrame(animate);
 try{
-  toolbar=createToolbar({admin:false,onMusicMute:muted=>radio?.setMuted(muted),onMusicVolume:volume=>{radio?.setVolume(volume);radio?.setMuted(false);},onTyping:typing=>{if(ready){localTyping=typing;void network.typing(typing).catch(()=>{});}},onAppearance:()=>{if(ready)appearance.open();},onRoomEdit:()=>{if(ready&&network.me?.role==='admin')roomEditor.open();},onFurniture:()=>{if(ready)furniture.open();},onChat:(body,mode)=>{if(ready)return network.chat(body,mode);},onGesture:action=>{if(ready)network.gesture(action).catch(error=>toolbar.status(error.message));}});
+  toolbar=createToolbar({admin:false,onTeleport:teleportToSpace,onMusicMute:muted=>radio?.setMuted(muted),onMusicVolume:volume=>{radio?.setVolume(volume);radio?.setMuted(false);},onTyping:typing=>{if(ready){localTyping=typing;void network.typing(typing).catch(()=>{});}},onAppearance:()=>{if(ready)appearance.open();},onRoomEdit:()=>{if(ready&&network.me?.role==='admin')roomEditor.open();},onFurniture:()=>{if(ready)furniture.open();},onChat:(body,mode)=>{if(ready)return network.chat(body,mode);},onGesture:action=>{if(ready)network.gesture(action).catch(error=>toolbar.status(error.message));}});
   network=createMultiplayer();
   const characterKey=createRoomKey({identity:network.identity});
   danceControls=createDanceFloorControls({onChange:on=>network.danceFloor(on),onError:message=>toolbar.status(message)});
@@ -959,12 +974,12 @@ try{
       }
       // Bound deduplication memory to the server's current message window.
       const recentIds=new Set(state.messages.map(m=>m.id));for(const id of seenMessages)if(!recentIds.has(id))seenMessages.delete(id);
-      avatar.visible=true;ready=true;toolbar.setAppearanceEnabled(true);centreViewOnAvatar();
+      avatar.visible=true;ready=true;toolbar.setAppearanceEnabled(true);toolbar.setTeleportEnabled(true);centreViewOnAvatar();
       playerPrepared=true;finishInitialLoad();
     },onError:(message,{transient=false}={})=>{
       toolbar.status(message);
       if(transient&&!first)return;
-      ready=false;radio.close();toolbar.setAppearanceEnabled(false);
+      ready=false;radio.close();toolbar.setAppearanceEnabled(false);toolbar.setTeleportEnabled(false);
       if(message.includes('removed from the room')||message.includes('session has ended')){
         network.close();const notice=document.querySelector('#load-error');notice.textContent=message;notice.hidden=false;
       }

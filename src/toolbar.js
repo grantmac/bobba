@@ -1,6 +1,7 @@
 import {createShare} from './share.js';
+import {createSpaceNavigator} from './space-navigator.js';
 
-export function createToolbar({onRoomEdit,onFurniture,onChat,onTyping,onAppearance,onGesture,onMusicMute,onMusicVolume,admin=true}) {
+export function createToolbar({onRoomEdit,onFurniture,onChat,onTyping,onAppearance,onGesture,onMusicMute,onMusicVolume,onTeleport,admin=true}) {
   const bar=document.createElement('div');bar.className='room-toolbar';
   bar.innerHTML=`<form class="room-chat">
     <div class="speech-picker"><button type="button" id="speech-mode" aria-label="Speech mode: Say" aria-haspopup="menu" aria-expanded="false"><span>Say</span><img src="/assets/bar/dropdown-arrow.png" alt=""></button>
@@ -78,12 +79,17 @@ export function createToolbar({onRoomEdit,onFurniture,onChat,onTyping,onAppearan
   const furniture=document.createElement('button');furniture.type='button';furniture.className='bar-icon';
   furniture.title='Furniture';furniture.setAttribute('aria-label','Furniture');furniture.onclick=()=>onFurniture();
   furniture.innerHTML='<img src="/assets/bar/catalogue.png" alt="">';icons.append(furniture);
+  const spaces=document.createElement('button');spaces.type='button';spaces.className='bar-icon spaces-toggle';spaces.disabled=true;spaces.title='Teleport to a space';spaces.setAttribute('aria-label','Spaces');spaces.setAttribute('aria-haspopup','dialog');
+  spaces.innerHTML='<img src="/assets/bar/teleport.png" width="32" height="40" alt="">';
+  const navigator=onTeleport?createSpaceNavigator({onTeleport,onClose:()=>focusTrigger(spaces)}):null;
+  spaces.onclick=()=>{setToolsOpen(false);setMusicOpen(false);setActionsOpen(false);setOpen(false);navigator.open();};
+  if(navigator)icons.append(spaces);
   const share=document.createElement('button');share.type='button';share.className='bar-icon share-toggle';share.title='Share the room';share.setAttribute('aria-label','Share the room');share.setAttribute('aria-haspopup','dialog');
   share.innerHTML='<img src="/assets/bar/share.png" width="32" height="40" alt="">';
   const shareDialog=createShare({onClose:()=>focusTrigger(share)});
   share.onclick=()=>{setToolsOpen(false);setMusicOpen(false);setActionsOpen(false);setOpen(false);shareDialog.open();};
   icons.append(share);
-  for(const [button,label] of [[musicToggle,'Music'],[actionsToggle,'Actions'],[appearance,'My look'],[room,'Edit room'],[furniture,'Furniture'],[share,'Share']]){
+  for(const [button,label] of [[musicToggle,'Music'],[actionsToggle,'Actions'],[appearance,'My look'],[room,'Edit room'],[furniture,'Furniture'],[spaces,'Spaces'],[share,'Share']]){
     const text=document.createElement('span');text.className='toolbar-icon-label';text.textContent=label;button.append(text);
   }
   icons.addEventListener('click',event=>{if(event.target.closest('.bar-icon'))setToolsOpen(false);});
@@ -142,5 +148,5 @@ export function createToolbar({onRoomEdit,onFurniture,onChat,onTyping,onAppearan
     button.addEventListener('pointerleave',()=>bar.querySelector('.bar-hint').textContent='Click to walk. Drag to pan. Scroll to zoom.');
   });
   document.body.append(bar);
-  return {setMusicState,setDancing(action){actionsMenu.querySelectorAll('[role=menuitemcheckbox]').forEach(button=>button.setAttribute('aria-checked',String(button.dataset.gesture===action)));},setAvatar(canvas){const ctx=portrait.getContext('2d');ctx.clearRect(0,0,portrait.width,portrait.height);ctx.imageSmoothingEnabled=false;ctx.drawImage(canvas,24,16,48,60,0,0,portrait.width,portrait.height);},setAppearanceEnabled(value){appearance.disabled=!value;},setAdmin(value){adminButtons.forEach(button=>button.hidden=!value);},status(message){bar.querySelector('.bar-hint').textContent=message;}};
+  return {setMusicState,setSpaces(value){navigator?.receive(value);},setTeleportEnabled(value){spaces.disabled=!value;},setDancing(action){actionsMenu.querySelectorAll('[role=menuitemcheckbox]').forEach(button=>button.setAttribute('aria-checked',String(button.dataset.gesture===action)));},setAvatar(canvas){const ctx=portrait.getContext('2d');ctx.clearRect(0,0,portrait.width,portrait.height);ctx.imageSmoothingEnabled=false;ctx.drawImage(canvas,24,16,48,60,0,0,portrait.width,portrait.height);},setAppearanceEnabled(value){appearance.disabled=!value;},setAdmin(value){adminButtons.forEach(button=>button.hidden=!value);},status(message){bar.querySelector('.bar-hint').textContent=message;}};
 }

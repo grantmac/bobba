@@ -310,6 +310,20 @@ export const appearance=mutation({args:{token:v.string(),look:v.any()},handler:a
 export const move=mutation({args:{token:v.string(),x:v.number(),z:v.number(),seatId:v.optional(v.string()),direction:v.optional(v.union(v.literal(0),v.literal(2),v.literal(4),v.literal(6)))},handler:async(ctx,args)=>{
   return await movePlayer(ctx,await playerFor(ctx,args.token),args);
 }});
+// Resolve the destination from the live map; callers never supply landing coordinates.
+export const teleport=mutation({args:{token:v.string(),spaceId:v.string()},handler:async(ctx,{token,spaceId})=>{
+  const p=await playerFor(ctx,token),now=Date.now(),map=await roomFor(ctx),layout=layoutFor(map.options,map.spaces??[]);
+  const space=layout.spaces.find(s=>s.id===spaceId);
+  if(spaceId!==MAIN_ZONE&&!space)fail('That space is no longer available.');
+  const room=await loadZones(ctx,map,[spaceId,MAIN_ZONE]),online=await zonesPlayers(ctx,room.zones,now);
+  if(spaceId!==playerZone(p)&&online.filter(other=>other._id!==p._id&&playerZone(other)===spaceId).length>=ZONE_CAP)fail('That space is full right now.');
+  const preferred=space?{x:space.x+space.width/2,z:space.z+space.depth/2}:{x:3.5,z:4.5};
+  const position=freePosition(room,preferred,playerTiles(online,now,p._id),spaceId);
+  const arrival={route:[position],startedAt:now,seatId:null,direction:2,zone:spaceId,action:null};
+  await ctx.db.patch(p._id,{...arrival,lastSeen:now});
+  if(spaceId!==playerZone(p))await wakeBotRoaming(ctx,p);
+  return arrival;
+}});
 // Turn in place toward the selected player's current position, stopping any walk.
 export const face=mutation({args:{token:v.string(),playerId:v.id('players')},handler:async(ctx,{token,playerId})=>{
   const p=await playerFor(ctx,token),other=await ctx.db.get(playerId),now=Date.now();

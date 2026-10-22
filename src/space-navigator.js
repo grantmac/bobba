@@ -1,0 +1,43 @@
+import {makeDraggable} from './draggable.js';
+import {MAIN_ZONE} from '../shared/room-layout.js';
+
+export function createSpaceNavigator({onTeleport,onClose=()=>{}}){
+  const dialog=document.createElement('dialog');
+  dialog.className='appearance-dialog agent-dialog spaces-dialog';
+  dialog.setAttribute('aria-labelledby','spaces-title');
+  dialog.innerHTML='<header><h1 id="spaces-title">Spaces</h1><button type="button" class="appearance-close" aria-label="Close spaces">×</button></header><div class="agent-body"><p class="spaces-intro">Choose a space to teleport there.</p><ul class="spaces-list" aria-label="Destinations"></ul><p class="spaces-status" role="status" aria-live="polite"></p></div>';
+  const list=dialog.querySelector('.spaces-list'),status=dialog.querySelector('.spaces-status');
+  let spaces=[],busy=false;
+  function render(){
+    const focused=document.activeElement?.dataset.spaceId;
+    list.replaceChildren();
+    for(const space of [{id:MAIN_ZONE,name:'Lobby',ownerName:'The main room'},...spaces]){
+      const item=document.createElement('li'),button=document.createElement('button');
+      button.type='button';button.className='space-destination';button.dataset.spaceId=space.id;button.disabled=busy;
+      const name=document.createElement('strong'),owner=document.createElement('span');
+      name.textContent=space.name;owner.textContent=space.ownerName??'';
+      button.append(name,owner);item.append(button);list.append(item);
+      button.onclick=async()=>{
+        if(busy)return;
+        busy=true;dialog.setAttribute('aria-busy','true');
+        list.querySelectorAll('button').forEach(b=>b.disabled=true);
+        status.textContent=`Teleporting to ${space.name}…`;
+        try{await onTeleport(space.id);dialog.close();}
+        catch(error){status.textContent=error.message||'Could not teleport. Please try again.';}
+        finally{
+          busy=false;dialog.removeAttribute('aria-busy');
+          list.querySelectorAll('button').forEach(b=>b.disabled=false);
+          if(dialog.open)([...list.querySelectorAll('button')].find(b=>b.dataset.spaceId===space.id)??list.querySelector('button')).focus();
+        }
+      };
+    }
+    if(focused&&dialog.open)([...list.querySelectorAll('button')].find(b=>b.dataset.spaceId===focused)??list.querySelector('button'))?.focus();
+  }
+  dialog.querySelector('.appearance-close').onclick=()=>dialog.close();
+  dialog.addEventListener('close',onClose);
+  document.body.append(dialog);makeDraggable(dialog);
+  return {
+    open(){if(dialog.open)return;if(!busy)status.textContent='';render();dialog.showModal();(list.querySelector('button:not(:disabled)')??dialog.querySelector('.appearance-close')).focus();},
+    receive(value){spaces=value;if(dialog.open)render();},
+  };
+}

@@ -1453,6 +1453,54 @@ describe('zones',()=>{
     const space=await t.mutation(api.agents.addSpace,{agentToken,name});
     return {agentToken,...space};
   }
+  it('teleports immediately between spaces and the lobby, clearing walks, seats and gestures',async()=>{
+    const me=await guest();await friend();
+    const first=await spaceFor(token,'Mine'),second=await spaceFor(otherToken,'Theirs');
+    await t.mutation(api.room.move,{token,x:2,z:2});
+    await t.run(ctx=>ctx.db.patch(me.id,{seatId:'old-seat',action:'dance'}));
+    for(const spaceId of [first.spaceId,second.spaceId,'main']){
+      const arrival=await t.mutation(api.room.teleport,{token,spaceId});
+      expect(arrival.route).toHaveLength(1);
+      expect(arrival).toMatchObject({zone:spaceId,seatId:null,action:null});
+      expect(await t.query(api.room.me,{token})).toMatchObject(arrival);
+      expect((await t.query(api.room.presence,{zone:spaceId})).players.map(p=>p.id)).toContain(me.id);
+      const point=arrival.route[0];
+      if(spaceId!=='main'){
+        const space=spaceId===first.spaceId?first:second;
+        expect(point.x).toBeGreaterThan(space.x);expect(point.x).toBeLessThan(space.x+space.width);
+      }else expect(point.x).toBeLessThan(first.x);
+    }
+  });
+  it('teleports to a free tile using the current resized space and respects walking reservations',async()=>{
+    await guest();const other=await friend();
+    const space=await spaceFor(token,'Mine');
+    await t.mutation(api.agents.resizeSpace,{agentToken:space.agentToken,width:12});
+    await admin();
+    await t.mutation(api.room.editFurniture,{token:adminToken,changes:[{id:'chair',type:'small_chair_armas',rotation:0,x:space.x+5,z:3}]});
+    await t.run(ctx=>ctx.db.patch(other.id,{zone:space.spaceId,route:[{x:space.x+6.5,z:3.5},{x:space.x+6.5,z:4.5}],startedAt:Date.now()}));
+    const {route:[point]}=await t.mutation(api.room.teleport,{token,spaceId:space.spaceId});
+    expect(point.x).toBeGreaterThan(space.x);expect(point.x).toBeLessThan(space.x+12);
+    expect([[space.x+5.5,3.5],[space.x+6.5,3.5],[space.x+6.5,4.5]]).not.toContainEqual([point.x,point.z]);
+  });
+  it('rejects unauthenticated, missing, full and completely blocked teleport destinations without moving',async()=>{
+    const me=await guest();const space=await spaceFor(token,'Mine');
+    const before=await t.query(api.room.me,{token});
+    await expect(t.mutation(api.room.teleport,{token:'d'.repeat(64),spaceId:space.spaceId})).rejects.toThrow('session');
+    await expect(t.mutation(api.room.teleport,{token,spaceId:'missing'})).rejects.toThrow('no longer available');
+    await t.run(async ctx=>{
+      const base=await ctx.db.get(me.id);
+      for(let i=0;i<60;i++)await ctx.db.insert('players',{...Object.fromEntries(Object.entries(base).filter(([k])=>!k.startsWith('_'))),name:`Crowd ${i}`,nameKey:`crowd ${i}`,zone:space.spaceId,online:true,lastSeen:Date.now()});
+    });
+    await expect(t.mutation(api.room.teleport,{token,spaceId:space.spaceId})).rejects.toThrow('full');
+    await t.run(async ctx=>{
+      for(const p of await ctx.db.query('players').collect())if(p._id!==me.id)await ctx.db.delete(p._id);
+    });
+    await admin();
+    const changes=Array.from({length:64},(_,i)=>({id:`chair-${i}`,type:'small_chair_armas',rotation:0,x:space.x+i%8,z:Math.floor(i/8)}));
+    for(let i=0;i<changes.length;i+=20)await t.mutation(api.room.editFurniture,{token:adminToken,changes:changes.slice(i,i+20)});
+    await expect(t.mutation(api.room.teleport,{token,spaceId:space.spaceId})).rejects.toThrow('no free space');
+    expect((await t.query(api.room.me,{token})).route).toEqual(before.route);
+  });
   it('scopes presence, chat and voice to the zone a player stands in',async()=>{
     const me=await guest();const other=await friend();
     const space=await spaceFor(token,'Mine');
