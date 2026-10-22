@@ -136,7 +136,7 @@ export async function createAppearance({prepareImage, onApply, onOpen, onRoomKey
       <div class="appearance-choices"><div class="appearance-gender" role="group" aria-label="Character style"><button type="button" data-gender="M">Man</button><button type="button" data-gender="F">Woman</button></div><nav aria-label="Appearance categories"></nav><h2 id="choice-title">Choose your hair</h2><div class="item-grid" aria-label="Styles"></div><div class="style-pages"><button type="button" aria-label="Previous styles">◀</button><span></span><button type="button" aria-label="Next styles">▶</button></div><h2>Colour <button type="button" class="color-channel" hidden>Primary</button></h2><div class="color-grid" aria-label="Colours"></div></div>
     </div>
     <p class="appearance-status" role="status" aria-live="polite"></p>
-    <button type="button" class="character-room-key" hidden>Your room key</button>
+    <button type="button" class="character-room-key" aria-labelledby="character-save-label" aria-describedby="character-save-help" hidden><span id="character-save-label">Save your character</span><span id="character-save-help">Keep your name, look and belongings for next time.</span></button>
     <footer><button type="button" class="appearance-cancel">Cancel</button><button type="button" class="appearance-apply">Apply</button></footer>`;
   dialog.tabIndex=-1;document.body.append(dialog);makeDraggable(dialog,dialog.querySelector('header'));
   const preview=dialog.querySelector('#appearance-preview'), status=dialog.querySelector('.appearance-status');
@@ -210,7 +210,7 @@ export async function createAppearance({prepareImage, onApply, onOpen, onRoomKey
     });
     dialog.querySelector('.entry-intro').hidden=step!==1;
     returnButton.hidden=step!==1||!entry.onReturn||entry.admin;
-    roomKeyButton.hidden=step!==3||!onRoomKey;roomKeyButton.textContent='Keep your character';
+    roomKeyButton.hidden=step!==3||!onRoomKey;
     dialog.querySelector('.entry-name').hidden=step!==1;
     dialog.querySelector('.appearance-body').hidden=step!==2;
     dialog.querySelector('.entry-agent').hidden=step!==3;
@@ -242,7 +242,7 @@ export async function createAppearance({prepareImage, onApply, onOpen, onRoomKey
   function open(){
     if(dialog.open)return;
     delete dialog.dataset.entryStep;delete dialog.dataset.agentConnected;dialog.classList.remove('entry-flow');
-    returnButton.hidden=true;roomKeyButton.hidden=!onRoomKey;roomKeyButton.textContent='Your room key';
+    returnButton.hidden=true;roomKeyButton.hidden=!onRoomKey;
     dialog.querySelector('.entry-progress').hidden=true;dialog.querySelector('.entry-intro').hidden=true;dialog.querySelector('.entry-agent').hidden=true;dialog.querySelector('.appearance-body').hidden=false;dialog.querySelector('.appearance-cancel').textContent='Cancel';
     dialog.querySelector('.entry-name').hidden=true;dialog.querySelector('h1').textContent='Your appearance';
     apply.textContent='Apply';dialog.querySelector('.appearance-close').hidden=false;dialog.querySelector('.appearance-cancel').hidden=false;
