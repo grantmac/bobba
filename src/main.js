@@ -8,6 +8,7 @@ import { createFurniture } from './furniture.js';
 import { createInfoStand } from './info-stand.js';
 import { createChat } from './chat.js';
 import { createMultiplayer, samplePlayer } from './multiplayer.js';
+import {openAgentEntry} from './agent-entry.js';
 import {createRoomKey} from './room-key.js';
 import {createAwayPoster} from './away-poster.js';
 import {createAgentLink} from './agent-link.js';
@@ -859,7 +860,7 @@ try{
     if(network.adminEntry){const saved=await network.entryAppearance();if(saved)setAppearance(await appearance.useLook(saved));}
     // The room has rendered before the welcome dialog and room are revealed in one task.
     await nextPaint();liftVeil();
-    await appearance.enter({admin:network.adminEntry,onCheckName:name=>network.checkName(name),agents:network.agents,onEnter:(name,look,options)=>network.join(name,look,options),onReturn:async()=>await characterKey.open('return')?network.me:null});
+    await appearance.enter({admin:network.adminEntry,pairing:!!network.pairing.code,onCheckName:name=>network.checkName(name),agents:network.agents,onEnter:(name,look,options)=>network.join(name,look,options),onReturn:async()=>await characterKey.open('return')?network.me:null});
     stopPreview();
   }
   const admin=network.me.role==='admin';
@@ -935,4 +936,5 @@ try{
     window.addEventListener('pagehide',event=>{if(!event.persisted)updater.stop();});
   }
   container.focus({preventScroll:true});
+  openAgentEntry(network);
 }catch(error){liftVeil();const notice=document.querySelector('#load-error');notice.textContent=error.message||'The room could not be opened. Please reload to try again.';notice.hidden=false;console.error(error);}

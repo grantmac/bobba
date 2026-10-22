@@ -1,0 +1,7 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Agent entry preview</title><link rel="stylesheet" href="/src/style.css"><style>body{background:#263c42}#scene{display:grid;place-items:center;color:white;font:14px Verdana}</style></head><body><main id="scene" tabindex="0">Room preview · no live server calls</main><script type="module">
+import {openAgentEntry} from '/src/agent-entry.js';
+const params=new URLSearchParams(location.search);let listener;
+const record={state:params.get('state')||'pending',client:params.get('client')||'ChatGPT',verification:'A1B2C3D4',expiresAt:Date.now()+600000};
+const network={me:{name:'Visitor'},pairing:{code:'preview',clear(){this.code='';},watch(fn){listener=fn;fn(record);return()=>{listener=null;};},async decide(approve){record.state=approve?'approved':'cancelled';listener?.({...record});if(approve)setTimeout(()=>{record.state='connected';listener?.({...record});},1500);}}};
+openAgentEntry(network);
+</script></body></html>

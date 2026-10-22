@@ -268,7 +268,7 @@ export async function createAppearance({prepareImage, onApply, onOpen, onRoomKey
       await onApply(rendered,next,{entry:!!entry});current=next;
       preferredGender=gender;
       let saved=true;try{localStorage.setItem(KEY,JSON.stringify(current));localStorage.setItem(KEY+'-gender',gender);}catch{saved=false;}
-      if(entry){showEntryStep(3);return;}
+      if(entry){if(entry.pairing)finishEntry();else showEntryStep(3);return;}
       version++;dialog.close();document.querySelector('#scene').focus({preventScroll:true});
     }catch(error){if(entry){showEntryStep(1);nameError.textContent=error.message;nameInput.setAttribute('aria-invalid','true');}else status.textContent=error.message;}
     finally{busy=false;dialog.querySelectorAll('button').forEach(b=>b.disabled=false);}
@@ -276,9 +276,9 @@ export async function createAppearance({prepareImage, onApply, onOpen, onRoomKey
   const initial=await frames(current);
   return {initial,open,isOpen:()=>dialog.open,chatColor:()=>current.top.color,frames,previewFrame:render,
     async useLook(look){if(!validate(look))throw new Error('Invalid saved appearance.');current=normalize(look);const result=await frames(current);return result;},
-    enter({name='',admin=false,onEnter,onCheckName,agents,onReturn}){
+    enter({name='',admin=false,onEnter,onCheckName,agents,onReturn,pairing=false}){
       return new Promise(resolve=>{
-        entry={onEnter,onCheckName,agents,admin,resolve,onReturn};draft=admin?copy(current):randomAppearance(catalog);gender=appearanceGender(catalog,draft,preferredGender);genderDrafts={};category='hair';page=0;previewDirection=2;
+        entry={onEnter,onCheckName,agents,admin,resolve,onReturn,pairing};draft=admin?copy(current):randomAppearance(catalog);gender=appearanceGender(catalog,draft,preferredGender);genderDrafts={};category='hair';page=0;previewDirection=2;
         nameInput.value=admin?'Grant':name;nameInput.readOnly=admin;
         dialog.querySelector('.entry-note').textContent=admin?'Choose your look and enter as the room owner.':'2–20 characters, starting with a letter. Names already in use are unavailable.';
         dialog.querySelector('.entry-progress').hidden=false;dialog.querySelector('.appearance-close').hidden=true;dialog.querySelector('.appearance-cancel').hidden=true;

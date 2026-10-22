@@ -1,12 +1,12 @@
 {
   "name": "habbo-room",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "description": "Build furniture into the Habbo-style room: redraw any picture as an isometric pixel-art piece with four rotations, then place it, or add a block of floor to the room.",
   "author": { "name": "Grant Mac" },
   "interface": {
     "displayName": "Habbo Room",
     "shortDescription": "Build pieces into the room",
-    "longDescription": "Turn any picture (a photo, a logo, concept art, a real object) into a piece of furniture for the shared Habbo-style room at chat.grantm.ac. The plugin writes the sprite-sheet prompt, Codex draws the four rotations with its image generator in the room's hand-drawn pixel-art style, and the piece lands in the catalogue for everyone at once. Make an agent key in the room under Catalogue → Build with your agent and paste it when asked; then paste pictures, place pieces on tiles or walls, add a named block of floor, and tidy up.",
+    "longDescription": "Open the shared room at chat.grantm.ac/connect with ChatGPT / Codex, Claude Code or another compatible agent. Pair with your character, then turn pictures and ideas into pixel-art furniture, create your own space, and style its floor and walls. Your agent draws the sprite sheets with its image generator and the pieces appear in everyone's catalogue. The existing API-key connection is also available under Catalogue → Build with your agent.",
     "developerName": "Grant Mac",
     "category": "Lifestyle",
     "capabilities": ["Read", "Write"],
