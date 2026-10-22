@@ -32,7 +32,7 @@ Room and furniture state comes only from Convex. The browser remembers appearanc
 
 ## Keeping a character
 
-“Keep your character” appears after character creation; “Your room key” remains available in the appearance window. Saving a passkey or creating a backup code reserves the name permanently and retains the existing player ID, appearance, space, furniture and agent links. Returning in a remembered browser skips entry; otherwise “Use my room key” opens a small return panel over the room.
+A prominent “Save your character” button appears after character creation and remains available in the appearance window, with a reminder that it keeps the visitor’s name, look and belongings. Saving a passkey or creating a backup code reserves the name permanently and retains the existing player ID, appearance, space, furniture and agent links. Returning in a remembered browser skips entry; otherwise “Use my room key” opens a small return panel over the room.
 
 Passkeys require device user verification and a discoverable credential, verified server-side with SimpleWebAuthn. A character can have up to five passkeys. Each key belongs to the exact room hostname where it was created: use the same address when returning (prefer `https://chat.grantm.ac/`). A password manager may sync a key across devices, or the browser may offer a phone/QR-code option. The server stores public keys; challenges expire after five minutes and can be used once.
 

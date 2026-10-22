@@ -16,6 +16,7 @@ import {createStickies} from './stickies.js';
 import {installTouchNavigation} from './touch-navigation.js';
 import {createVoice} from './voice.js';
 import {createBotPanel} from './bot-panel.js';
+import {robotFrames} from './robot-avatar.js';
 import {roomLayout,tileDrop,walkingDrop,tileAtPoint,isPoolWater,pitSeat,backWallTiles,onWalkway,STEP_DOWN,DANCE_ROWS} from '../shared/room-layout.js';
 import {floorSampler,createSpaceFloor,createMetalWalkway,picturePixels,pictureSampler,wallSegment} from './spaces.js';
 import {renderPicture,startSnapshots} from './snapshot.js';
@@ -661,10 +662,10 @@ function updatePeers(players){
       peer={mesh,label,atlas:null,carryTextures:null,carryLoading:null,version:0,lookKey:''};peers.set(data.id,peer);
     }
     peer.data=data;
-    const key=JSON.stringify(data.look);
+    const key=data.kind==='bot'?'lobby-robot':JSON.stringify(data.look);
     if(peer.lookKey!==key){
       peer.lookKey=key;const version=++peer.version;
-      appearance.frames(data.look).then(frames=>{
+      (data.kind==='bot'?robotFrames():appearance.frames(data.look)).then(frames=>{
         if(version!==peer.version)return;
         peer.atlas?.dispose();peer.atlas=makeAtlas(frames);peer.frameKey='';peer.mesh.visible=true;
         peer.carryTextures?.dispose();peer.carryTextures=null;peer.carryLoading=null;
