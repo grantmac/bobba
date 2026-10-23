@@ -1,4 +1,4 @@
-import {applySpaceLayout,moveSpaceLevel} from './lib/spaceLayout.js';
+import {applySpaceLayout} from './lib/spaceLayout.js';
 // Agents build into the room on a player's behalf through the hosted MCP endpoint
 // (api/mcp.js). The player makes a long-lived agent key in the room; only its hash is kept.
 import {mutation,query} from './_generated/server.js';
@@ -230,10 +230,6 @@ export const addSpace=mutation({args:{agentToken:v.string(),name:v.string(),leve
   await applySpaceLayout(ctx,room,next);
   const placed=layoutFor(room.options,next).spaces.at(-1);
   return {spaceId:space.id,name:space.name,level:space.level,x:placed.x,z:placed.z,width:placed.width,depth:placed.depth,tiles:placed.tiles.map(([x,z])=>({x,z}))};
-}});
-export const setSpaceLevel=mutation({args:{agentToken:v.string(),spaceId:v.string(),level:v.number()},handler:async(ctx,{agentToken,spaceId,level})=>{
-  const {player}=await agentFor(ctx,agentToken),room=await getRoom(ctx);
-  return moveSpaceLevel(ctx,room,player,spaceId,level);
 }});
 // Restyle a space: its name, floor finish and colour, wallpaper and colour, or an uploaded picture on
 // the floor or the back wall. Only the fields given change; null clears a wall choice or a picture.

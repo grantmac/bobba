@@ -19,8 +19,8 @@ export function floorSampler(floorImage,wood){
   };
 }
 const shade=(color,factor)=>color.map(c=>Math.max(0,Math.min(255,Math.round(c*factor))));
-export function createSpaceFloor(width,depth,sample){
-  const canvas=document.createElement('canvas');canvas.width=(width+depth)*32;canvas.height=(width+depth)*16+FACE+1;
+export function createSpaceFloor(width,depth,sample,{face=FACE,endCap=true}={}){
+  const canvas=document.createElement('canvas');canvas.width=(width+depth)*32;canvas.height=(width+depth)*16+face+1;
   const ctx=canvas.getContext('2d'),data=ctx.createImageData(canvas.width,canvas.height);
   for(let py=0;py<canvas.height;py++)for(let px=0;px<canvas.width;px++){
     const sx=px+.5-depth*32,sy=py+.5,x=sx/64+sy/32,z=sy/32-sx/64;
@@ -28,10 +28,10 @@ export function createSpaceFloor(width,depth,sample){
     if(x>=0&&x<width&&z>=0&&z<depth)color=sample(x,z);
     else{
       const downX=sy-(width-sx/64)*32,zEdge=(sy-downX)/32-sx/64;
-      if(downX>=0&&downX<FACE&&zEdge>=0&&zEdge<depth)color=shade(sample(width-.01,zEdge),downX<2?.95:.62);
+      if(endCap&&downX>=0&&downX<face&&zEdge>=0&&zEdge<depth)color=shade(sample(width-.01,zEdge),downX<2?.95:.62);
       else{
         const downZ=sy-(depth+sx/64)*32,xEdge=sx/64+(sy-downZ)/32;
-        if(downZ>=0&&downZ<FACE&&xEdge>=0&&xEdge<width)color=shade(sample(xEdge,depth-.01),downZ<2?.85:.48);
+        if(downZ>=0&&downZ<face&&xEdge>=0&&xEdge<width)color=shade(sample(xEdge,depth-.01),downZ<2?.85:.48);
       }
     }
     if(color)data.data.set([color[0],color[1],color[2],255],(py*canvas.width+px)*4);
@@ -39,7 +39,7 @@ export function createSpaceFloor(width,depth,sample){
   ctx.putImageData(data,0,0);return canvas;
 }
 // Steel tread plates with inset seams, raised grips and bolted edge channels.
-export function createMetalWalkway(width,depth){
+export function createMetalWalkway(width,depth,options){
   return createSpaceFloor(width,depth,(x,z)=>{
     const u=Math.floor(x*32)%32,v=Math.floor(z*32),back=depth*32-1;
     if(v===0)return [187,198,204];
@@ -60,7 +60,7 @@ export function createMetalWalkway(width,depth){
     }
     const tone=Math.floor(x)%2?0:5,brush=v%4===0?3:0;
     return [116+tone+brush,132+tone+brush,143+tone+brush];
-  });
+  },options);
 }
 // An uploaded picture's pixels, scaled down with smoothing when it is bigger than the area it will
 // cover (so photos do not sparkle), left crisp when it is smaller. Null if the browser cannot read it.

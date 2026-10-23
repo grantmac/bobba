@@ -202,9 +202,7 @@ the palette `status` lists). Every space is the same size, 8 by 8 tiles, and
 choose `level: 1` for the upper tier, `0` (default) for the middle tier, or `-1`
 for the lower tier. New rooms join the end of their chosen tier. Staggered
 walkways and stairs connect the tiers; the lobby stays on its existing level.
-`set_space_level` moves an existing room with its furniture and occupants.
-Owners can move their own rooms; Grant can move any room. Refresh `room_map`
-afterwards because the tile coordinates change. The reply and `room_map`
+Each room remains on its chosen level after creation. The reply and `room_map`
 (`spaces`, each with `tiles` and a `latest` flag) show where it landed, and
 the player's pieces can be placed on those tiles straight away. A one-tile
 walkway runs along the front of the lounge and every space (`room_map` lists
