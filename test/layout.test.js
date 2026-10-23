@@ -70,3 +70,31 @@ test('zones: the lobby is one zone and every space another, found without scanni
   assert.equal(roomLayout(main,spaces),layout);
   assert.notEqual(roomLayout(main,[...spaces]),layout);
 });
+
+test('terraced rows preserve the lobby and have connected, non-overlapping walkways and stairs',async()=>{
+  const {zoneAt,MAIN_ZONE}=await import('../shared/room-layout.js');
+  const spaces=[0,1,-1,1].map((level,i)=>({id:`tier-${i}`,width:8,depth:8,level}));
+  const plain=roomLayout(main),layout=roomLayout(main,spaces);
+  for(const key of ['mainTiles','danceTiles','pool','parking','lounge','pit','baseWidth','baseDepth'])assert.deepEqual(layout[key],plain[key]);
+  assert.equal(layout.tiles.length,layout.tileSet.size,'No room, landing or stair overlaps another tile');
+  const visited=new Set(['0,0']),queue=[[0,0]];
+  for(let i=0;i<queue.length;i++)for(const [dx,dz] of [[1,0],[-1,0],[0,1],[0,-1]]){
+    const p=[queue[i][0]+dx,queue[i][1]+dz],key=p.join(',');
+    if(layout.tileSet.has(key)&&!visited.has(key)){visited.add(key);queue.push(p);}
+  }
+  assert.equal(visited.size,layout.tileSet.size,'Every tier is reachable from the lobby');
+  for(const space of layout.spaces){
+    assert.equal(zoneAt(layout,space.x,space.z),space.id);
+    assert.equal(tileDrop(layout,space.x,space.z),0-space.level*48);
+    assert.ok(backWallTiles(layout).some(([x,z])=>x===space.x&&z===space.z));
+  }
+  for(const [x,z] of [...layout.walkwayTiles,...layout.stairTiles]){
+    assert.equal(zoneAt(layout,x,z),MAIN_ZONE);assert.ok(onWalkway(layout,x,z));
+    const drop=tileDrop(layout,x,z);
+    assert.deepEqual(tileAtPoint(layout,(x-z)*32,(x+z+1)*16+drop,0),{x,z},'Click selects the visible passage tile');
+  }
+  for(const stair of layout.stairs){
+    assert.equal(walkingDrop(layout,stair.topZ+.5,stair.x+.5),stair.topDrop);
+    assert.equal(walkingDrop(layout,stair.bottomZ+.5,stair.x+.5),stair.bottomDrop);
+  }
+});

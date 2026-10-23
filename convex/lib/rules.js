@@ -3,7 +3,7 @@ import {choices as appearanceChoices,colors as appearanceColors} from './appeara
 import {shapes,wallColors,floorColors,furniture} from './catalog.js';
 import {canPlace,isWallItem,canHang,takesFloor} from '../../shared/furniture-model.js';
 import {roomLayout,tileDrop,pitSeat,backWallTiles,onWalkway,zoneAt,zoneTiles,zoneTileSet,MAIN_ZONE,ZONE_CAP} from '../../shared/room-layout.js';
-import {SPACES_PER_PLAYER,SPACE_SIZE,SPACE_NAME_MAX,SPACE_FLOORS,SPACE_WALLS,SPACE_FITS,isHexColor} from '../../shared/spaces.js';
+import {SPACE_LEVELS,SPACES_PER_PLAYER,SPACE_SIZE,SPACE_NAME_MAX,SPACE_FLOORS,SPACE_WALLS,SPACE_FITS,isHexColor} from '../../shared/spaces.js';
 export {pitSeat,zoneAt,MAIN_ZONE,ZONE_CAP};
 export const isOnline=(player,now=Date.now())=>!!player&&(player.online??player.lastSeen>now-45000);
 // Everyone online, world-wide: only for rare admin-wide operations, never a hot path.
@@ -109,7 +109,8 @@ export function validateSpace(space,spaces,playerId,isAdmin=false){
   const name=validSpaceName(space.name),floor=space.floor??'carpet',floorColor=space.floorColor??floorColors[0];
   if(!SPACE_FLOORS.includes(floor))fail(`Floor must be one of ${SPACE_FLOORS.join(', ')}.`);
   if(!isHexColor(floorColor))fail('Floor colour must be a hex colour like #b59232.');
-  return {name,width:SPACE_SIZE,depth:SPACE_SIZE,floor,floorColor:floorColor.toLowerCase()};
+  const level=space.level??0;if(!SPACE_LEVELS.includes(level))fail('Choose the upper, middle, or lower level.');
+  return {name,width:SPACE_SIZE,depth:SPACE_SIZE,level,floor,floorColor:floorColor.toLowerCase()};
 }
 function validSpaceName(raw){
   const name=String(raw??'').normalize('NFKC').replace(/\s+/g,' ').trim();

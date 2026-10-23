@@ -1,3 +1,4 @@
+import {moveSpaceLevel} from './lib/spaceLayout.js';
 import {mutation,query,internalMutation,internalQuery} from './_generated/server.js';
 import {v} from 'convex/values';
 import {DEFAULT_ROOM,isOnline,onlinePlayers,zonePlayers,zonesPlayers,playerZone,MAIN_ZONE,ZONE_CAP,zoneAt,fail,validName,validateLook,validateRoom,validateFurniture,tileSet,wallTileSet,wallChecker,isPlaced,cells,atTime,freePosition,findPath,playerTiles,layoutFor,pitSeat} from './lib/rules.js';
@@ -317,6 +318,10 @@ export const move=mutation({args:{token:v.string(),x:v.number(),z:v.number(),sea
   return await movePlayer(ctx,await playerFor(ctx,args.token),args);
 }});
 // Resolve the destination from the live map; callers never supply landing coordinates.
+export const setSpaceLevel=mutation({args:{token:v.string(),spaceId:v.string(),level:v.number()},handler:async(ctx,{token,spaceId,level})=>{
+  const player=await playerFor(ctx,token),room=await roomFor(ctx);
+  return moveSpaceLevel(ctx,room,player,spaceId,level);
+}});
 export const teleport=mutation({args:{token:v.string(),spaceId:v.string()},handler:async(ctx,{token,spaceId})=>{
   const p=await playerFor(ctx,token),now=Date.now(),map=await roomFor(ctx),layout=layoutFor(map.options,map.spaces??[]);
   const space=layout.spaces.find(s=>s.id===spaceId);

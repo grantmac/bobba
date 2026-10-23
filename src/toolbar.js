@@ -1,7 +1,7 @@
 import {createShare} from './share.js';
 import {createSpaceNavigator} from './space-navigator.js';
 
-export function createToolbar({onRoomEdit,onFurniture,onChat,onTyping,onAppearance,onGesture,onMusicMute,onMusicVolume,onTeleport,admin=true}) {
+export function createToolbar({onRoomEdit,onFurniture,onChat,onTyping,onAppearance,onGesture,onMusicMute,onMusicVolume,onTeleport,onLevelChange,admin=true}) {
   const bar=document.createElement('div');bar.className='room-toolbar';
   bar.innerHTML=`<form class="room-chat">
     <div class="speech-picker"><button type="button" id="speech-mode" aria-label="Speech mode: Say" aria-haspopup="menu" aria-expanded="false"><span>Say</span><img src="/assets/bar/dropdown-arrow.png" alt=""></button>
@@ -81,7 +81,7 @@ export function createToolbar({onRoomEdit,onFurniture,onChat,onTyping,onAppearan
   furniture.innerHTML='<img src="/assets/bar/catalogue.png" alt="">';icons.append(furniture);
   const spaces=document.createElement('button');spaces.type='button';spaces.className='bar-icon spaces-toggle';spaces.disabled=true;spaces.title='Teleport';spaces.setAttribute('aria-label','Teleport');spaces.setAttribute('aria-haspopup','dialog');
   spaces.innerHTML='<img src="/assets/bar/teleport.png" width="32" height="40" alt="">';
-  const navigator=onTeleport?createSpaceNavigator({onTeleport,onClose:()=>focusTrigger(spaces)}):null;
+  const navigator=onTeleport?createSpaceNavigator({onTeleport,onLevelChange,onClose:()=>focusTrigger(spaces)}):null;
   spaces.onclick=()=>{setToolsOpen(false);setMusicOpen(false);setActionsOpen(false);setOpen(false);navigator.open();};
   if(navigator)icons.append(spaces);
   const share=document.createElement('button');share.type='button';share.className='bar-icon share-toggle';share.title='Share the room';share.setAttribute('aria-label','Share the room');share.setAttribute('aria-haspopup','dialog');

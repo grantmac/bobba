@@ -109,3 +109,7 @@ test('items keep the player who built them',()=>{
  assert.deepEqual(restoreItems([built,{...sofa,id:'b',owner:7}],definitions),[built]);
  assert.deepEqual(pickupWithContents([built],'a')[0].owner,'p1');
 });
+
+test('saved furniture keeps the negative coordinates used by upper terraces',()=>{
+ const upper={...sofa,x:10,z:-10};assert.deepEqual(restoreItems([upper],definitions),[upper]);
+});

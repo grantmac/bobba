@@ -90,7 +90,7 @@ export function restoreItems(value,definitions){
   return value.slice(0,5000).filter(item=>{
     if(!item||typeof item.id!=='string'||seen.has(item.id)||!definitions.has(item.type))return false;
     if(!definitions.get(item.type).views.some(v=>v.direction===item.rotation))return false;
-    if(!(item.x===null&&item.z===null)&&!(isPlaced(item)&&item.x>=0&&item.z>=0))return false;
+    if(!(item.x===null&&item.z===null)&&!isPlaced(item))return false;
     if(item.supportId!==undefined&&(typeof item.supportId!=='string'||!isPlaced(item)))return false;
     // A power flag belongs to the decks and to built pieces marked switchable.
     if(item.on!==undefined&&(typeof item.on!=='boolean'||!(item.type==='custom_dj_decks'||definitions.get(item.type).switchable)))return false;

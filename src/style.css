@@ -503,3 +503,7 @@ input:focus,textarea:focus,select:focus{outline:none}
 .agent-entry .pairing-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
 .agent-entry button.pairing-approve{background:#d4e7cb}
 .agent-entry button[hidden]{display:none}
+
+.space-level{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:4px 10px 10px;font-size:11px;color:#59616a}
+.space-level select{min-height:36px;min-width:120px;padding:4px 8px;font:inherit;color:#25303a;background:#fff;border:1px solid #9aa4ae;border-radius:4px}
+.space-level select:focus-visible{outline:2px solid #2974b7;outline-offset:2px}
