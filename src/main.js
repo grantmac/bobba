@@ -870,7 +870,14 @@ try{
       for(const zone of new Set([zoneAt(layout,item.x,item.z),MAIN_ZONE])){const near=all.filter(p=>p.zone===zone);if(near.some(p=>p.kind!=='bot'))return near;}
       return all;
     },
-    programMe:()=>network.me?.id??null,onProgramSave:(itemId,version,revision,state)=>network.programs.save(itemId,version,revision,state),onProgramUse:itemId=>network.programs.interact(itemId),
+    programProximityPlayers:item=>{
+      if(!layout)return [];
+      const zone=zoneAt(layout,item.x,item.z),now=network.now();
+      return [...(selfPlayer?[selfPlayer]:[]),...[...peers.values()].map(peer=>peer.data)]
+        .map(player=>({...player,...samplePlayer(player,now)}))
+        .filter(player=>zoneAt(layout,Math.floor(player.x),Math.floor(player.z))===zone);
+    },
+    programMe:()=>network.me?.id??null,onProgramSave:(itemId,version,revision,state)=>network.programs.save(itemId,version,revision,state),onProgramSignal:(itemId,version,revision,name,data)=>network.programs.signal(itemId,version,revision,name,data),onProgramUse:itemId=>network.programs.interact(itemId),
     programNow:()=>network.now(),programReducedMotion:()=>reducedMotion.matches,programRoom:()=>network.population,
     prepareImage,worldPoint:iso,isTile:(x,z)=>valid(x,z)&&!isPoolWater(layout,x,z)&&!onWalkway(layout,x,z),floorHeight,getAvatar:()=>position,stopWalking,onChanged:()=>{ensureFreeTile();positionAwayPoster();positionDeckSign();},onSit:sitOn,onUse:useItem,
     // Furniture carries its own builder credit; dismiss the character/space stand.

@@ -2,6 +2,25 @@
 
 The room is personally funded. Cost is an implementation constraint, including development and agent tooling. This pass adds no services or paid dependencies.
 
+## Connected furniture and proximity — 23 October 2026
+
+Proximity uses existing sampled player presence and local worker ticks: it adds
+no subscriptions, server timers or writes. Connections and retained signals are
+included in the existing per-zone `programs.list` subscription. This does add
+indexed connection reads and endpoint/program reads for connected pieces;
+signal changes invalidate that zone's program snapshot. Retained values are
+returned to both source and receiver, so their payload contributes to egress.
+
+Each source is capped at one signal mutation per second, with at most eight
+receivers and 1 KiB of payload. A successful send writes one connection document
+per active receiver and the source's instance revision (at most nine documents).
+Configuration writes occur only when links change. Unchanged sensor output
+requires no mutation: the executable sensor test runs its first tick and 200
+further ticks over ten simulated seconds and observes exactly one send, then
+one further send on departure and one after a receiver value is invalidated.
+Existing network-budget tests also remain unchanged and pass. These are
+operation-budget checks, not measurements of production billing or cache hits.
+
 ## Dashboard baseline — 22 October 2026
 
 Read from the [project usage report](https://dashboard.convex.dev/t/grant-1845a/settings/usage?projectSlug=grantmac), for the billing period beginning 22 October. These are rounded cumulative figures, not a controlled workload or a monthly forecast.

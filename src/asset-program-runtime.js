@@ -1,14 +1,14 @@
 import {assetProgramBridge} from './asset-program-bridge.js';
 import workerSource from './asset-program-worker.js?raw';
-import {programVisual,programState,programHost} from '../shared/asset-program.js';
+import {programVisual,programState,programHost,programSignal,programNearby} from '../shared/asset-program.js';
 
 // The program has no game-origin DOM, storage, credentials, or network access.
 // Blob workers inherit the iframe CSP; never add allow-same-origin to this sandbox.
-export function createProgramSandbox({program,views,frameCount=0,onVisual,onSave,onError}){
+export function createProgramSandbox({program,views,frameCount=0,onVisual,onSave,onSignal,onError}){
   let connection,latest=null,ended=false,failed=false,retryOnWake=document.hidden;
   function connect(){
     failed=false;
-    connection=createProgramConnection({program,views,frameCount,onVisual,onSave,onError:(message,{recoverable=false}={})=>{
+    connection=createProgramConnection({program,views,frameCount,onVisual,onSave,onSignal,onError:(message,{recoverable=false}={})=>{
       failed=true;
       // One fresh worker per return, including a timeout detected after visibility
       // changes. Never retry a broken program continuously on animation ticks.
@@ -29,11 +29,11 @@ export function createProgramSandbox({program,views,frameCount=0,onVisual,onSave
   };
 }
 
-function createProgramConnection({program,views,frameCount,onVisual,onSave,onError}){
+function createProgramConnection({program,views,frameCount,onVisual,onSave,onSignal,onError}){
   const iframe=document.createElement('iframe');iframe.hidden=true;iframe.title='Furniture program';iframe.sandbox='allow-scripts';
   const bootstrap=`(${assetProgramBridge.toString()})(${JSON.stringify(workerSource)});`;
   iframe.srcdoc=`<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' blob:; worker-src blob:; connect-src 'none';"><script>${bootstrap.replaceAll('</script','<\\/script')}</script>`;
-  const channel=new MessageChannel();let ready=false,busy=false,ended=false,initialized=false,sequence=0,pending=null,heartbeat=performance.now(),sentAt=0,saving=false;
+  const channel=new MessageChannel();let ready=false,busy=false,ended=false,initialized=false,sequence=0,pending=null,heartbeat=performance.now(),sentAt=0,saving=false,signaling=false,lastSignal=-Infinity;
   function fail(message,recoverable=false){if(ended)return;dispose();if(!recoverable&&!document.hidden)onVisual({});onError(message,{recoverable});}
   function flush(){
     if(!ready||busy||!pending||ended)return;
@@ -45,6 +45,20 @@ function createProgramConnection({program,views,frameCount,onVisual,onSave,onErr
     if(data.type==='heartbeat'){heartbeat=performance.now();return;}
     if(data.type==='ready'){ready=true;heartbeat=performance.now();flush();return;}
     if(data.type==='error'){fail(String(data.message).slice(0,300),data.recoverable===true);return;}
+    if(data.type==='signal'){
+      if(signaling){fail('Too many pending signals.');return;}signaling=true;
+      try{
+        programSignal(data.name,data.data);
+        if(!Number.isSafeInteger(data.revision)||data.revision<0)throw new Error('Invalid signal revision.');
+        if(performance.now()-lastSignal<1000)throw new Error('Signals can be sent once per second per piece.');
+        lastSignal=performance.now();
+        if(!onSignal)throw new Error('Signals are unavailable.');
+        const result=await onSignal(data.name,data.data,data.revision);
+        if(!ended)channel.port1.postMessage({type:'signaled',id:data.id,...result});
+      }catch(error){if(!ended)channel.port1.postMessage({type:'signaled',id:data.id,error:error.message});}
+      finally{signaling=false;}
+      return;
+    }
     if(data.type==='frame'){
       if(!busy||data.sequence!==sequence){fail('Unexpected program response.');return;}
       try{onVisual(programVisual(data.visual,views,frameCount));}catch(error){fail(error.message);return;}
@@ -82,7 +96,7 @@ function createProgramConnection({program,views,frameCount,onVisual,onSave,onErr
   return {update(world){pending=world;flush();},dispose};
 }
 
-export function createAssetPrograms({getPlayers,getMe,saveState,getRoom=()=>({people:null}),getTime=null,getReducedMotion=()=>false,onError=console.warn,sandbox=createProgramSandbox}){
+export function createAssetPrograms({getPlayers,getProximityPlayers=getPlayers,getMe,saveState,sendSignal,getRoom=()=>({people:null}),getTime=null,getReducedMotion=()=>false,onError=console.warn,sandbox=createProgramSandbox}){
   const instances=new Map(),visuals=new Map();let records=new Map(),lastTick=-Infinity,received=false,timer=null;
   function stop(id,entry){entry.runtime.dispose();instances.delete(id);visuals.delete(id);}
   const runtime={
@@ -96,12 +110,16 @@ export function createAssetPrograms({getPlayers,getMe,saveState,getRoom=()=>({pe
         wanted.add(item.id);let entry=instances.get(item.id);
         if(entry&&(entry.version!==program.revision||entry.type!==item.type)){stop(item.id,entry);entry=null;}
         if(!entry){
-          const next={type:item.type,version:program.revision,item,program};instances.set(item.id,next);
+          const next={type:item.type,version:program.revision,item,program,definition:def};instances.set(item.id,next);
           next.runtime=sandbox({program,views:def.views.map(v=>v.direction),frameCount:Math.max(0,...(def.parts??[]).map(p=>p.frames?.length??0)),
             onVisual:visual=>{if(instances.get(item.id)===next)visuals.set(item.id,visual);},
             onSave:(state,revision)=>{
               if(instances.get(item.id)!==next||programHost(getPlayers(item))!==getMe())throw new Error('This client is no longer hosting this program.');
               return saveState(item.id,program.revision,revision,state);
+            },
+            onSignal:(name,data,revision)=>{
+              if(instances.get(item.id)!==next||programHost(getPlayers(next.item))!==getMe())throw new Error('This client is no longer hosting this program.');
+              return sendSignal(item.id,program.revision,revision,name,data);
             },
             onError:message=>onError(`${def.name}: ${message}`)});
         }else entry.item=item;
@@ -121,7 +139,8 @@ export function createAssetPrograms({getPlayers,getMe,saveState,getRoom=()=>({pe
         const row=records.get(id),stored=row?.version===entry.version?row:null;
         const occupants=players.filter(p=>p.seatId===id&&!p.moving).map(({id,direction})=>({id,direction}));
         entry.runtime.update({item:{id,type:entry.item.type,x:entry.item.x,z:entry.item.z,direction:entry.item.rotation,on:entry.item.on!==false},occupants,
-          room:getRoom(),time,reducedMotion,isHost:!!host&&host===getMe(),state:stored?stored.state:entry.program.initialState,revision:stored?.revision??0,serial:stored?.serial??0,events:stored?.events??[]});
+          room:getRoom(),nearbyPlayers:programNearby(entry.item,entry.definition,getProximityPlayers(entry.item)),connections:stored?.connections??[],signals:stored?.signals??[],signalRevision:stored?.signalRevision??0,
+          time,reducedMotion,isHost:!!host&&host===getMe(),state:stored?stored.state:entry.program.initialState,revision:stored?.revision??0,serial:stored?.serial??0,events:stored?.events??[]});
       }
     },
     visual:id=>visuals.get(id)??{},

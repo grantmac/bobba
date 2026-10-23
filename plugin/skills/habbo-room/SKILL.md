@@ -156,6 +156,20 @@ furniture API. This supports arbitrary logic using ticks, clicks, power,
 seating events, visual direction/offset/opacity/animation, occupant carry,
 and per-copy shared state. It cannot fetch remote code or access the game DOM.
 
+Programs can also detect nearby humans with `setProximityRadius(0..8)`,
+`nearbyPlayers`, and `proximityEnter`/`proximityLeave`. Connect **placed copies**
+using IDs from `room_map`: read `get_connections({item_id})`, then call
+`set_connections({item_id,connections:[{name:"occupied",target_item_id}]})`.
+Both ends need programs, must be in the same space, and must be yours (or you
+must be Grant). There are eight links maximum in each direction. Empty
+connections disconnects all outputs. Source code calls `await api.sendSignal`
+only when `api.isHost`; receivers read `api.signals` or handle `signal` events.
+Signals retain the latest value, so late viewers reconstruct the current effect.
+They are not a guaranteed event queue. Compare `api.connections` data before
+sending to avoid idle writes; send at most once per second with at most 1 KiB
+of JSON. The `program_api` reference includes a complete proximity sensor and
+connected light example, including retries and initialization after edits.
+
 Programs load live without a room reload and stay alive between events. Each
 placed copy has its own state. Editing resets copies to the new defaults;
 `source: null` removes the program. Power is available on programmed pieces;
