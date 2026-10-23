@@ -144,6 +144,24 @@ it('calls Fireworks with tool definitions and publishes one reply without a feed
   expect((await t.run(ctx=>ctx.db.query('botEvents').collect())).map(e=>e.status)).toEqual(['done']);
 });
 
+it('hears world chat and remembers its remote speaker while keeping movement local',async()=>{
+  await setup();
+  const {agentToken}=await t.mutation(api.agents.createKey,{token});
+  const {spaceId}=await t.mutation(api.agents.addSpace,{agentToken,name:'Workshop'});
+  await t.mutation(api.room.teleport,{token,spaceId});
+  const visitor=await t.query(api.room.me,{token});
+  await t.run(ctx=>ctx.db.insert('botMemories',{text:'Visitor likes jazz.',playerId:visitor.id,identityVersion:0,locked:false,source:'Visitor',updatedAt:Date.now()}));
+  const job=await message('Lobby, can you hear me from the Workshop?');
+  expect(job).not.toBeNull();
+  expect(job.context.events).toEqual([expect.objectContaining({name:'Visitor',body:'Lobby, can you hear me from the Workshop?'})]);
+  expect(job.context.recent).toContainEqual(expect.objectContaining({name:'Visitor',body:'Lobby, can you hear me from the Workshop?'}));
+  expect(job.context.memories).toContainEqual(expect.objectContaining({text:'Visitor likes jazz.'}));
+  expect(job.context.players.map(p=>p.id)).not.toContain(visitor.id);
+  await finish(job,{...emptyTurn(),reply:'Yes, Visitor!'});
+  expect((await t.query(api.room.worldChatFeed,{token})).filter(m=>m.name==='Lobby').map(m=>m.body)).toEqual(['Yes, Visitor!']);
+  expect((await resident()).zone).toBe('main');
+});
+
 it('warns first, then blocks every session and building key, and lets Grant restore access',async()=>{
   await setup();const player=await t.query(api.room.me,{token});
   const {agentToken}=await t.mutation(api.agents.createKey,{token});
