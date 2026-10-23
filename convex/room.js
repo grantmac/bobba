@@ -311,8 +311,8 @@ export const leave=mutation({args:{token:v.string()},handler:async(ctx,{token})=
 export const appearance=mutation({args:{token:v.string(),look:v.any()},handler:async(ctx,{token,look})=>{
   const p=await playerFor(ctx,token);validateLook(look);await ctx.db.patch(p._id,{look,lookVersion:(p.lookVersion??0)+1,lastSeen:Date.now()});
 }});
-// A walk loads only the zones it can pass through: where the player is, where they are going,
-// and the lobby that joins everything. Entering a zone counts against its cap.
+// A walk starts with the departure, destination and lobby, then checks any
+// connecting rooms needed for a detour. Entering a zone counts against its cap.
 export const move=mutation({args:{token:v.string(),x:v.number(),z:v.number(),seatId:v.optional(v.string()),direction:v.optional(v.union(v.literal(0),v.literal(2),v.literal(4),v.literal(6)))},handler:async(ctx,args)=>{
   return await movePlayer(ctx,await playerFor(ctx,args.token),args);
 }});
@@ -348,14 +348,31 @@ export async function movePlayer(ctx,p,args){
   const map=await roomFor(ctx),layout=layoutFor(map.options,map.spaces??[]);
   if(!layout.tileSet.has(`${args.x},${args.z}`))fail('That tile cannot be reached.');
   const from=playerZone(p),to=zoneAt(layout,args.x,args.z);
-  const room=await loadZones(ctx,map,[from,to,MAIN_ZONE]);
+  // Presence reserves the destination zone as soon as a walk starts. A second
+  // click must also load the space the avatar is physically walking out of.
+  const position=atTime(p,now),source=zoneAt(layout,position.x,position.z);
+  const room=await loadZones(ctx,map,[from,source,to,MAIN_ZONE]);
   const target={x:args.x,z:args.z};let seat=null;
   let spot=null;
   if(args.seatId){seat=room.furniture.find(i=>i.id===args.seatId&&isPlaced(i));spot=seat&&seatFor(seat,room.definitions[seat.type]);if(!spot||!spot.cells.some(([x,z])=>x===target.x&&z===target.z))fail('That seat is not available.');}
   const online=await zonesPlayers(ctx,room.zones,now);
   if(to!==from&&online.filter(other=>other._id!==p._id&&playerZone(other)===to).length>=ZONE_CAP)fail('That space is full right now.');
   if(seat&&online.some(other=>other._id!==p._id&&other.seatId===seat.id&&Math.floor(other.route.at(-1).x)===target.x&&Math.floor(other.route.at(-1).z)===target.z))fail('Someone is already using that seat.');
-  const route=findPath(room,atTime(p,now),target,seat?.id,playerTiles(online,now,p._id));
+  const occupied=playerTiles(online,now,p._id);
+  let route=findPath(room,position,target,seat?.id,occupied);
+  // Furniture can leave a tile accessible only through a neighbouring room.
+  // Explore the full floor plan only when necessary, then load and validate
+  // every newly crossed zone before accepting a path through it.
+  while(!route){
+    const candidate=findPath({...room,zones:null},position,target,seat?.id,occupied);
+    if(!candidate)break;
+    const missing=[...new Set(candidate.map(point=>zoneAt(layout,point.x,point.z)))].filter(zone=>!room.zones.includes(zone));
+    if(!missing.length)break;
+    const extra=await loadZones(ctx,{...map},missing);
+    room.furniture.push(...extra.furniture);Object.assign(room.definitions,extra.definitions);room.zones.push(...missing);
+    for(const tile of playerTiles(await zonesPlayers(ctx,missing,now),now,p._id))occupied.add(tile);
+    route=findPath(room,position,target,seat?.id,occupied);
+  }
   if(!route)fail('That tile cannot be reached.');
   const a=route.at(-2),b=route.at(-1),dx=a?b.x-a.x:0,dz=a?b.z-a.z:0;
   // The sunken sofa's ring tiles seat whoever stops on them, facing the middle.
