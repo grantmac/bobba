@@ -109,7 +109,11 @@ export function validateSpace(space,spaces,playerId,isAdmin=false){
   const name=validSpaceName(space.name),floor=space.floor??'carpet',floorColor=space.floorColor??floorColors[0];
   if(!SPACE_FLOORS.includes(floor))fail(`Floor must be one of ${SPACE_FLOORS.join(', ')}.`);
   if(!isHexColor(floorColor))fail('Floor colour must be a hex colour like #b59232.');
-  const level=space.level??0;if(!SPACE_LEVELS.includes(level))fail('Choose the upper, middle, or lower level.');
+  // Balance the built width, so new rooms fill shorter tiers without moving existing ones.
+  const widths=new Map([0,1,-1].map(level=>[level,0]));
+  for(const existing of spaces)widths.set(existing.level??0,widths.get(existing.level??0)+existing.width);
+  const automatic=[...widths].sort((a,b)=>a[1]-b[1])[0][0];
+  const level=space.level??automatic;if(!SPACE_LEVELS.includes(level))fail('Choose the upper, middle, or lower level.');
   return {name,width:SPACE_SIZE,depth:SPACE_SIZE,level,floor,floorColor:floorColor.toLowerCase()};
 }
 function validSpaceName(raw){
