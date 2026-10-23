@@ -1,7 +1,5 @@
 import {fail} from './rules.js';
 
-export const GUEST_SESSION_AGE=30*24*60*60*1000;
-export const ADMIN_SESSION_AGE=12*60*60*1000;
 export const randomSecret=()=>[...crypto.getRandomValues(new Uint8Array(32))].map(b=>b.toString(16).padStart(2,'0')).join('');
 export const hash=async value=>[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))].map(b=>b.toString(16).padStart(2,'0')).join('');
 
@@ -30,6 +28,6 @@ export async function rateLimit(ctx,key,maximum,windowMs){
 export async function newSession(ctx,player){
   activeIdentity(player);
   const token=randomSecret();
-  await ctx.db.insert('sessions',{tokenHash:await hash(token),playerId:player._id,role:player.role,expiresAt:Date.now()+(player.role==='admin'?ADMIN_SESSION_AGE:GUEST_SESSION_AGE)});
+  await ctx.db.insert('sessions',{tokenHash:await hash(token),playerId:player._id,role:player.role});
   return token;
 }

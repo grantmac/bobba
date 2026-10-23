@@ -62,7 +62,9 @@ export function createMultiplayer(){
         return me;
       }catch(error){
         if(errorMessage(error).includes('removed from the room'))throw new Error(errorMessage(error));
-        if(error?.data){token='';try{localStorage.removeItem(KEY);}catch{}return null;}
+        if(typeof error?.data==='string'&&/session has ended|Please enter the room again|character is no longer available/.test(error.data)){
+          token='';remembered=false;try{localStorage.removeItem(KEY);}catch{}return null;
+        }
         throw new Error('The room server could not be reached. Please try again.');
       }
     },

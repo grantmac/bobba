@@ -130,12 +130,12 @@ describe('room access and persistence',()=>{
       expect(reads).toContain('sessions');
       expect(reads.every(id=>['sessions','agentLinks','visits'].includes(id))).toBe(true);
     }
-    // Reducing dependencies must not bypass session expiry or removal from the room.
+    // Reducing dependencies must not bypass revocation or removal from the room.
     const session=await t.run(ctx=>ctx.db.query('sessions').first());
     const queries=[api.agents.attached,api.visits.page];
     await t.run(ctx=>ctx.db.patch(session._id,{blockedUntil:Date.now()+600000}));
     for(const query of queries)await expect(t.query(query,{token})).rejects.toThrow('removed from the room');
-    await t.run(ctx=>ctx.db.patch(session._id,{blockedUntil:undefined,expiresAt:1}));
+    await t.run(ctx=>ctx.db.delete(session._id));
     for(const query of queries)await expect(t.query(query,{token})).rejects.toThrow('session');
   });
   it('publishes connected presence without a clock and removes disconnected players',async()=>{
@@ -218,7 +218,7 @@ describe('room access and persistence',()=>{
     const me=await guest();
     await expect(t.query(api.room.checkName,{name:' visitor '})).rejects.toThrow('already taken');
     await t.run(ctx=>ctx.db.patch(me.id,{lastSeen:Date.now()-4*60*60*1000-1}));
-    await t.query(api.room.checkName,{name:'Visitor'});
+    await expect(t.query(api.room.checkName,{name:'Visitor'})).rejects.toThrow('already taken');
   });
 
   it('marks a quiet player away once and resumes the same visit, position and seat',async()=>{
@@ -517,7 +517,7 @@ describe('room access and persistence',()=>{
     expect((await t.query(api.room.me,{token})).look).toEqual(changed);
     await expect(t.mutation(api.room.join,{token:otherToken,name:'VISITOR',look})).rejects.toThrow('already taken');
     await expect(t.query(api.room.state,{token:otherToken})).rejects.toThrow('session');
-    await t.run(async ctx=>{const s=await ctx.db.query('sessions').first();await ctx.db.patch(s._id,{expiresAt:1});});
+    await t.run(async ctx=>{const s=await ctx.db.query('sessions').first();await ctx.db.delete(s._id);});
     await expect(t.mutation(api.room.move,{token,x:0,z:0})).rejects.toThrow('session');
   });
   it('validates looks and prevents extra privilege fields',async()=>{
@@ -621,9 +621,10 @@ describe('room access and persistence',()=>{
     await t.mutation(api.room.gesture,{token,action:'dance'});
     expect((await t.query(api.room.state,{token})).me.action).toBeNull();
   });
-  it('frees a guest name four hours after its holder was last seen, but never Grant',async()=>{
+  it('frees a guest name four hours after explicit sign-out, but never Grant',async()=>{
     await guest();
     await expect(t.mutation(api.room.join,{token:otherToken,name:'Visitor',look})).rejects.toThrow('already taken');
+    await t.mutation(api.room.leave,{token});
     const later=Date.now()+4*60*60*1000+60000,clock=vi.spyOn(Date,'now').mockReturnValue(later);
     try{
       await expect(t.mutation(api.room.join,{token:otherToken,name:'Grant',look})).rejects.toThrow('reserved');

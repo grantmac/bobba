@@ -2,7 +2,7 @@ import {query,mutation,internalQuery,internalMutation} from './_generated/server
 import {v} from 'convex/values';
 import {playerFor,sessionFor,publicPlayer} from './room.js';
 import {fail} from './lib/rules.js';
-import {hash,randomSecret,relyingParty,activeIdentity,rateLimit,newSession,GUEST_SESSION_AGE} from './lib/identity.js';
+import {hash,randomSecret,relyingParty,activeIdentity,rateLimit,newSession} from './lib/identity.js';
 
 export const status=query({args:{token:v.string()},handler:async(ctx,{token})=>{
   const player=await playerFor(ctx,token);
@@ -10,10 +10,10 @@ export const status=query({args:{token:v.string()},handler:async(ctx,{token})=>{
   const backup=await ctx.db.query('recoveryKeys').withIndex('by_player',q=>q.eq('playerId',player._id)).unique();
   return {saved:!!player.savedAt,name:player.name,passkeys:keys.length,hasBackup:!!backup,backupAvailable:player.role!=='admin'};
 }});
-// Active visitors keep their browser session. Admin sessions retain their fixed lifetime.
+// Browser sessions persist until explicitly revoked, including legacy sessions.
 export const resume=mutation({args:{token:v.string()},handler:async(ctx,{token})=>{
   const session=await sessionFor(ctx,token),player=activeIdentity(await ctx.db.get(session.playerId));
-  if(player.role!=='admin'&&session.expiresAt<Date.now()+7*24*60*60*1000)await ctx.db.patch(session._id,{expiresAt:Date.now()+GUEST_SESSION_AGE});
+  if(session.expiresAt!==undefined)await ctx.db.patch(session._id,{expiresAt:undefined});
   return publicPlayer(player,true);
 }});
 

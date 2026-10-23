@@ -11,7 +11,7 @@ beforeEach(()=>{
   vi.resetAllMocks();
   vi.stubEnv('VITE_CONVEX_URL','https://example.convex.cloud');
   storage=new Map([[key,token]]);
-  vi.stubGlobal('localStorage',{getItem:k=>storage.get(k)??null,removeItem:k=>storage.delete(k)});
+  vi.stubGlobal('localStorage',{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)});
   vi.stubGlobal('window',{addEventListener:vi.fn()});
   vi.stubGlobal('document',{addEventListener:vi.fn()});
   vi.stubGlobal('location',{hash:''});
@@ -19,6 +19,18 @@ beforeEach(()=>{
 afterEach(()=>{vi.unstubAllGlobals();vi.unstubAllEnvs();});
 
 describe('restoring a remembered session',()=>{
+  it.each(['join','passkey','backup'])('persists a %s login for a fresh browser client',async method=>{
+    storage.clear();client.mutation.mockResolvedValue(player);
+    client.action=vi.fn().mockResolvedValue({token,player});
+    const first=createMultiplayer();
+    if(method==='join')await first.join('Visitor',{});
+    else if(method==='passkey')await first.identity.authenticate('challenge',{});
+    else{client.mutation.mockResolvedValueOnce({token,player});await first.identity.useBackup('code');}
+    const rememberedToken=storage.get(key);expect(rememberedToken).toMatch(/^[a-f0-9]{64}$/);
+    expect(first.identity.remembered).toBe(true);
+    const returning=createMultiplayer();expect(await returning.resume()).toEqual(player);
+    expect(client.mutation).toHaveBeenLastCalledWith(api.identity.resume,{token:rememberedToken});
+  });
   it('keeps a pairing across reloads in this tab and removes it from the address bar',()=>{
     const pairs=new Map(),code='d'.repeat(64),replaceState=vi.fn();
     vi.stubGlobal('sessionStorage',{getItem:k=>pairs.get(k)??null,setItem:(k,v)=>pairs.set(k,v),removeItem:k=>pairs.delete(k)});
@@ -62,6 +74,11 @@ describe('restoring a remembered session',()=>{
     client.mutation.mockRejectedValue(new Error('Network unavailable'));
     await expect(createMultiplayer().resume()).rejects.toThrow('The room server could not be reached');
     expect(client.query).not.toHaveBeenCalled();
+    expect(storage.get(key)).toBe(token);
+  });
+  it('keeps the remembered login on unrelated application errors',async()=>{
+    client.mutation.mockRejectedValue(Object.assign(new Error('Unavailable'),{data:'Please try again later.'}));
+    await expect(createMultiplayer().resume()).rejects.toThrow('The room server could not be reached');
     expect(storage.get(key)).toBe(token);
   });
   it('keeps the character when the older endpoint is unreachable',async()=>{

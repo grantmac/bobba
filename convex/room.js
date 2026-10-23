@@ -9,8 +9,7 @@ import {definitionsFor} from './lib/assets.js';
 import {loadZones,zoneItems,inventoryItems,itemDoc,applyChanges,changesFromList,allItems,replaceAll,ZONE_CHANGE_LIMIT} from './lib/furnitureStore.js';
 import {queueBotEvent,wakeBotRoaming} from './lib/bot_events.js';
 import {HEARTBEAT_INTERVAL,AWAY_AFTER,CONNECTION_TIMEOUT,connectionTimeout,connectionAlive,connectionActive} from '../shared/presence-policy.js';
-const SESSION_AGE=30*24*60*60*1000,ADMIN_AGE=12*60*60*1000;
-// A guest name frees up this long after its holder was last seen; Grant is reserved for good.
+// Only guests without a session or saved recovery method can release their name.
 const NAME_REUSE_AFTER=4*60*60*1000;
 const CHAT_WINDOW=30;
 async function hash(value){return [...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(value)))].map(b=>b.toString(16).padStart(2,'0')).join('');}
@@ -19,7 +18,7 @@ function validToken(token){if(!/^[a-f0-9]{64}$/.test(token))fail('Please enter t
 export async function sessionFor(ctx,token){
   validToken(token);const digest=await hash(token);
   const session=await ctx.db.query('sessions').withIndex('by_token',q=>q.eq('tokenHash',digest)).unique();
-  if(!session||session.expiresAt<Date.now())fail('Your session has ended. Please enter the room again.');
+  if(!session)fail('Your session has ended. Please enter the room again.');
   if((session.blockedUntil??0)>Date.now())fail('You have been removed from the room for 10 minutes. Please return later.');
   return session;
 }
@@ -86,7 +85,7 @@ export const checkName=query({args:{name:v.string(),entryCode:v.optional(v.strin
   if(player?.kind==='bot')fail('That name is reserved for the room bot.');
   if(player?.savedAt&&!entryCode)fail('That name belongs to a saved character. Use your room key or choose another name.');
   if((player?.blockedUntil??0)>Date.now())fail('You have been removed from the room for 10 minutes. Please return later.');
-  if(player&&(isOnline(player)||Date.now()-player.lastSeen<NAME_REUSE_AFTER))fail('That name is already taken. Please choose another name.');
+  if(player&&(isOnline(player)||Date.now()-player.lastSeen<NAME_REUSE_AFTER||await ctx.db.query('sessions').withIndex('by_player',q=>q.eq('playerId',player._id)).first()))fail('That name is already taken. Please choose another name.');
 }});
 export const join=mutation({args:{token:v.string(),name:v.string(),look:v.any(),entryCode:v.optional(v.string()),replaceLook:v.optional(v.boolean()),pageOrigin:v.optional(v.string())},handler:async(ctx,args)=>{
   validToken(args.token);validateLook(args.look);const named=validName(args.name),digest=await hash(args.token);
@@ -105,7 +104,7 @@ export const join=mutation({args:{token:v.string(),name:v.string(),look:v.any(),
   if(player?.savedAt&&!admin)fail('That name belongs to a saved character. Use your room key or choose another name.');
   const now=Date.now();
   if(player&&!admin){
-    if(isOnline(player,now)||now-player.lastSeen<NAME_REUSE_AFTER)fail('That name is already taken. It frees up four hours after its last visit.');
+    if(isOnline(player,now)||now-player.lastSeen<NAME_REUSE_AFTER||await ctx.db.query('sessions').withIndex('by_player',q=>q.eq('playerId',player._id)).first())fail('That name is already taken. Please choose another name.');
     // Retire the unsaved identity; never transfer its belongings or memories to a newcomer.
     for(const s of await ctx.db.query('sessions').withIndex('by_player',q=>q.eq('playerId',player._id)).collect())await ctx.db.delete(s._id);
     for(const c of await ctx.db.query('connections').withIndex('by_player',q=>q.eq('playerId',player._id)).collect())await ctx.db.delete(c._id);
@@ -126,7 +125,7 @@ export const join=mutation({args:{token:v.string(),name:v.string(),look:v.any(),
     playerId=player._id;
     await ctx.db.patch(playerId,{online:undefined,zone:MAIN_ZONE,look:newLook?args.look:player.look,...(newLook?{lookVersion:(player.lookVersion??0)+1}:{}),lastSeen:now,route:[position],startedAt:now,seatId:null,drink:null,typingUntil:0,action:null});
   }else playerId=await ctx.db.insert('players',{name:admin?'Grant':named.name,nameKey:key,role:admin?'admin':'guest',look:args.look,lookVersion:0,zone:MAIN_ZONE,route:[position],startedAt:now,direction:2,seatId:null,drink:null,lastSeen:now,lastChat:0});
-  await ctx.db.insert('sessions',{role:admin?'admin':'guest',tokenHash:digest,playerId,expiresAt:now+(admin?ADMIN_AGE:SESSION_AGE)});
+  await ctx.db.insert('sessions',{role:admin?'admin':'guest',tokenHash:digest,playerId});
   await ctx.scheduler.runAfter(45000,internal.room.expireArrival,{playerId,seenAt:now});
   const joined=await ctx.db.get(playerId);
   await openVisit(ctx,joined,now);
@@ -492,8 +491,9 @@ export const deleteSticky=mutation({args:{token:v.string(),id:v.string(),revisio
 }});
 export const cleanup=internalMutation({args:{},handler:async ctx=>{
   for(const grant of await ctx.db.query('voiceGrants').withIndex('by_expiry',q=>q.lt('expiresAt',Date.now())).take(100))await ctx.db.delete(grant._id);
-  const expired=await ctx.db.query('sessions').withIndex('by_expiry',q=>q.lt('expiresAt',Date.now())).take(100);
-  for(const s of expired)await ctx.db.delete(s._id);
+  // Gradually remove legacy expiry timestamps without deleting remembered logins.
+  const legacy=await ctx.db.query('sessions').withIndex('by_expiry',q=>q.gt('expiresAt',undefined)).take(100);
+  for(const s of legacy)await ctx.db.patch(s._id,{expiresAt:undefined});
   const oldMessages=await ctx.db.query('messages').withIndex('by_time',q=>q.lt('sentAt',Date.now()-7*86400000)).take(200);
   for(const m of oldMessages)await ctx.db.delete(m._id);
   await closeStaleVisits(ctx,Date.now());

@@ -4,7 +4,7 @@ import {isoCBOR} from '@simplewebauthn/server/helpers';
 import {Buffer} from 'node:buffer';
 import schema from '../convex/schema.js';
 import {api,internal} from '../convex/_generated/api.js';
-import {hash,GUEST_SESSION_AGE,ADMIN_SESSION_AGE} from '../convex/lib/identity.js';
+import {hash} from '../convex/lib/identity.js';
 
 const modules=import.meta.glob('../convex/**/*.js');
 const encodeCBOR=isoCBOR.encode;
@@ -76,8 +76,8 @@ describe('room keys',()=>{
     await expect(t.query(api.room.checkName,{name:'visitor'})).rejects.toThrow('saved character');
     await expect(t.mutation(api.room.join,{token:otherToken,name:'VISITOR',look})).rejects.toThrow('saved character');
   });
-  it('returns to the original character after the remembered browser session expires',async()=>{
-    const device=await saveKey();later(GUEST_SESSION_AGE+1);
+  it('returns to the original character after the remembered browser session is revoked',async()=>{
+    const device=await saveKey();await t.mutation(api.room.leave,{token});
     await expect(t.mutation(api.identity.resume,{token})).rejects.toThrow('ended');
     const request=await t.action(api.passkeys.authenticationOptions,{origin});
     const restored=await t.action(api.passkeys.authenticate,{id:request.id,response:await device.authenticate(request.options.challenge)});
@@ -118,20 +118,32 @@ describe('room keys',()=>{
     const request=await t.action(api.passkeys.authenticationOptions,{origin});
     await expect(t.action(api.passkeys.authenticate,{id:request.id,response:await device.authenticate(request.options.challenge)})).rejects.toThrow('removed');
   });
-  it('renewing an active guest session preserves identity; admin sessions keep their fixed expiry',async()=>{
-    await t.run(async ctx=>{const s=await ctx.db.query('sessions').first();await ctx.db.patch(s._id,{expiresAt:Date.now()+60000});});
+  it('keeps guest and admin sessions after years without a visit or renewal',async()=>{
+    vi.stubEnv('GRANT_ENTRY_HASH',await hash('owner-secret'));
+    const admin=await t.mutation(api.room.join,{token:otherToken,name:'Grant',look,entryCode:'owner-secret'});
+    later(10*365*24*60*60*1000);
+    await t.mutation(internal.room.cleanup,{});
     expect((await t.mutation(api.identity.resume,{token})).id).toBe(player.id);
-    expect((await t.run(ctx=>ctx.db.query('sessions').first())).expiresAt).toBeGreaterThan(Date.now()+GUEST_SESSION_AGE-1000);
+    expect((await t.mutation(api.identity.resume,{token:otherToken})).id).toBe(admin.id);
+    expect((await t.run(ctx=>ctx.db.query('sessions').collect())).every(s=>s.expiresAt===undefined)).toBe(true);
+    await expect(t.query(api.room.checkName,{name:'Visitor'})).rejects.toThrow('already taken');
+    await expect(t.mutation(api.room.join,{token:'c'.repeat(64),name:'Visitor',look})).rejects.toThrow('already taken');
+  });
+  it.each([false,true])('retains legacy sessions past their old expiry (cleanup first: %s)',async cleanup=>{
     vi.stubEnv('GRANT_ENTRY_HASH',await hash('owner-secret'));
     await t.mutation(api.room.join,{token:otherToken,name:'Grant',look,entryCode:'owner-secret'});
-    const sessions=await t.run(ctx=>ctx.db.query('sessions').collect()),admin=sessions.find(s=>s.role==='admin');
-    expect(admin.expiresAt).toBeLessThanOrEqual(Date.now()+ADMIN_SESSION_AGE);
-    await t.mutation(api.identity.resume,{token:otherToken});
-    expect((await t.run(ctx=>ctx.db.get(admin._id))).expiresAt).toBe(admin.expiresAt);
+    await t.run(async ctx=>{for(const s of await ctx.db.query('sessions').collect())await ctx.db.patch(s._id,{expiresAt:1});});
+    if(cleanup)await t.mutation(internal.room.cleanup,{});
+    for(const remembered of [token,otherToken]){
+      await t.query(api.room.me,{token:remembered});
+      await t.mutation(api.identity.resume,{token:remembered});
+    }
+    const sessions=await t.run(ctx=>ctx.db.query('sessions').collect());
+    expect(sessions).toHaveLength(2);expect(sessions.every(s=>s.expiresAt===undefined)).toBe(true);
   });
-  it('reusing an unsaved name creates a new identity and never transfers a space',async()=>{
+  it('reusing an unsaved name after explicit sign-out creates a new identity and never transfers a space',async()=>{
     await t.run(async ctx=>{const room=await ctx.db.query('rooms').first();await ctx.db.patch(room._id,{spaces:[{id:'old',owner:player.id,ownerName:player.name,name:'Original space',width:8,depth:8,floor:'wood',floorColor:'#ffffff',createdAt:Date.now()}]});});
-    later(4*60*60*1000+1);
+    await t.mutation(api.room.leave,{token});later(4*60*60*1000+1);
     const newcomer=await t.mutation(api.room.join,{token:otherToken,name:'Visitor',look});
     expect(newcomer.id).not.toBe(player.id);
     const old=await t.run(ctx=>ctx.db.get(player.id));expect(old.nameKey).toBe(`retired:${player.id}`);
