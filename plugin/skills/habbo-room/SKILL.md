@@ -198,9 +198,10 @@ no space must add one before anything can be placed; `place` outside it is
 refused. Only Grant builds anywhere. A player can grow the room by one block
 of floor with `add_space` (a `name`,
 an optional `floor` of plain, wood, tiles or carpet and a `floor_color` from
-the palette `status` lists). Every space is the same size, 8 by 8 tiles, and
-choose `level: 1` for the upper tier, `0` (default) for the middle tier, or `-1`
-for the lower tier. New rooms join the end of their chosen tier. Staggered
+the palette `status` lists). Every space starts at 8 by 8 tiles.
+Omit `level` to fill the tier with the least total room width automatically. Only
+choose `level: 1` (upper), `0` (middle), or `-1` (lower) if the player asks for a
+particular level. New rooms join the end of their chosen tier. Staggered
 walkways and stairs connect the tiers; the lobby stays on its existing level.
 Each room remains on its chosen level after creation. The reply and `room_map`
 (`spaces`, each with `tiles` and a `latest` flag) show where it landed, and

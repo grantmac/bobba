@@ -220,7 +220,7 @@ export const remove=mutation({args:{agentToken:v.string(),itemId:v.string()},han
   if(around.some(i=>i.supportId===itemId&&i.owner!==player._id))fail('Someone else\'s piece is on it; they need to pick it up first.');
   await applyChanges(ctx,room,player,[{id:itemId,removed:true}]);
 }});
-// Adding floor: a new space always joins the right-hand end of the back wall, after the latest one.
+// New rooms join the shortest tier unless a level is explicitly requested.
 
 export const addSpace=mutation({args:{agentToken:v.string(),name:v.string(),level:v.optional(v.number()),floor:v.optional(v.string()),floorColor:v.optional(v.string())},handler:async(ctx,{agentToken,...args})=>{
   const {player}=await agentFor(ctx,agentToken),room=await getRoom(ctx),spaces=room.spaces??[];

@@ -1301,6 +1301,33 @@ describe('retired room pictures',()=>{
 describe('agents adding spaces',()=>{
   const png=new Blob([new Uint8Array([137,80,78,71,13,10,26,10])],{type:'image/png'});
   const key=async(t_=token,label='Codex')=>(await t.mutation(api.agents.createKey,{token:t_,label})).agentToken;
+  it('fills the new tiers around legacy middle rooms without relocating existing spaces',async()=>{
+    await admin();const agentToken=await key(adminToken);
+    for(let i=0;i<3;i++)await t.mutation(api.agents.addSpace,{agentToken,name:`Old ${i}`,level:0});
+    await t.run(async ctx=>{
+      const room=await ctx.db.query('rooms').first();
+      await ctx.db.patch(room._id,{spaces:room.spaces.map(({level,...space})=>space)});
+    });
+    const positions=async()=>((await t.query(api.agents.map,{agentToken})).spaces.map(s=>[s.id,s.level,s.x,s.z]));
+    for(const [i,level] of [1,-1,1,-1,1,-1,0].entries()){
+      const before=await positions();
+      const added=await t.mutation(api.agents.addSpace,{agentToken,name:`New ${i}`});
+      expect(added.level).toBe(level);
+      expect((await positions()).slice(0,-1)).toEqual(before);
+    }
+  });
+  it('balances total room width after resizing and honours explicit creation levels',async()=>{
+    await admin();const agentToken=await key(adminToken);
+    const middle=await t.mutation(api.agents.addSpace,{agentToken,name:'Middle'});
+    expect(middle.level).toBe(0);
+    expect((await t.mutation(api.agents.addSpace,{agentToken,name:'Upper'})).level).toBe(1);
+    expect((await t.mutation(api.agents.addSpace,{agentToken,name:'Lower'})).level).toBe(-1);
+    await t.mutation(api.agents.resizeSpace,{agentToken,spaceId:middle.spaceId,width:16});
+    expect((await t.mutation(api.agents.addSpace,{agentToken,name:'Next upper'})).level).toBe(1);
+    expect((await t.mutation(api.agents.addSpace,{agentToken,name:'Next lower'})).level).toBe(-1);
+    expect((await t.mutation(api.agents.addSpace,{agentToken,name:'Requested lower',level:-1})).level).toBe(-1);
+    expect((await t.mutation(api.agents.addSpace,{agentToken,name:'Next middle'})).level).toBe(0);
+  });
   it('walks between fixed room tiers and preserves them when another tier is resized',async()=>{
     await admin();const agentToken=await key(adminToken);
     const middle=await t.mutation(api.agents.addSpace,{agentToken,name:'Middle'});
@@ -1362,24 +1389,24 @@ describe('agents adding spaces',()=>{
     const first=await t.mutation(api.agents.addSpace,{agentToken,name:'Mine'});
     expect(first).toMatchObject({x:21,z:0,width:8,depth:8});
     await expect(t.mutation(api.agents.addSpace,{agentToken,name:'Again'})).rejects.toThrow('up to 1 space');
-    // Someone else's space joins on after the first; Grant is not capped.
+    // Someone else's space fills the upper tier; Grant is not capped.
     await t.mutation(api.room.join,{token:otherToken,name:'Friend',look});
     const second=await t.mutation(api.agents.addSpace,{agentToken:await key(otherToken,'Other'),name:'Theirs'});
-    expect(second).toMatchObject({x:29,z:0,width:8,depth:8});
+    expect(second).toMatchObject({x:9,z:-12,width:8,depth:8,level:1});
     await admin();const adminAgent=await key(adminToken,'Grant');
-    expect((await t.mutation(api.agents.addSpace,{agentToken:adminAgent,name:'One'})).x).toBe(37);
-    expect((await t.mutation(api.agents.addSpace,{agentToken:adminAgent,name:'Two'})).x).toBe(45);
-    expect((await t.query(api.agents.map,{agentToken})).spaces.map(s=>[s.name,s.mine,s.latest])).toEqual([['Mine',true,false],['Theirs',false,false],['One',false,false],['Two',false,true]]);
+    expect((await t.mutation(api.agents.addSpace,{agentToken:adminAgent,name:'One'})).level).toBe(-1);
+    expect((await t.mutation(api.agents.addSpace,{agentToken:adminAgent,name:'Two'})).level).toBe(0);
+    expect((await t.query(api.agents.map,{agentToken})).spaces.map(s=>[s.name,s.mine,s.latest])).toEqual([['Mine',true,false],['Theirs',false,true],['One',false,true],['Two',false,true]]);
   });
   it('allows players to add spaces beyond eight and reports no room-wide limit',async()=>{
     await admin();const adminAgent=await key(adminToken,'Grant');
     for(let i=0;i<8;i++)await t.mutation(api.agents.addSpace,{agentToken:adminAgent,name:`Space ${i+1}`});
     await guest();const agentToken=await key();
     const ninth=await t.mutation(api.agents.addSpace,{agentToken,name:'Ninth space'});
-    expect(ninth).toMatchObject({x:85,z:0,width:8,depth:8});
+    expect(ninth).toMatchObject({x:49,z:12,width:8,depth:8,level:-1});
     expect(ninth.tiles).toHaveLength(64);
     const tenth=await t.mutation(api.agents.addSpace,{agentToken:adminAgent,name:'Tenth space'});
-    expect(tenth).toMatchObject({x:93,z:0,width:8,depth:8});
+    expect(tenth).toMatchObject({x:45,z:0,width:8,depth:8,level:0});
     expect((await t.query(api.agents.map,{agentToken})).spaces).toHaveLength(10);
     expect((await t.query(api.room.scene,{})).spaces).toHaveLength(10);
     expect((await t.query(api.agents.status,{agentToken})).spaceOptions.limit).toBeNull();
@@ -1416,7 +1443,7 @@ describe('agents adding spaces',()=>{
     await guest();const agentToken=await key();
     await t.mutation(api.room.join,{token:otherToken,name:'Friend',look});const other=await key(otherToken,'Other');
     const mine=await t.mutation(api.agents.addSpace,{agentToken,name:'Mine'});
-    await t.mutation(api.agents.addSpace,{agentToken:other,name:'Theirs'});
+    await t.mutation(api.agents.addSpace,{agentToken:other,name:'Theirs',level:0});
     await expect(t.mutation(api.agents.resizeSpace,{agentToken:other,spaceId:mine.spaceId,width:4})).rejects.toThrow('not yours');
     await expect(t.mutation(api.agents.resizeSpace,{agentToken,width:3})).rejects.toThrow('4 to 16');
     // Friend's piece, and Friend, are on the space after mine; widening mine slides them along.
@@ -1451,7 +1478,7 @@ describe('agents adding spaces',()=>{
     const player=await guest(),agentToken=await key();
     await t.mutation(api.room.join,{token:otherToken,name:'Friend',look});const other=await key(otherToken,'Other');
     const mine=await t.mutation(api.agents.addSpace,{agentToken,name:'Mine'});
-    const theirs=await t.mutation(api.agents.addSpace,{agentToken:other,name:'Theirs'});
+    const theirs=await t.mutation(api.agents.addSpace,{agentToken:other,name:'Theirs',level:0});
     await expect(t.mutation(api.agents.removeSpace,{agentToken,spaceId:'nope'})).rejects.toThrow('No space');
     await expect(t.mutation(api.agents.removeSpace,{agentToken,spaceId:theirs.spaceId})).rejects.toThrow('not yours');
     await expect(t.mutation(api.agents.removeSpace,{agentToken,spaceId:mine.spaceId})).rejects.toThrow('latest');

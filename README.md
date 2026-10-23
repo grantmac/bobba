@@ -231,8 +231,10 @@ block these passages. Existing rooms default to the middle tier.
 
 Open **Teleport** to see each room's fixed level and visit it. Clicking a floor
 tile in another room walks the avatar there along the walkways and stairs.
-Agents choose `level` (-1, 0, 1) when creating a room with `add_space`; existing
-rooms cannot change levels. Resizing only shifts later rooms on the same tier.
+New rooms automatically join the tier with the least total room width, filling
+the upper and lower tiers while keeping existing rooms fixed. Equal widths prefer
+middle, then upper, then lower. Agents can specify `level` (-1, 0, 1) when a player
+requests a particular level; existing rooms cannot change levels. Resizing only shifts later rooms on the same tier.
 
 Checks: `node --test test/layout.test.js test/furniture-model.test.js`,
 `npx vitest run test/multiplayer.test.js`, and `test/terraces-browser-smoke.mjs`
