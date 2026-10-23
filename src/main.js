@@ -156,11 +156,11 @@ function sprite(canvas,x,y,order=0) {
   mesh.position.set(x+canvas.width/2,CENTER_Y-y-canvas.height/2,0);
   mesh.renderOrder=order;drawTarget.add(mesh);return mesh;
 }
-function polygon(points,color,order=0,outline=false) {
+function polygon(points,color,order=0,outline=false,transparent=false) {
   const shape=new THREE.Shape(points.map(([x,y])=>new THREE.Vector2(x,CENTER_Y-y)));
-  const mesh=new THREE.Mesh(new THREE.ShapeGeometry(shape),new THREE.MeshBasicMaterial({color,depthTest:false,depthWrite:false,side:THREE.DoubleSide}));
+  const mesh=new THREE.Mesh(new THREE.ShapeGeometry(shape),new THREE.MeshBasicMaterial({color,transparent,depthTest:false,depthWrite:false,side:THREE.DoubleSide}));
   mesh.renderOrder=order;drawTarget.add(mesh);
-  if(outline){const line=new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(points.map(([x,y])=>new THREE.Vector3(x,CENTER_Y-y,0))),new THREE.LineBasicMaterial({color:'#222222',depthTest:false}));line.renderOrder=order+.1;drawTarget.add(line);}
+  if(outline){const line=new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(points.map(([x,y])=>new THREE.Vector3(x,CENTER_Y-y,0))),new THREE.LineBasicMaterial({color:'#222222',transparent,depthTest:false,depthWrite:false}));line.renderOrder=order+.1;drawTarget.add(line);}
   return mesh;
 }
 
@@ -196,7 +196,7 @@ function buildRoom(options){
   roomOptions={...options};
   roomShape=roomCatalog.shapes.find(s=>s.id===options.shape);
   layout=roomLayout(roomShape.tiles,roomSpaces);mainTiles=new Set(roomShape.tiles.map(([x,z])=>`${x},${z}`));
-  toolbar?.setSpaces(layout.spaces.map(s=>({...s,canMove:s.owner===network?.me?.id||network?.me?.role==='admin'})));
+  toolbar?.setSpaces(layout.spaces);
   walkable=new Set(layout.tiles.map(([x,z])=>`${x},${z}`));
   roomWidth=layout.width;roomDepth=layout.baseDepth;
   // The lobby is the origin: adding a space beyond it never shifts what is already drawn.
@@ -261,16 +261,22 @@ function buildRoom(options){
   }
   // Every tier has a public walkway; the two-tile stair spine connects their ends.
   for(const stair of layout.stairs){
+    const rise=(stair.bottomDrop-stair.topDrop)/(stair.bottomZ-stair.topZ);
     for(let z=stair.z;z<stair.z+stair.depth;z++){
       const origin=groundPoint(stair.x,z);
-      sprite(createMetalWalkway(stair.width,1),origin.x-32,origin.y,13+(z-stair.z)/100);
+      sprite(createMetalWalkway(stair.width,1,{face:rise}),origin.x-32,origin.y,13+(z-stair.z)/100);
     }
-    // A continuous handrail makes the change in elevation legible at a glance.
+    // Side supports and regularly spaced posts make a single connected flight.
     for(const x of [stair.x,stair.x+stair.width]){
-      const a=iso(x,stair.topZ+1),b=iso(x,stair.bottomZ);
-      a.y+=stair.topDrop;b.y+=stair.bottomDrop;
-      polygon([[a.x,a.y-24],[b.x,b.y-24],[b.x,b.y-21],[a.x,a.y-21]],'#b6c8d1',84,true);
-      for(const p of [a,b])polygon([[p.x-1,p.y-24],[p.x+1,p.y-24],[p.x+1,p.y],[p.x-1,p.y]],'#718692',83,true);
+      const edge=z=>{const p=iso(x,z);p.y+=stair.topDrop+rise*(z-stair.topZ);return p;};
+      const a=edge(stair.z),b=edge(stair.bottomZ);
+      polygon([[a.x,a.y],[b.x,b.y],[b.x,b.y+8],[a.x,a.y+8]],'#526672',14,true,true);
+      const posts=new Set([stair.bottomZ,...Array.from({length:Math.ceil(stair.depth/2)},(_,i)=>stair.z+i*2)]);
+      for(const z of posts){
+        const p=edge(z);
+        polygon([[p.x-1,p.y-26],[p.x+1,p.y-26],[p.x+1,p.y],[p.x-1,p.y]],'#8296a2',83,true,true);
+      }
+      polygon([[a.x,a.y-27],[b.x,b.y-27],[b.x,b.y-24],[a.x,a.y-24]],'#c1cdd4',84,true,true);
     }
   }
   // The lounge's stretch of the back wall, in the room's own wallpaper; the spaces' stretches are
@@ -354,7 +360,7 @@ function syncWalkways(){
     const key=`${bounds.x},${bounds.z}`;wanted.add(key);if(walkwayVisuals.has(key))continue;
     const group=new THREE.Group(),previous=drawTarget;drawTarget=group;
     const origin=groundPoint(bounds.x,bounds.z);
-    sprite(createMetalWalkway(bounds.width,1),origin.x-32,origin.y,12.5);
+    sprite(createMetalWalkway(bounds.width,1,{face:8,endCap:offset+bounds.width===way.width}),origin.x-32,origin.y,12.5);
     drawTarget=previous;scene.add(group);walkwayVisuals.set(key,group);
   }
   for(const [key,group] of walkwayVisuals)if(!wanted.has(key)){
@@ -843,7 +849,7 @@ function animate(now){
 }
 requestAnimationFrame(animate);
 try{
-  toolbar=createToolbar({admin:false,onTeleport:teleportToSpace,onLevelChange:async(spaceId,level)=>{if(!ready)throw new Error('Please wait until the room is ready.');await network.setSpaceLevel(spaceId,level);},onMusicMute:muted=>radio?.setMuted(muted),onMusicVolume:volume=>{radio?.setVolume(volume);radio?.setMuted(false);},onTyping:typing=>{if(ready){localTyping=typing;void network.typing(typing).catch(()=>{});}},onAppearance:()=>{if(ready)appearance.open();},onRoomEdit:()=>{if(ready&&network.me?.role==='admin')roomEditor.open();},onFurniture:()=>{if(ready)furniture.open();},onChat:(body,mode)=>{if(ready)return network.chat(body,mode);},onGesture:action=>{if(ready)network.gesture(action).catch(error=>toolbar.status(error.message));}});
+  toolbar=createToolbar({admin:false,onTeleport:teleportToSpace,onMusicMute:muted=>radio?.setMuted(muted),onMusicVolume:volume=>{radio?.setVolume(volume);radio?.setMuted(false);},onTyping:typing=>{if(ready){localTyping=typing;void network.typing(typing).catch(()=>{});}},onAppearance:()=>{if(ready)appearance.open();},onRoomEdit:()=>{if(ready&&network.me?.role==='admin')roomEditor.open();},onFurniture:()=>{if(ready)furniture.open();},onChat:(body,mode)=>{if(ready)return network.chat(body,mode);},onGesture:action=>{if(ready)network.gesture(action).catch(error=>toolbar.status(error.message));}});
   network=createMultiplayer();
   const characterKey=createRoomKey({identity:network.identity});
   danceControls=createDanceFloorControls({onChange:on=>network.danceFloor(on),onError:message=>toolbar.status(message)});

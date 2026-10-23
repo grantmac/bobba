@@ -4,31 +4,41 @@ import puppeteer from 'puppeteer-core';
 const origin=process.env.ROOM_RENDER_ORIGIN??'http://127.0.0.1:5189';
 // Expose the rendered transform only in this intercepted test module.
 const mainSource=await (await fetch(origin+'/src/main.js')).text();
-const cameraProbe='\nwindow.__terraceView=()=>{zoom=.5;panX=-320;panY=-90;resize();};window.__terraceCentre=(x,z)=>{Object.assign(position,{x,z});centreViewOnAvatar(true);};\nwindow.__testCamera=()=>({scale:displayScale,x:view.left+view.halfW+viewOffsetX,y:view.top+view.halfH+viewOffsetY});';
+const cameraProbe='\nwindow.__terraceView=()=>{zoom=.5;panX=-320;panY=-90;resize();};window.__viewTile=(x,z,close=false)=>{if(close){zoom=2;resize();}const p=groundPoint(x,z);panX=-p.x*displayScale;panY=-(p.y-CENTER_Y)*displayScale;resize();};\nwindow.__testCamera=()=>({scale:displayScale,x:view.left+view.halfW+viewOffsetX,y:view.top+view.halfH+viewOffsetY});';
 const mock=`
 import {roomLayout} from '/shared/room-layout.js';
 import {shapes} from '/convex/lib/catalog.js';
-export {samplePlayer} from '/src/multiplayer.js?fixture-original';
+import {samplePlayer} from '/src/multiplayer.js?fixture-original';
+import {findPath} from '/convex/lib/rules.js';
+export {samplePlayer};
 export function createMultiplayer(){
   const me={id:'visitor',name:'Visitor',role:'admin',zone:'main',route:[{x:3.5,z:4.5}],startedAt:Date.now(),direction:2,seatId:null,
     look:{hair:{model:'1',color:'#624631'},skin:{model:'1',color:'#e8b18a'},top:{model:'1',color:'#6b8c64'},bottom:{model:'1',color:'#55677e'},shoes:{model:'1',color:'#42454c'}}};
   let spaces=Array.from({length:6},(_,i)=>({id:'space-'+i,name:i===5?'Moon garden':'Space '+(i+1),level:[0,0,1,1,-1,-1][i],owner:'visitor',ownerName:'Builder '+(i+1),width:8,depth:8,floor:'wood',floorColor:'#f7de9c'}));
   const room={options:{shape:'square',wall:'plain',wallColor:'#dcded4',floor:'wood',floorColor:'#f7de9c',window:true},spaces,stickies:[],furniture:[]};
   room.furniture=[{id:'upper-chair',type:'small_chair_armas',rotation:0,x:11,z:-10},{id:'lower-chair',type:'small_chair_armas',rotation:0,x:35,z:14}];
-  let handlers;const noop=()=>{};
-  const network={me,now:()=>Date.now(),zones:[],population:{people:1},identity:{},pairing:{code:''},bot:{},
+  let handlers,clockOffset=0;const noop=()=>{};
+  window.__finishWalk=()=>{clockOffset+=120000;};
+  const network={me,now:()=>Date.now()+clockOffset,zones:[],population:{people:1},identity:{},pairing:{code:''},bot:{},
     loadPreview:async()=>({room,players:[]}),resume:async()=>me,
     assets:{list:async()=>[],watch:noop},agents:{attached:()=>noop},
     whiteboard:{all:async()=>({strokes:[],serial:0}),watch:noop},visits:{},
     setZones(ids){network.zones=ids;},
     watch(value){handlers=value;value.onMap(room);value.onSignals({danceFloorOn:true});value.onFurniture({zones:new Map([['main',room.furniture]]),inventory:[]});value.onState({me,players:[],messages:[]});},
-    async setSpaceLevel(spaceId,level){if(window.__levelError)throw Error(window.__levelError);spaces=spaces.map(s=>s.id===spaceId?{...s,level}:s);room.spaces=spaces;handlers.onMap(room);},
+    async move(x,z){
+      const current=samplePlayer(me,network.now());
+      const route=findPath(room,{x:current.x,z:current.z},{x,z});
+      if(!route)throw Error('No route');
+      window.__walkRoutes=(window.__walkRoutes??[]).concat([route]);
+      Object.assign(me,{route,startedAt:network.now(),seatId:null});
+      handlers.onState({me:{...me},players:[],messages:[]});
+    },
     async teleport(spaceId){
       window.__teleportCalls=(window.__teleportCalls??0)+1;
       await new Promise(resolve=>setTimeout(resolve,100));
       if(window.__teleportError)throw new Error(window.__teleportError);
       const i=spaces.findIndex(s=>s.id===spaceId);
-      const arrival={route:[spaceId==='main'?{x:3.5,z:4.5}:{x:roomLayout(shapes.square,spaces).spaces[i].x+3.5,z:roomLayout(shapes.square,spaces).spaces[i].z+3.5}],startedAt:Date.now(),direction:2,seatId:null,zone:spaceId,action:null};
+      const arrival={route:[spaceId==='main'?{x:3.5,z:4.5}:{x:roomLayout(shapes.square,spaces).spaces[i].x+3.5,z:roomLayout(shapes.square,spaces).spaces[i].z+3.5}],startedAt:network.now(),direction:2,seatId:null,zone:spaceId,action:null};
       Object.assign(me,arrival);handlers.onState({me,players:[],messages:[]});return arrival;
     },
   };
@@ -61,15 +71,32 @@ try{
     }
     await page.waitForFunction(()=>window.__room.visuals.some(v=>v.id==='lower-'));
     if(mobile)await page.click('.toolbar-menu-toggle');await page.click('.spaces-toggle');
-    await page.select('[data-level-space="space-4"]','1');
-    await page.waitForFunction(()=>document.querySelector('.spaces-status').textContent.includes('is on the upper'));
-    assert.equal(await page.evaluate(()=>window.__room.layout.spaces.find(s=>s.id==='space-4').level),1);
-    await page.evaluate(()=>window.__levelError='Could not move the room.');
-    await page.select('[data-level-space="space-4"]','-1');
-    await page.waitForFunction(()=>document.querySelector('.spaces-status').textContent==='Could not move the room.');
-    assert.equal(await page.$eval('[data-level-space="space-4"]',el=>el.value),'1');
-    await page.screenshot({path:mobile?'/tmp/terraces-mobile-controls.png':'/tmp/terraces-controls.png'});
+    assert.equal(await page.$$eval('[data-level-space]',els=>els.length),0);
+    await page.screenshot({path:mobile?'/tmp/terraces-mobile-list.png':'/tmp/terraces-list.png'});
+    assert.equal(await page.$$eval('[data-space-id]',els=>els.length),7);
+    assert.equal(await page.$$eval('.spaces-dialog select',els=>els.length),0);
+    assert.match(await page.$eval('[data-space-id="space-4"] span',el=>el.textContent),/Located on the lower level/);
+    await page.click('.spaces-dialog .appearance-close');
+    const fixed=await page.evaluate(()=>window.__room.layout.spaces.map(s=>[s.id,s.x,s.z,s.level]));
+    for(const [count,id] of ['space-2','space-4'].entries()){
+      const cell=await page.evaluate(id=>{const s=window.__room.layout.spaces.find(s=>s.id===id);return {x:s.x+5,z:s.z+6};},id);
+      await page.evaluate(cell=>window.__viewTile(cell.x+.5,cell.z+.5),cell);
+      const screen=await page.evaluate(cell=>{const p=window.__room.groundPoint(cell.x+.5,cell.z+.5),c=window.__testCamera();return {x:c.x+p.x*c.scale,y:c.y+(p.y-window.__room.centerY)*c.scale};},cell);
+      await page.mouse.click(screen.x,screen.y);
+      await page.waitForFunction(count=>window.__walkRoutes?.length===count+1,{},count);
+      const route=await page.evaluate(()=>window.__walkRoutes.at(-1));
+      assert.deepEqual(route.at(-1),{x:cell.x+.5,z:cell.z+.5});
+      assert.equal(await page.evaluate(()=>{const layout=window.__room.layout;return layout.stairs.every(s=>window.__walkRoutes.at(-1).some(p=>p.x>=s.x&&p.x<s.x+s.width&&p.z>=s.z&&p.z<s.z+s.depth));}),true);
+      await page.waitForFunction(route=>Math.hypot(window.__room.avatar.x-route[0].x,window.__room.avatar.z-route[0].z)>.1,{},route);
+      await page.evaluate(()=>window.__finishWalk());
+      await page.waitForFunction(cell=>Math.hypot(window.__room.avatar.x-cell.x-.5,window.__room.avatar.z-cell.z-.5)<.01,{},cell);
+    }
+    assert.deepEqual(await page.evaluate(()=>window.__room.layout.spaces.map(s=>[s.id,s.x,s.z,s.level])),fixed);
+    if(!mobile){
+      await page.evaluate(()=>{const s=window.__room.layout.stairs[0];window.__viewTile(s.x+1,s.z+s.depth/2,true);});
+      await page.screenshot({path:'/tmp/terraces-stairs.png'});
+    }
     assert.deepEqual(errors,[]);await page.close();
   }
-  console.log('PASS: tier rendering, desktop/mobile teleport, level selector, saved level and failed-change recovery.');
+  console.log('PASS: fixed levels, desktop/mobile teleport and tile clicks walking both ways through stairs.');
 }finally{await browser.close();}

@@ -229,11 +229,10 @@ level. Outer tiers step back or forward so every room remains visible; public
 walkways and a two-tile staircase at their far end connect them. Furniture cannot
 block these passages. Existing rooms default to the middle tier.
 
-Open **Teleport** and use a room's **Level** selector to move it. Owners can move
-their own rooms; Grant can move any room. Furniture, wall pieces, and saved
-characters move with their room. Active routes are recalculated when needed.
-Agents have the same control through `set_space_level`, and `add_space` accepts
-`level` (-1, 0, 1). Resizing only shifts later rooms on the same tier.
+Open **Teleport** to see each room's fixed level and visit it. Clicking a floor
+tile in another room walks the avatar there along the walkways and stairs.
+Agents choose `level` (-1, 0, 1) when creating a room with `add_space`; existing
+rooms cannot change levels. Resizing only shifts later rooms on the same tier.
 
 Checks: `node --test test/layout.test.js test/furniture-model.test.js`,
 `npx vitest run test/multiplayer.test.js`, and `test/terraces-browser-smoke.mjs`

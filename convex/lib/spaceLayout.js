@@ -1,6 +1,5 @@
-import {fail,layoutFor,atTime,zoneAt,MAIN_ZONE,isPlaced,findPath,zonesPlayers,playerTiles} from './rules.js';
+import {layoutFor,atTime,zoneAt,MAIN_ZONE,isPlaced,findPath,zonesPlayers,playerTiles} from './rules.js';
 import {loadZones} from './furnitureStore.js';
-import {SPACE_LEVELS} from '../../shared/spaces.js';
 import {tileDrop} from '../../shared/room-layout.js';
 
 // Layout edits are atomic with their contents. Translate by each space's own delta,
@@ -51,14 +50,4 @@ export async function applySpaceLayout(ctx,room,spaces){
   const stickies=(room.stickies??[]).map(s=>({...s,...translate(s)}));
   await ctx.db.patch(room._id,{spaces,stickies,revision:room.revision+1});
   return after;
-}
-
-export async function moveSpaceLevel(ctx,room,player,spaceId,level){
-  if(!SPACE_LEVELS.includes(level))fail('Choose the upper, middle, or lower level.');
-  const spaces=room.spaces??[],index=spaces.findIndex(s=>s.id===spaceId);
-  if(index<0)fail('That space is no longer available.');
-  if(spaces[index].owner!==player._id&&player.role!=='admin')fail('That space is not yours.');
-  if((spaces[index].level??0)===level)return {spaceId,level};
-  await applySpaceLayout(ctx,room,spaces.map((s,i)=>i===index?{...s,level}:s));
-  return {spaceId,level};
 }

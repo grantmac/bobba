@@ -1301,36 +1301,33 @@ describe('retired room pictures',()=>{
 describe('agents adding spaces',()=>{
   const png=new Blob([new Uint8Array([137,80,78,71,13,10,26,10])],{type:'image/png'});
   const key=async(t_=token,label='Codex')=>(await t.mutation(api.agents.createKey,{token:t_,label})).agentToken;
-  it('connects all tiers by stairs and carries furniture and saved occupants between levels',async()=>{
+  it('walks between fixed room tiers and preserves them when another tier is resized',async()=>{
     await admin();const agentToken=await key(adminToken);
     const middle=await t.mutation(api.agents.addSpace,{agentToken,name:'Middle'});
     const upper=await t.mutation(api.agents.addSpace,{agentToken,name:'Upper',level:1});
     const lower=await t.mutation(api.agents.addSpace,{agentToken,name:'Lower',level:-1});
-    let map=await t.query(api.agents.map,{agentToken});
+    const map=await t.query(api.agents.map,{agentToken});
     expect(map.spaces.map(s=>s.level)).toEqual([0,1,-1]);
-    const moving=await t.mutation(api.room.move,{token:adminToken,x:upper.x+2,z:upper.z+2});
-    expect(moving.route.some(p=>p.z<0&&p.x>lower.x+lower.width)).toBe(true);
+    await expect(t.mutation(api.agents.addSpace,{agentToken,name:'Bad',level:2})).rejects.toThrow('level');
+    for(const [from,to] of [[upper,lower],[lower,upper]]){
+      await t.mutation(api.room.teleport,{token:adminToken,spaceId:from.spaceId});
+      const moving=await t.mutation(api.room.move,{token:adminToken,x:to.x+2,z:to.z+2});
+      expect(moving.route.at(-1)).toEqual({x:to.x+2.5,z:to.z+2.5});
+      expect(moving.route.some(p=>p.z<0&&p.x>lower.x+lower.width)).toBe(true);
+      expect(moving.route.some(p=>p.z>8&&p.x>lower.x+lower.width)).toBe(true);
+      for(let i=1;i<moving.route.length;i++)expect(Math.hypot(moving.route[i].x-moving.route[i-1].x,moving.route[i].z-moving.route[i-1].z)).toBeLessThanOrEqual(1.01);
+    }
     const state=await t.query(api.room.roomState,{token:adminToken});
     await t.mutation(api.room.setFurniture,{token:adminToken,revision:state.revision,items:[{id:'up-chair',type:'small_chair_armas',rotation:0,x:upper.x+3,z:upper.z+3}]});
     const guestPlayer=await guest();
-    await expect(t.mutation(api.room.setSpaceLevel,{token,spaceId:upper.spaceId,level:-1})).rejects.toThrow('not yours');
-    await expect(t.mutation(api.agents.addSpace,{agentToken,name:'Bad',level:2})).rejects.toThrow('level');
     await t.mutation(api.room.teleport,{token,spaceId:upper.spaceId});
     const old=await t.query(api.room.me,{token});
     await t.run(ctx=>ctx.db.patch(guestPlayer.id,{online:false}));
-    await t.mutation(api.room.setSpaceLevel,{token:adminToken,spaceId:upper.spaceId,level:-1});
-    map=await t.query(api.agents.map,{agentToken});
-    const moved=map.spaces.find(s=>s.id===upper.spaceId),dx=moved.x-upper.x,dz=moved.z-upper.z;
-    expect(moved.level).toBe(-1);
-    expect((await everywhere()).find(i=>i.id==='up-chair')).toMatchObject({x:upper.x+3+dx,z:upper.z+3+dz});
-    expect((await t.query(api.room.me,{token})).route).toEqual([{x:old.route[0].x+dx,z:old.route[0].z+dz}]);
-    const upperBefore=map.spaces.filter(s=>s.level===-1).map(s=>[s.id,s.x,s.z]);
     await t.mutation(api.agents.resizeSpace,{agentToken,spaceId:middle.spaceId,width:12});
-    map=await t.query(api.agents.map,{agentToken});
-    expect(map.spaces.filter(s=>s.level===-1).map(s=>[s.id,s.x,s.z])).toEqual(upperBefore);
-    await t.mutation(api.agents.setSpaceLevel,{agentToken,spaceId:upper.spaceId,level:1});
-    const returned=(await everywhere()).find(i=>i.id==='up-chair');
-    expect(returned).toMatchObject({x:upper.x+3,z:upper.z+3});
+    const after=await t.query(api.agents.map,{agentToken});
+    expect(after.spaces.filter(s=>s.level!==0).map(s=>[s.id,s.x,s.z,s.level])).toEqual(map.spaces.filter(s=>s.level!==0).map(s=>[s.id,s.x,s.z,s.level]));
+    expect((await everywhere()).find(i=>i.id==='up-chair')).toMatchObject({x:upper.x+3,z:upper.z+3});
+    expect((await t.query(api.room.me,{token})).route).toEqual(old.route);
   });
   it('chains a named block of floor onto the back wall and reports it on the map',async()=>{
     const player=await guest(),agentToken=await key();
