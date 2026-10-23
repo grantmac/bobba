@@ -56,7 +56,7 @@ describe('visitor and touch controls',()=>{
     const result=pinchView(view,before,after,origin);expect(result).toEqual({zoom:2,panX:-10,panY:10});
     expect((after.x-origin.x-result.panX)/result.zoom).toBe((before.x-origin.x-view.panX)/view.zoom);
     expect(pinchView(view,before,{...after,distance:10000},origin).zoom).toBe(4);
-    expect(pinchView(view,before,{...after,distance:1},origin).zoom).toBe(.75);
+    expect(pinchView(view,before,{...after,distance:1},origin).zoom).toBe(.5);
   });
   it('keeps distant spaces under moving fingers through snapped zoom steps and limits',()=>{
     for(const pixelRatio of [1,2,3]){
