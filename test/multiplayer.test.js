@@ -1351,6 +1351,20 @@ describe('agents adding spaces',()=>{
     expect(back.route[0]).toEqual(walk.route.at(-1));
     expect(back.route.at(-1)).toEqual({x:first.x+3.5,z:3.5});
 
+    // Capacity is reserved in the destination, not rooms crossed along the way.
+    const crowd=await t.run(async ctx=>{
+      const base=await ctx.db.get(player.id),ids=[];
+      for(let i=0;i<60;i++)ids.push(await ctx.db.insert('players',{
+        ...Object.fromEntries(Object.entries(base).filter(([k])=>!k.startsWith('_'))),
+        name:`Transit ${i}`,nameKey:`transit ${i}`,zone:middle.spaceId,
+        route:[{x:middle.x+3.5,z:3.5}],startedAt:Date.now(),
+      }));
+      return ids;
+    });
+    await t.mutation(api.room.teleport,{token:adminToken,spaceId:first.spaceId});
+    expect((await t.mutation(api.room.move,{token:adminToken,x:last.x,z:0})).route.at(-1)).toEqual({x:last.x+.5,z:.5});
+    await t.run(async ctx=>{for(const id of crowd)await ctx.db.delete(id);});
+
     // The only entrance is in the connecting room; its player reservations count too.
     const visitor=await guest();
     await t.run(ctx=>ctx.db.patch(visitor.id,{zone:middle.spaceId,route:[{x:last.x-.5,z:.5}],startedAt:Date.now()}));

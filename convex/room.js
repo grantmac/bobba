@@ -312,7 +312,8 @@ export const appearance=mutation({args:{token:v.string(),look:v.any()},handler:a
   const p=await playerFor(ctx,token);validateLook(look);await ctx.db.patch(p._id,{look,lookVersion:(p.lookVersion??0)+1,lastSeen:Date.now()});
 }});
 // A walk starts with the departure, destination and lobby, then checks any
-// connecting rooms needed for a detour. Entering a zone counts against its cap.
+// connecting rooms needed for a detour. The destination reserves zone capacity;
+// passing through a zone does not reserve capacity there, but occupied tiles block.
 export const move=mutation({args:{token:v.string(),x:v.number(),z:v.number(),seatId:v.optional(v.string()),direction:v.optional(v.union(v.literal(0),v.literal(2),v.literal(4),v.literal(6)))},handler:async(ctx,args)=>{
   return await movePlayer(ctx,await playerFor(ctx,args.token),args);
 }});
