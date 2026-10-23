@@ -187,6 +187,9 @@ const HANDLERS={
     const space=await call('mutation',api.agents.styleSpace,args);
     return {...space,...kept,then:'Everyone in the room sees the new look now. Use room_overview for a text check.'};
   },
+  async set_space_level({space_id,level},{token}){
+    return call('mutation',api.agents.setSpaceLevel,{agentToken:token,spaceId:space_id,level});
+  },
   async resize_space({space_id,width},{token}){
     const space=await call('mutation',api.agents.resizeSpace,{agentToken:token,...(space_id?{spaceId:space_id}:{}),width});
     return {...space,then:`${space.moved?`The ${space.moved} space${space.moved===1?'':'s'} after it moved along with everything on them. `:''}room_map has the new tiles; Use room_overview for a text check.`};
@@ -197,9 +200,6 @@ const HANDLERS={
 // JSON-RPC over one POST: a single message or a batch; notifications get no reply.
 const reply=(id,result)=>({jsonrpc:'2.0',id,result});
 const rpcError=(id,code,text)=>({jsonrpc:'2.0',id,error:{code,message:text}});
-  async set_space_level({space_id,level},{token}){
-    return call('mutation',api.agents.setSpaceLevel,{agentToken:token,spaceId:space_id,level});
-  },
 async function handle(m,context){
   if(!m||typeof m!=='object'||m.jsonrpc!=='2.0'||typeof m.method!=='string')return rpcError(m?.id??null,-32600,'Invalid request');
   if(!('id' in m)||m.id===null)return null;

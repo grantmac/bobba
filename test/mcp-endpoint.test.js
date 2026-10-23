@@ -19,7 +19,7 @@ describe('hosted MCP endpoint',()=>{
   });
   it('lists the tools and answers notifications with 202',async()=>{
     const {result}=await (await post(rpc('tools/list'))).json();
-    expect(result.tools.map(t=>t.name)).toEqual(['status','design_asset','upload_url','preview_asset','submit_asset','add_asset','my_assets','set_controls','get_connections','set_connections','program_api','get_program','set_program','set_seat','delete_asset','room_map','room_overview','place','remove','add_space','design_surface','style_space','resize_space','remove_space']);
+    expect(result.tools.map(t=>t.name)).toEqual(['status','design_asset','upload_url','preview_asset','submit_asset','add_asset','my_assets','set_controls','get_connections','set_connections','program_api','get_program','set_program','set_seat','delete_asset','room_map','room_overview','place','remove','add_space','design_surface','style_space','set_space_level','resize_space','remove_space']);
     const space=result.tools.find(t=>t.name==='add_space');
     expect(space.inputSchema.required).toEqual(['name']);expect(space.inputSchema.properties).not.toHaveProperty('width');expect(space.inputSchema.properties.floor.enum).toEqual(['plain','wood','tiles','carpet']);
     for(const tool of result.tools)expect(tool.inputSchema.type).toBe('object');
@@ -29,6 +29,18 @@ describe('hosted MCP endpoint',()=>{
     expect(controls.inputSchema.required).toEqual(['asset_id','use','power']);
     expect(controls.inputSchema.properties.use.type).toEqual(['string','null']);
     expect((await post({jsonrpc:'2.0',method:'notifications/initialized'})).status).toBe(202);
+  });
+  it('exposes room tiers and forwards the selected level to the authenticated mutation',async()=>{
+    const {result:listing}=await (await post(rpc('tools/list'))).json();
+    expect(listing.tools.find(t=>t.name==='add_space').inputSchema.properties.level.enum).toEqual([-1,0,1]);
+    vi.stubEnv('CONVEX_URL','https://example.convex.cloud');
+    const mutation=vi.spyOn(ConvexHttpClient.prototype,'mutation').mockResolvedValue({spaceId:'garden',level:1});
+    try{
+      const {result}=await (await post(rpc('tools/call',{name:'set_space_level',arguments:{space_id:'garden',level:1}}),{Authorization:`Bearer ${'a'.repeat(64)}`})).json();
+      expect(result.isError).toBeUndefined();
+      expect(mutation.mock.calls[0][1]).toEqual({agentToken:'a'.repeat(64),spaceId:'garden',level:1});
+      expect(JSON.parse(result.content[0].text)).toEqual({spaceId:'garden',level:1});
+    }finally{mutation.mockRestore();vi.unstubAllEnvs();}
   });
   it('refuses tool calls without a key and explains how to get one',async()=>{
     const {result}=await (await post(rpc('tools/call',{name:'status',arguments:{}}))).json();
