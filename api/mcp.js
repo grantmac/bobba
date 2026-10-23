@@ -42,7 +42,9 @@ const TOOLS=[
     inputSchema:object({name:{type:'string',maxLength:40,description:'Short name shown in the catalogue'},...source,image_base64:{type:'string',description:'Base64 or data URL of a small picture'},kind:KIND,width:{type:'integer',minimum:1,maximum:4,default:1,description:'Footprint width in tiles (left-to-right along the right wall)'},depth:{type:'integer',minimum:1,maximum:4,default:1,description:'Footprint depth in tiles'},facing:{type:'string',enum:['right','left'],default:'right',description:'Which way the pictured front faces: lower-right or lower-left'},...spriteOptions,...seatOptions,...animationOptions},['name'])},
   {name:'my_assets',description:'List the pieces this player has built.',inputSchema:object({})},
   {name:'set_controls',description:'Set the buttons on a built furniture selection card, live for every player. Always choose meaningful labels matching the implemented behaviour. use names the program interaction (for example Drive); power names the actions that set power on and off (for example Start engine and Stop engine). Pass null to hide either control. Programs do not automatically add buttons. This replaces both control settings without resetting program state. Only the builder or Grant can edit.',inputSchema:object({asset_id:{type:'string'},use:{type:['string','null'],minLength:1,maxLength:24,description:'Button label for the program interact event, or null to hide'},power:{anyOf:[object({onLabel:{type:'string',minLength:1,maxLength:24},offLabel:{type:'string',minLength:1,maxLength:24}},['onLabel','offLabel']),{type:'null'}],description:'Labels for switching on and off, or null to hide'}},['asset_id','use','power'])},
-  {name:'program_api',description:'Read the furniture JavaScript API, lifecycle, limits and a complete spinning-chair example before writing an asset program.',inputSchema:object({})},
+  {name:'get_connections',description:'Read the outgoing named signal connections of a placed programmed item. Use room_map to find placed item IDs.',inputSchema:object({item_id:{type:'string'}},['item_id'])},
+  {name:'set_connections',description:'Replace a placed item’s outgoing signal connections. Both ends must be programmed pieces you own (or you must be Grant) in the same space. Up to eight incoming and eight outgoing connections per piece. An empty array disconnects all outputs. Read get_connections first to preserve existing links.',inputSchema:object({item_id:{type:'string'},connections:{type:'array',maxItems:8,items:object({name:{type:'string',pattern:'^[-a-zA-Z0-9_]{1,32}$'},target_item_id:{type:'string'}},['name','target_item_id'])}},['item_id','connections'])},
+  {name:'program_api',description:'Read the furniture JavaScript API, proximity events, connected-item signals, lifecycle, limits and working examples before writing an asset program.',inputSchema:object({})},
   {name:'get_program',description:'Read a built asset’s saved JavaScript source, defaults and revision before editing it.',inputSchema:object({asset_id:{type:'string'}},['asset_id'])},
   {name:'set_program',description:'Attach or replace a self-contained JavaScript ES module on a built asset. Read program_api first. Every placed copy loads it live without a room reload; new versions reset instance state to initial_state. Use source:null to remove it. Only the builder or Grant can edit.',inputSchema:object({asset_id:{type:'string'},source:{type:['string','null'],maxLength:65536},initial_state:{description:'JSON state defaults for each placed copy; defaults to {}'},expected_revision:{type:'integer',minimum:0,description:'Revision from get_program; rejects stale edits'}},['asset_id','source'])},
   {name:'set_seat',description:'Fix where an avatar sits on one of the player\'s built seats (kind seat) and how high, without rebuilding it: the tile within the footprint and the seat top\'s height in pixels, so a figure sits on a stool top rather than beside or inside it. clear: true returns the piece to seating on every tile at chair height. Open rooms pick it up at once.',
@@ -101,6 +103,14 @@ async function register(token,args,views){
   return summary(result);
 }
 const HANDLERS={
+  async get_connections({item_id},{token}){
+    const result=await call('query',api.programs.getConnections,{agentToken:token,itemId:item_id});
+    return {item_id:result.itemId,connections:result.connections.map(({name,targetId})=>({name,target_item_id:targetId}))};
+  },
+  async set_connections({item_id,connections},{token}){
+    const result=await call('mutation',api.programs.setConnections,{agentToken:token,itemId:item_id,connections:connections.map(({name,target_item_id})=>({name,targetId:target_item_id}))});
+    return {item_id:result.itemId,connections:result.connections.map(({name,targetId})=>({name,target_item_id:targetId}))};
+  },
   async set_controls({asset_id,use,power},{token}){
     return call('mutation',api.assetControls.set,{agentToken:token,assetId:asset_id,controls:{use,power}});
   },

@@ -19,7 +19,7 @@ const load=(image,file)=>{if(/^https?:\/\//.test(file))image.crossOrigin='anonym
 // The wall face is 117 px tall above the floor line; hung pieces are kept within it.
 const WALL_FACE=117;
 const USABLE=new Set(['custom_dj_decks','fridge','dmg_fridge','custom_logbook','asset_kd7acza4w9bg93w99rxrd5346x8gpfwq']);
-export async function createFurniture({prepareImage,makeVisual,disposeVisual,positionVisual,markTiles,worldPoint,isTile,getAvatar,stopWalking,onChanged,onSit,onUse=()=>{},onInspect=()=>{},canBuildAt=()=>true,focusRoom,onAttachAgent,floorHeight=()=>0,hasWall=()=>false,walls=()=>[],initialItems=[],initialAssets=[],programPlayers=()=>[],programRoom=()=>({people:null}),programMe=()=>null,programNow=null,programReducedMotion=()=>false,onProgramSave=()=>Promise.reject(new Error('Enter the room first.')),onProgramUse=()=>{}}){
+export async function createFurniture({prepareImage,makeVisual,disposeVisual,positionVisual,markTiles,worldPoint,isTile,getAvatar,stopWalking,onChanged,onSit,onUse=()=>{},onInspect=()=>{},canBuildAt=()=>true,focusRoom,onAttachAgent,floorHeight=()=>0,hasWall=()=>false,walls=()=>[],initialItems=[],initialAssets=[],programPlayers=()=>[],programProximityPlayers=programPlayers,programRoom=()=>({people:null}),programMe=()=>null,programNow=null,programReducedMotion=()=>false,onProgramSave=()=>Promise.reject(new Error('Enter the room first.')),onProgramSignal=()=>Promise.reject(new Error('Enter the room first.')),onProgramUse=()=>{}}){
   const response=await fetch(ROOT+'catalog.json');
   if(!response.ok)throw new Error('Furniture could not be loaded.');
   let catalog=[...await response.json(),...initialAssets];const definitions=new Map(catalog.map(d=>[d.id,d]));
@@ -115,7 +115,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
   // Pieces with a power switch: the decks, and built animations marked switchable.
   const switchable=item=>item?.type==='custom_dj_decks'||!!definitions.get(item?.type)?.switchable;
   const displays=createProgramDisplays();
-  const programs=createAssetPrograms({getPlayers:programPlayers,getRoom:programRoom,getMe:programMe,getTime:programNow,getReducedMotion:programReducedMotion,saveState:onProgramSave,onError:message=>{console.warn(message);onPowerError(message);}});
+  const programs=createAssetPrograms({getPlayers:programPlayers,getProximityPlayers:programProximityPlayers,getRoom:programRoom,getMe:programMe,getTime:programNow,getReducedMotion:programReducedMotion,saveState:onProgramSave,sendSignal:onProgramSignal,onError:message=>{console.warn(message);onPowerError(message);}});
   let lastEffects='',reduceProgramMotion=false;
   const effectFor=id=>{const effect=programs.visual(id);return reduceProgramMotion?{opacity:effect.opacity,display:effect.display,frame:effect.frame,animation:false}:effect;};
   // Builders drop pieces only inside their own space; Grant anywhere. Loading never applies this.

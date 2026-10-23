@@ -1,8 +1,8 @@
-export function pinchView(view,previous,next,origin,scaleForZoom=zoom=>zoom){
-  const zoom=Math.max(.75,Math.min(4,view.zoom*next.distance/Math.max(1,previous.distance))),ratio=scaleForZoom(zoom)/scaleForZoom(view.zoom);
+export function pinchView(view,previous,next,origin,scaleForZoom=zoom=>zoom,minZoom=.5){
+  const zoom=Math.max(minZoom,Math.min(4,view.zoom*next.distance/Math.max(1,previous.distance))),ratio=scaleForZoom(zoom)/scaleForZoom(view.zoom);
   return {zoom,panX:next.x-origin.x-(previous.x-origin.x-view.panX)*ratio,panY:next.y-origin.y-(previous.y-origin.y-view.panY)*ratio};
 }
-export function installTouchNavigation(element,{getView,setView,cancelTap,scaleForZoom}){
+export function installTouchNavigation(element,{getView,setView,cancelTap,scaleForZoom,getMinZoom=()=>.5}){
   const touches=new Map();let dragged=false,start=null;
   const point=e=>({x:e.clientX,y:e.clientY});
   const pair=()=>{
@@ -20,7 +20,7 @@ export function installTouchNavigation(element,{getView,setView,cancelTap,scaleF
     const old=touches.get(e.pointerId),before=touches.size>=2?pair():null;touches.set(e.pointerId,point(e));
     if(touches.size>=2){
       const rect=element.getBoundingClientRect();
-      setView(pinchView(getView(),before,pair(),{x:rect.left+rect.width/2,y:rect.top+rect.height/2},scaleForZoom));
+      setView(pinchView(getView(),before,pair(),{x:rect.left+rect.width/2,y:rect.top+rect.height/2},scaleForZoom,getMinZoom()));
       dragged=true;
     }else if(dragged||Math.hypot(e.clientX-start.x,e.clientY-start.y)>8){
       const view=getView(),from=dragged?old:start;setView({...view,panX:view.panX+e.clientX-from.x,panY:view.panY+e.clientY-from.y});dragged=true;

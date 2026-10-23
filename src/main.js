@@ -659,7 +659,7 @@ container.addEventListener('keydown',event=>{
   const from=path.length&&target?target:{x:Math.floor(position.x),z:Math.floor(position.z)};
   const cell={x:from.x+delta[0],z:from.z+delta[1]};if(valid(cell.x,cell.z))walkTo(cell);
 });
-// Each wheel notch moves one whole pixel step, so every notch visibly changes the zoom.
+// Each wheel notch moves one pixel step, with a half-pixel overview below the smallest.
 // A full mouse notch, or an equivalent trackpad run, is one step, and steps are at least
 // a quarter second apart so a flick settles one level away rather than several.
 let wheelAccumulator=0,lastFit=1,lastZoomStep=0;
@@ -671,11 +671,11 @@ container.addEventListener('wheel',event=>{
   const direction=wheelAccumulator<0?1:-1;wheelAccumulator=0;
   if(performance.now()-lastZoomStep<250)return;
   lastZoomStep=performance.now();
-  // Limits are whole pixel steps, not multiples of the fit, so zooming out always has
+  // Limits are pixel steps, not multiples of the fit, so zooming out always has
   // somewhere to go and a window resize cannot strand the view outside its own range.
   const pixelRatio=Math.min(window.devicePixelRatio,3),scale=lastFit*pixelRatio;
-  const current=Math.round(displayScale*pixelRatio),most=Math.max(2,Math.round(3*pixelRatio));
-  const next=Math.max(1,Math.min(most,current+direction));
+  const current=displayScale*pixelRatio,most=Math.max(2,Math.round(3*pixelRatio));
+  const next=direction>0?Math.min(most,Math.floor(current)+1):Math.max(.5,Math.ceil(current)-1);
   if(next===current)return;
   zoom=next/scale;resize();
 },{passive:false});
@@ -689,9 +689,8 @@ function resize(){
   const fit=Math.max(mobile?1:0,Math.min(1.5,(w-reserved)/((fitWidth+roomDepth)*32+(mobile?80:90)),h/((fitWidth+roomDepth)*16+(mobile?130:160))));
   const pixelRatio=Math.min(window.devicePixelRatio,3);lastFit=fit;
   renderer.setPixelRatio(pixelRatio);
-  // Every zoom level is a whole number of device pixels per room pixel, so nearest-neighbour
-  // sampling stays crisp instead of smearing at fractional scales. The default fit rounds
-  // down so the whole room still fits on screen.
+  // Normal levels use whole device pixels; the extra overview uses half-size sampling.
+  // The default fit rounds down so the whole room still fits on screen.
   displayScale=displayScaleForZoom(zoom,fit,pixelRatio);
   // Panning may run to the far end of the last space, however far the chain reaches.
   const spread=(boundsWidth-fitWidth)*32*displayScale;
@@ -721,6 +720,7 @@ updateViewport();new ResizeObserver(resize).observe(container);resize();
 installTouchNavigation(container,{
   getView:()=>({zoom,panX,panY}),
   scaleForZoom:value=>displayScaleForZoom(value,lastFit,Math.min(window.devicePixelRatio,3)),
+  getMinZoom:()=>.5/(lastFit*Math.min(window.devicePixelRatio,3)),
   setView:view=>{zoom=view.zoom;panX=view.panX;panY=view.panY;resize();},
   cancelTap:()=>{down=null;hover.visible=false;}
 });
@@ -902,7 +902,14 @@ try{
       for(const zone of new Set([zoneAt(layout,item.x,item.z),MAIN_ZONE])){const near=all.filter(p=>p.zone===zone);if(near.some(p=>p.kind!=='bot'))return near;}
       return all;
     },
-    programMe:()=>network.me?.id??null,onProgramSave:(itemId,version,revision,state)=>network.programs.save(itemId,version,revision,state),onProgramUse:itemId=>network.programs.interact(itemId),
+    programProximityPlayers:item=>{
+      if(!layout)return [];
+      const zone=zoneAt(layout,item.x,item.z),now=network.now();
+      return [...(selfPlayer?[selfPlayer]:[]),...[...peers.values()].map(peer=>peer.data)]
+        .map(player=>({...player,...samplePlayer(player,now)}))
+        .filter(player=>zoneAt(layout,Math.floor(player.x),Math.floor(player.z))===zone);
+    },
+    programMe:()=>network.me?.id??null,onProgramSave:(itemId,version,revision,state)=>network.programs.save(itemId,version,revision,state),onProgramSignal:(itemId,version,revision,name,data)=>network.programs.signal(itemId,version,revision,name,data),onProgramUse:itemId=>network.programs.interact(itemId),
     programNow:()=>network.now(),programReducedMotion:()=>reducedMotion.matches,programRoom:()=>network.population,
     prepareImage,worldPoint:iso,isTile:(x,z)=>valid(x,z)&&!isPoolWater(layout,x,z)&&!onWalkway(layout,x,z),floorHeight,getAvatar:()=>position,stopWalking,onChanged:()=>{ensureFreeTile();positionAwayPoster();positionDeckSign();},onSit:sitOn,onUse:useItem,
     // Furniture carries its own builder credit; dismiss the character/space stand.

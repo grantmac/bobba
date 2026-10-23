@@ -1,6 +1,20 @@
 // This contract is shared by the server and the untrusted-program boundary.
 export const PROGRAM_API_VERSION=1;
 export const PROGRAM_SOURCE_MAX=64*1024,PROGRAM_STATE_MAX=8*1024;
+export const PROGRAM_CONNECTION_MAX=8,PROGRAM_SIGNAL_MAX=1024,PROGRAM_PROXIMITY_MAX=8;
+export function programSignal(name,data){
+  if(typeof name!=='string'||!/^[-a-zA-Z0-9_]{1,32}$/.test(name))throw new Error('Signal names must be 1–32 letters, numbers, underscores or hyphens.');
+  programState(data);
+  if(new TextEncoder().encode(JSON.stringify(data)).length>PROGRAM_SIGNAL_MAX)throw new Error('Signal data must fit in 1 KiB.');
+  return data;
+}
+// Distance to the occupied tile rectangle, in floor tiles; a player on it is at zero.
+export function programNearby(item,definition,players){
+  const swap=item.rotation%4===2,width=(swap?definition.depth:definition.width)??1,depth=(swap?definition.width:definition.depth)??1;
+  return players.filter(p=>p.kind!=='bot'&&Number.isFinite(p.x)&&Number.isFinite(p.z)).map(p=>({
+    id:p.id,direction:p.direction,distance:Math.hypot(Math.max(item.x-p.x,0,p.x-item.x-width),Math.max(item.z-p.z,0,p.z-item.z-depth))
+  })).filter(p=>p.distance<=PROGRAM_PROXIMITY_MAX).sort((a,b)=>a.id.localeCompare(b.id));
+}
 export function programState(value){
   function check(v,depth=0){
     if(depth>16)throw new Error('Program state is nested too deeply.');

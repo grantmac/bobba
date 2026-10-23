@@ -2,9 +2,9 @@ import {beforeEach,afterEach,describe,it,expect,vi} from 'vitest';
 import {convexTest} from 'convex-test';
 import schema from '../convex/schema.js';
 import {api,internal} from '../convex/_generated/api.js';
-import {validateProgram,programState,programVisual,programHost} from '../shared/asset-program.js';
+import {validateProgram,programState,programVisual,programHost,programSignal,programNearby} from '../shared/asset-program.js';
 import {createAssetPrograms} from '../src/asset-program-runtime.js';
-import {spinningChairProgram} from '../shared/program-examples.js';
+import {spinningChairProgram,programReference} from '../shared/program-examples.js';
 import {drawProgramDisplay} from '../src/program-display.js';
 import beerStack from '../tools/programs/crowd-beer-stack.js';
 const modules=import.meta.glob('../convex/**/*.js');
@@ -119,6 +119,33 @@ describe('saved asset programs',()=>{
   });
 });
 describe('runtime boundary',()=>{
+  it('publishes the example sensor only on changes or newly active connections',async()=>{
+    let tick;const link={name:'occupied',targetId:'light',active:true};
+    const api={isHost:true,item:{on:true},nearbyPlayers:[{id:'visitor'}],connections:[link],setProximityRadius:vi.fn(),on:(name,callback)=>{tick=callback;},sendSignal:vi.fn(async(name,data)=>{link.data=data;})};
+    new Function(programReference.examples.proximitySensor.replace('export default','return'))()(api);
+    await tick({time:0});expect(api.sendSignal).toHaveBeenCalledExactlyOnceWith('occupied',true);
+    for(let time=50;time<=10000;time+=50)await tick({time});
+    expect(api.sendSignal).toHaveBeenCalledTimes(1);
+    api.nearbyPlayers=[];await tick({time:11000});expect(api.sendSignal).toHaveBeenLastCalledWith('occupied',false);
+    delete link.data;await tick({time:12200});expect(api.sendSignal).toHaveBeenCalledTimes(3);
+    api.isHost=false;api.nearbyPlayers=[{id:'visitor'}];await tick({time:14000});expect(api.sendSignal).toHaveBeenCalledTimes(3);
+  });
+  it('measures proximity from rotated footprints and excludes bots and unknown positions',()=>{
+    const players=[{id:'inside',x:2.5,z:2.5,direction:4},{id:'edge',x:4.5,z:2.5,direction:2},{id:'far',x:30,z:30},{id:'bot',kind:'bot',x:2,z:2},{id:'unknown'}];
+    expect(programNearby({x:2,z:2,rotation:0},{width:2,depth:1},players)).toEqual([{id:'edge',direction:2,distance:.5},{id:'inside',direction:4,distance:0}]);
+    expect(programNearby({x:2,z:2,rotation:2},{width:2,depth:1},players)[0].distance).toBe(1.5);
+    for(const [name,data] of [['bad name',null],['x',{bad:Infinity}],['x','x'.repeat(1024)]])expect(()=>programSignal(name,data)).toThrow();
+  });
+  it('passes only sanitized proximity and connection snapshots and prevents stale hosts sending',async()=>{
+    let me='human',options,world;
+    const sendSignal=vi.fn().mockResolvedValue({revision:1,delivered:1});
+    const runtime=createAssetPrograms({getPlayers:()=>[{id:'human'}],getProximityPlayers:()=>[{id:'visitor',x:1.5,z:1.5,direction:2,token:'secret'}],getMe:()=>me,sendSignal,saveState:vi.fn(),sandbox:o=>{options=o;return {update:w=>{world=w;},dispose:vi.fn()};}});
+    runtime.receive([{itemId:'sensor',version:1,state:{},revision:0,connections:[{name:'occupied',targetId:'light',active:true}],signals:[],signalRevision:3}]);
+    runtime.sync([{id:'sensor',type:'asset_a',x:1,z:1}],new Map([['asset_a',{name:'Sensor',width:1,depth:1,views:[{direction:2}],program:{revision:1,initialState:{},source:'x'}}]]));runtime.tick(100,false);
+    expect(world.nearbyPlayers).toEqual([{id:'visitor',direction:2,distance:0}]);expect(world.connections[0].targetId).toBe('light');expect(world.signalRevision).toBe(3);
+    await options.onSignal('occupied',true,3);expect(sendSignal).toHaveBeenCalledWith('sensor',1,3,'occupied',true);
+    me='visitor';expect(()=>options.onSignal('occupied',true,3)).toThrow('hosting');runtime.dispose();
+  });
   it('grows and shrinks the beer stack at crowd thresholds without shared state writes',()=>{
     let tick;const api={room:{people:null},on:(event,fn)=>{expect(event).toBe('tick');tick=fn;},setVisual:vi.fn()};
     beerStack(api);
@@ -177,6 +204,101 @@ describe('runtime boundary',()=>{
       vi.advanceTimersByTime(100);expect(update).toHaveBeenCalledOnce();expect(update.mock.calls[0][0].state).toBeNull();
       runtime.dispose();vi.advanceTimersByTime(1000);expect(update).toHaveBeenCalledOnce();
     }finally{vi.useRealTimers();}
+  });
+});
+
+describe('connected furniture',()=>{
+  async function connected(){
+    const fixture=await setup();await fixture.set({});
+    const {itemId:targetId}=await t.mutation(api.agents.place,{agentToken:fixture.agentToken,assetId:fixture.asset.id,x:25,z:3});
+    const configure=connections=>t.mutation(api.programs.setConnections,{agentToken:fixture.agentToken,itemId:fixture.itemId,connections});
+    await configure([{name:'occupied',targetId}]);
+    const send=extra=>t.mutation(api.programs.signal,{token,itemId:fixture.itemId,version:1,revision:0,name:'occupied',data:true,...extra});
+    return {...fixture,targetId,configure,send};
+  }
+  it('retains signal values per connection and exposes them through existing zone snapshots',async()=>{
+    const {itemId,targetId,send,agentToken,configure}=await connected();
+    expect((await t.query(api.programs.getConnections,{agentToken,itemId})).connections).toEqual([{name:'occupied',targetId}]);
+    expect(await send()).toEqual({revision:1,delivered:1});
+    const rows=await t.query(api.programs.list,{});
+    expect(rows.find(r=>r.itemId===targetId).signals[0]).toMatchObject({sourceId:itemId,name:'occupied',data:true,revision:1});
+    expect(rows.find(r=>r.itemId===itemId).connections[0]).toMatchObject({targetId,active:true,data:true});
+    const doc=await t.run(ctx=>ctx.db.query('furniture').withIndex('by_item',q=>q.eq('id',targetId)).unique());
+    expect(await t.query(api.programs.list,{zone:doc.zone})).toEqual(rows);
+    await configure([]);expect((await t.query(api.programs.list,{})).flatMap(r=>r.signals)).toEqual([]);
+  });
+  it('checks ownership, topology, source host, payload, version and duplicate-tab revision',async()=>{
+    const {player,itemId,targetId,configure,send}=await connected();
+    await expect(configure([{name:'bad name',targetId}])).rejects.toThrow('Signal names');
+    await expect(configure([{name:'x',targetId:itemId}])).rejects.toThrow('same piece');
+    await expect(configure(Array.from({length:9},(_,i)=>({name:`n${i}`,targetId})))).rejects.toThrow('eight');
+    await expect(configure([{name:'x',targetId},{name:'x',targetId}])).rejects.toThrow('unique');
+    const other=await t.mutation(api.room.join,{token:otherToken,name:'Other',look});
+    const {agentToken:otherAgent}=await t.mutation(api.agents.createKey,{token:otherToken,label:'Other'});
+    await expect(t.mutation(api.programs.setConnections,{agentToken:otherAgent,itemId,connections:[]})).rejects.toThrow('not yours');
+    const host=programHost([player,other]),hostToken=host===player.id?token:otherToken,guestToken=hostToken===token?otherToken:token;
+    await expect(send({token:guestToken})).rejects.toThrow('current host');
+    await expect(send({token:hostToken,version:0})).rejects.toThrow('program changed');
+    await expect(send({token:hostToken,data:'x'.repeat(1024)})).rejects.toThrow('1 KiB');
+    await expect(send({token:hostToken,name:'missing'})).rejects.toThrow('No connection');
+    await send({token:hostToken});
+    await expect(send({token:hostToken})).rejects.toThrow('revision changed');
+    await expect(send({token:hostToken,revision:1})).rejects.toThrow('once per second');
+    await t.run(ctx=>ctx.db.patch(host,{online:false}));
+    vi.spyOn(Date,'now').mockReturnValue(Date.now()+1100);
+    await send({token:guestToken,revision:1,data:false});
+    expect((await t.query(api.programs.list,{})).find(r=>r.itemId===targetId).signals[0].data).toBe(false);
+  });
+  it('rejects foreign receivers and cross-space wiring even when source ownership passes',async()=>{
+    const {targetId,configure}=await connected();
+    const other=await t.mutation(api.room.join,{token:otherToken,name:'Other',look});
+    const target=await t.run(ctx=>ctx.db.query('furniture').withIndex('by_item',q=>q.eq('id',targetId)).unique());
+    await t.run(ctx=>ctx.db.patch(target._id,{owner:other.id}));
+    await expect(configure([{name:'new',targetId}])).rejects.toThrow('not yours');
+    await t.run(ctx=>ctx.db.patch(target._id,{owner:target.owner,zone:'another-space'}));
+    await expect(configure([{name:'new',targetId}])).rejects.toThrow('same space');
+  });
+  it('bounds incoming fan-in and still delivers when one fan-out receiver is inactive',async()=>{
+    const {agentToken,asset,itemId,targetId,configure,send}=await connected();
+    const {itemId:otherTarget}=await t.mutation(api.agents.place,{agentToken,assetId:asset.id,x:27,z:3});
+    await configure([{name:'occupied',targetId},{name:'occupied',targetId:otherTarget}]);
+    const target=await t.run(ctx=>ctx.db.query('furniture').withIndex('by_item',q=>q.eq('id',targetId)).unique());
+    await t.run(ctx=>ctx.db.patch(target._id,{x:null,z:null,zone:'inventory'}));
+    expect(await send()).toEqual({revision:1,delivered:1});
+    await t.run(ctx=>ctx.db.patch(target._id,{x:target.x,z:target.z,zone:target.zone}));
+    await configure(Array.from({length:8},(_,i)=>({name:`n${i}`,targetId})));
+    await expect(t.mutation(api.programs.setConnections,{agentToken,itemId:otherTarget,connections:[{name:'overflow',targetId}]})).rejects.toThrow('eight incoming');
+    await t.mutation(api.agents.remove,{agentToken,itemId});
+    expect(await t.run(ctx=>ctx.db.query('programConnections').collect())).toEqual([]);
+  });
+  it('invalidates values on program edits and keeps links without idle writes',async()=>{
+    const {itemId,targetId,send,set}=await connected();await send();await set({});
+    const rows=await t.query(api.programs.list,{});
+    expect(rows.find(r=>r.itemId===targetId).signals).toEqual([]);
+    expect(rows.find(r=>r.itemId===itemId).connections).toEqual([{name:'occupied',targetId,active:true}]);
+    await expect(send()).rejects.toThrow('program changed');await send({version:2});
+    expect((await t.query(api.programs.list,{})).find(r=>r.itemId===targetId).signals[0].revision).toBe(2);
+  });
+  it('lets an online fallback host clear a sensor after leaving its otherwise empty space',async()=>{
+    const {player,targetId,send}=await connected();await send();
+    await t.run(ctx=>ctx.db.patch(player.id,{zone:'adjacent-space'}));
+    vi.spyOn(Date,'now').mockReturnValue(Date.now()+1100);
+    await send({revision:1,data:false});
+    expect((await t.query(api.programs.list,{})).find(r=>r.itemId===targetId).signals[0].data).toBe(false);
+    await t.run(ctx=>ctx.db.patch(player.id,{online:false}));
+    await expect(send({revision:2})).rejects.toThrow('current host');
+  });
+  it('suspends picked-up or moved receivers and cleans connections when either endpoint is deleted',async()=>{
+    const {agentToken,asset,itemId,targetId,send}=await connected();await send();
+    const target=await t.run(ctx=>ctx.db.query('furniture').withIndex('by_item',q=>q.eq('id',targetId)).unique());
+    await t.run(ctx=>ctx.db.patch(target._id,{x:null,z:null,zone:'inventory'}));
+    const rows=await t.query(api.programs.list,{});expect(rows.find(r=>r.itemId===itemId).connections[0].active).toBe(false);expect(rows.some(r=>r.itemId===targetId)).toBe(false);
+    vi.spyOn(Date,'now').mockReturnValue(Date.now()+1100);
+    await expect(send({revision:1})).rejects.toThrow('No connected receiver');
+    await t.run(ctx=>ctx.db.patch(target._id,{x:target.x,z:target.z,zone:'elsewhere'}));
+    expect((await t.query(api.programs.list,{})).find(r=>r.itemId===targetId).signals).toEqual([]);
+    await t.mutation(api.agents.deleteAsset,{agentToken,id:asset.id});
+    expect(await t.run(ctx=>ctx.db.query('programConnections').collect())).toEqual([]);
   });
 });
 
