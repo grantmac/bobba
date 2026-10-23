@@ -1,22 +1,35 @@
 // Imported as raw text: bundlers must not rewrite dynamic import or lift closure variables.
 // A classic worker supports opaque iframe origins; the furniture itself is an ES module.
 function assetProgramWorker(){
-  const send=self.postMessage.bind(self),handlers=new Map(),saves=new Map();
-  let world=null,previous=null,state={},revision=0,serial=0,visual={},saveId=0,started=false;
+  const send=self.postMessage.bind(self),handlers=new Map(),saves=new Map(),signals=new Map();
+  let world=null,previous=null,state={},revision=0,serial=0,visual={},saveId=0,started=false,signalRevision=0,radius=2,nearby=[],previousNearby=[],previousSignals=new Map();
   const copy=value=>structuredClone(value);
   const emit=async(name,value)=>{for(const fn of handlers.get(name)??[])await fn(copy(value));};
   const api=Object.freeze({
     get item(){return copy(world.item);},get occupants(){return copy(world.occupants);},
     get room(){return copy(world.room??{people:null});},
+    get connections(){return copy(world.connections??[]);},get signals(){return copy(world.signals??[]);},
+    get nearbyPlayers(){return copy(nearby);},
     get state(){return copy(state);},get isHost(){return world.isHost;},
     get time(){return world.time;},get reducedMotion(){return world.reducedMotion;},
     on(name,fn){
-      if(!['tick','sit','stand','power','interact','state','host','dispose'].includes(name)||typeof fn!=='function')throw new Error('Unknown event or invalid callback.');
+      if(!['tick','sit','stand','power','interact','state','host','dispose','signal','proximityEnter','proximityLeave'].includes(name)||typeof fn!=='function')throw new Error('Unknown event or invalid callback.');
       const list=handlers.get(name)??[];if(list.length>=32)throw new Error('Too many event listeners.');
       list.push(fn);handlers.set(name,list);return ()=>{const at=list.indexOf(fn);if(at>=0)list.splice(at,1);};
     },
     setVisual(patch){visual={...visual,...patch};},
     resetVisual(){visual={};},
+    setProximityRadius(value){
+      if(!Number.isFinite(value)||value<0||value>8)throw new Error('Proximity radius must be between 0 and 8 tiles.');
+      radius=value;nearby=(world.nearbyPlayers??[]).filter(p=>p.distance<=radius);
+    },
+    async sendSignal(name,data=null){
+      if(!world.isHost)throw new Error('Only the host can send signals.');
+      if(signals.size)throw new Error('Await the previous signal first.');
+      const payload=copy({name,data});
+      const id=++saveId;
+      return new Promise((resolve,reject)=>{signals.set(id,{resolve,reject});send({type:'signal',id,...payload,revision:signalRevision});});
+    },
     async saveState(next){
       if(!world.isHost)throw new Error('Only the host can save shared state.');
       if(saves.size)throw new Error('Await the previous state save first.');
@@ -27,6 +40,10 @@ function assetProgramWorker(){
   setInterval(()=>send({type:'heartbeat'}),500);
   self.onmessage=async({data})=>{
     try{
+      if(data.type==='signaled'){
+        const pending=signals.get(data.id);if(!pending)return;signals.delete(data.id);
+        if(data.error)pending.reject(new Error(data.error));else{signalRevision=Math.max(signalRevision,data.revision);pending.resolve({delivered:data.delivered});}return;
+      }
       if(data.type==='saved'){
         const pending=saves.get(data.id);if(!pending)return;saves.delete(data.id);
         if(data.error)pending.reject(new Error(data.error));else{state=pending.next;revision=data.revision;pending.resolve();}return;
@@ -34,6 +51,8 @@ function assetProgramWorker(){
       if(data.type==='dispose'){await emit('dispose',{});self.close();return;}
       if(data.type!=='init'&&data.type!=='update')return;
       world=data.world;
+      nearby=(world.nearbyPlayers??[]).filter(p=>p.distance<=radius);
+      signalRevision=Math.max(signalRevision,world.signalRevision??0);
       if(!started){
         started=true;state=copy(world.state);revision=world.revision;serial=world.serial;
         const url=URL.createObjectURL(new Blob([data.source],{type:'text/javascript'}));
@@ -44,6 +63,14 @@ function assetProgramWorker(){
       for(const [id,p] of before)if(!after.has(id))await emit('stand',p);
       for(const [id,p] of after)if(!before.has(id))await emit('sit',p);
       if(!previous||previous.item.on!==world.item.on)await emit('power',{on:world.item.on});
+      const beforeNearby=new Map(previousNearby.map(p=>[p.id,p])),afterNearby=new Map(nearby.map(p=>[p.id,p]));
+      for(const [id,p] of beforeNearby)if(!afterNearby.has(id))await emit('proximityLeave',p);
+      for(const [id,p] of afterNearby)if(!beforeNearby.has(id))await emit('proximityEnter',p);
+      previousNearby=copy([...afterNearby.values()]);
+      const currentSignals=new Map((world.signals??[]).map(s=>[s.id,s]));
+      for(const [id,s] of previousSignals)if(!currentSignals.has(id))await emit('signal',{...s,data:null,removed:true,initial:false});
+      for(const [id,s] of currentSignals)if(previousSignals.get(id)?.revision!==s.revision)await emit('signal',{...s,removed:false,initial:!previousSignals.has(id)});
+      previousSignals=currentSignals;
       for(const event of world.events)if(event.serial>serial){await emit('interact',event);serial=event.serial;}
       await emit('tick',{time:world.time,delta:previous?Math.min(250,Math.max(0,world.time-previous.time)):0});
       previous=world;send({type:'frame',sequence:data.sequence,visual});

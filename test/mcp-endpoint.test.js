@@ -19,7 +19,7 @@ describe('hosted MCP endpoint',()=>{
   });
   it('lists the tools and answers notifications with 202',async()=>{
     const {result}=await (await post(rpc('tools/list'))).json();
-    expect(result.tools.map(t=>t.name)).toEqual(['status','design_asset','upload_url','preview_asset','submit_asset','add_asset','my_assets','set_controls','program_api','get_program','set_program','set_seat','delete_asset','room_map','room_overview','place','remove','add_space','design_surface','style_space','resize_space','remove_space']);
+    expect(result.tools.map(t=>t.name)).toEqual(['status','design_asset','upload_url','preview_asset','submit_asset','add_asset','my_assets','set_controls','get_connections','set_connections','program_api','get_program','set_program','set_seat','delete_asset','room_map','room_overview','place','remove','add_space','design_surface','style_space','resize_space','remove_space']);
     const space=result.tools.find(t=>t.name==='add_space');
     expect(space.inputSchema.required).toEqual(['name']);expect(space.inputSchema.properties).not.toHaveProperty('width');expect(space.inputSchema.properties.floor.enum).toEqual(['plain','wood','tiles','carpet']);
     for(const tool of result.tools)expect(tool.inputSchema.type).toBe('object');
@@ -62,6 +62,17 @@ describe('hosted MCP endpoint',()=>{
     const reference=JSON.parse(result.content[0].text);
     expect(reference.apiVersion).toBe(1);expect(reference.examples.spinningChair).toContain("api.on('tick'");
     expect(reference.methods['await saveState(json)']).toContain('Host only');
+    expect(reference.examples.proximitySensor).toContain('api.sendSignal');
+    expect(reference.examples.connectedLight).toContain('api.signals');
+  });
+  it('maps placed-copy connection tools to the authenticated backend',async()=>{
+    vi.stubEnv('VITE_CONVEX_URL','https://example.convex.cloud');
+    const mutation=vi.spyOn(ConvexHttpClient.prototype,'mutation').mockResolvedValue({itemId:'sensor',connections:[{name:'occupied',targetId:'light'}]});
+    try{
+      const {result}=await (await post(rpc('tools/call',{name:'set_connections',arguments:{item_id:'sensor',connections:[{name:'occupied',target_item_id:'light'}]}}),{Authorization:`Bearer ${'a'.repeat(64)}`})).json();
+      expect(result.isError).toBeUndefined();expect(mutation.mock.calls[0][1]).toEqual({agentToken:'a'.repeat(64),itemId:'sensor',connections:[{name:'occupied',targetId:'light'}]});
+      expect(JSON.parse(result.content[0].text)).toEqual({item_id:'sensor',connections:[{name:'occupied',target_item_id:'light'}]});
+    }finally{mutation.mockRestore();vi.unstubAllEnvs();}
   });
   it('writes the design prompt with reference URLs on this origin, without a room server',async()=>{
     const key='a'.repeat(64);

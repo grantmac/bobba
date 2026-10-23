@@ -12,9 +12,9 @@ const assert=(value,message)=>{if(!value)throw Error(message);};
 const check=message=>{const li=document.createElement('li');li.textContent='PASS: '+message;document.querySelector('#checks').append(li);};
 const world={item:{id:'chair',type:'asset_demo',x:0,z:0,direction:2,on:true},occupants:[{id:'person',direction:2}],state:{n:0},revision:0,serial:0,events:[],time:250,reducedMotion:false,isHost:true};
 function start(source){
- const frames=[],errors=[],saved=[];
- const runtime=createProgramSandbox({program:{source},views:[0,2,4,6],onVisual:v=>frames.push(v),onError:e=>errors.push(e),onSave:async(state,revision)=>{saved.push(state);return {revision:revision+1};}});
- return {runtime,frames,errors,saved};
+ const frames=[],errors=[],saved=[],sent=[];
+ const runtime=createProgramSandbox({program:{source},views:[0,2,4,6],onVisual:v=>frames.push(v),onError:e=>errors.push(e),onSignal:async(name,data,revision)=>{sent.push({name,data,revision});return {revision:revision+1,delivered:1};},onSave:async(state,revision)=>{saved.push(state);return {revision:revision+1};}});
+ return {runtime,frames,errors,saved,sent};
 }
 async function until(fn,label){for(let i=0;i<100;i++){if(fn())return;await wait(50);}throw Error('Timed out: '+label);}
 try{
@@ -48,6 +48,49 @@ try{
  state.runtime.update({...world,time:500,serial:1,events:[{serial:1,at:500,playerId:'person'}]});await until(()=>state.saved.length,'save');await until(()=>state.frames.length===2,'second frame');
  assert(state.frames[1].offsetX===2,'module reloaded between ticks');assert(state.saved[0].n===1,'state was not saved');
  check('Module closure survives updates; interaction saves per-instance state');state.runtime.dispose();
+ const proximity=start(`export default function(api){
+   api.setProximityRadius(1);let enters=0,leaves=0;
+   api.on('proximityEnter',()=>enters++);api.on('proximityLeave',()=>leaves++);
+   api.on('tick',()=>api.setVisual({offsetX:enters,offsetY:leaves,opacity:api.nearbyPlayers.length?1:.25}));
+ }`);
+ const person={id:'near',direction:2,distance:.5};
+ proximity.runtime.update({...world,nearbyPlayers:[person,{id:'far',direction:4,distance:2}]});
+ await until(()=>proximity.frames.length||proximity.errors.length,'proximity init');assert(!proximity.errors.length,proximity.errors[0]);
+ assert(proximity.frames.at(-1).offsetX===1&&proximity.frames.at(-1).opacity===1,'initial nearby membership');
+ proximity.runtime.update({...world,time:500,nearbyPlayers:[{...person,distance:.8}]});await until(()=>proximity.frames.length===2,'proximity steady');
+ assert(proximity.frames.at(-1).offsetX===1,'duplicate enter during movement');
+ proximity.runtime.update({...world,time:750,nearbyPlayers:[]});await until(()=>proximity.frames.at(-1)?.offsetY===1,'proximity leave');
+ assert(proximity.frames.at(-1).opacity===.25,'nearby snapshot not cleared');proximity.runtime.dispose();
+ check('Real worker proximity enter/leave filters radius, initializes occupancy and avoids repeated enters');
+ const expanding=start(`export default function(api){api.setProximityRadius(1);let count=0;
+   api.on('proximityEnter',()=>{count++;api.setProximityRadius(2);});
+   api.on('tick',()=>api.setVisual({offsetX:count}));
+ }`);
+ const expandedWorld={...world,nearbyPlayers:[person,{id:'far',direction:4,distance:2}]};
+ expanding.runtime.update(expandedWorld);await until(()=>expanding.frames.length||expanding.errors.length,'radius change');
+ expanding.runtime.update({...expandedWorld,time:500});await until(()=>expanding.frames.at(-1)?.offsetX===2,'radius changed inside callback');expanding.runtime.dispose();
+ check('Radius changes inside proximity callbacks deliver new membership on the following update');
+ const receiver=start(`export default function(api){let updates=0,initials=0;
+   api.on('signal',s=>{updates++;if(s.initial)initials++;});
+   api.on('tick',()=>api.setVisual({offsetX:updates,offsetY:initials,opacity:api.signals.some(s=>s.data===true)?1:.25}));
+ }`);
+ const signal={id:'link',sourceId:'sensor',name:'occupied',data:true,revision:1,at:250};
+ receiver.runtime.update({...world,signals:[signal]});await until(()=>receiver.frames.length||receiver.errors.length,'retained signal');assert(!receiver.errors.length,receiver.errors[0]);
+ assert(receiver.frames.at(-1).offsetX===1&&receiver.frames.at(-1).offsetY===1&&receiver.frames.at(-1).opacity===1,'late viewer did not reconstruct');
+ receiver.runtime.update({...world,time:500,signals:[signal]});await until(()=>receiver.frames.length===2,'unchanged signal');assert(receiver.frames.at(-1).offsetX===1,'duplicate signal');
+ receiver.runtime.update({...world,time:750,signals:[{...signal,revision:2,data:false}]});await until(()=>receiver.frames.at(-1)?.offsetX===2,'new signal');assert(receiver.frames.at(-1).offsetY===1,'changed signal marked initial');
+ receiver.runtime.update({...world,time:1000,signals:[]});await until(()=>receiver.frames.at(-1)?.offsetX===3,'removed signal');assert(receiver.frames.at(-1).opacity===.25,'removed value retained');receiver.runtime.dispose();
+ check('Retained signals initialize late viewers, deduplicate revisions and clear on disconnect');
+ const sender=start(`export default function(api){api.on('interact',async()=>{
+   try{await api.sendSignal('occupied',true);api.setVisual({offsetX:10});}
+   catch{api.setVisual({offsetX:20});}
+ });}`);
+ sender.runtime.update({...world,signalRevision:4});await until(()=>sender.frames.length||sender.errors.length,'sender init');
+ sender.runtime.update({...world,time:500,signalRevision:4,serial:1,events:[{serial:1,playerId:'person',at:500}]});await until(()=>sender.frames.at(-1)?.offsetX===10,'signal ack');
+ assert(sender.sent.length===1&&sender.sent[0].revision===4,'signal version not bridged');
+ sender.runtime.update({...world,time:750,signalRevision:5,serial:2,events:[{serial:2,playerId:'person',at:750}]});await until(()=>sender.frames.at(-1)?.offsetX===20,'signal rate cap');assert(sender.sent.length===1,'rate cap reached backend');
+ sender.runtime.update({...world,time:1000,isHost:false,signalRevision:5,serial:3,events:[{serial:3,playerId:'person',at:1000}]});await until(()=>sender.frames.length===4,'nonhost signal');assert(sender.sent.length===1,'nonhost sent signal');sender.runtime.dispose();
+ check('Signal bridge awaits acknowledgements, carries revisions and rejects rapid or nonhost sends');
  const isolated=start(`export default async function(api){let blocked=false;try{await fetch('https://example.com')}catch{blocked=true}api.setVisual({offsetX:blocked&&typeof document==='undefined'&&typeof localStorage==='undefined'?7:0});}`);
  isolated.runtime.update(world);await until(()=>isolated.frames.length||isolated.errors.length,'isolation');assert(!isolated.errors.length,isolated.errors[0]);assert(isolated.frames[0].offsetX===7,'network or origin storage available');check('Program cannot fetch or access document/localStorage');isolated.runtime.dispose();
  const broken=start('export default function(){');broken.runtime.update(world);await until(()=>broken.errors.length,'syntax error');check('Syntax errors stop only the broken instance');

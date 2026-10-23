@@ -16,7 +16,9 @@ draw in front of the avatar. `place` accepts a table `support_id` from `room_map
 optionally switchable by a click.
 
 For custom behaviour, `program_api` describes the JavaScript runtime and includes
-a spinning-chair example. `get_program` reads existing code and `set_program`
+a proximity sensor and connected light example. Use `get_connections` and
+`set_connections` to wire named signals between placed copies in the same space.
+There is also a spinning-chair example. `get_program` reads existing code and `set_program`
 attaches or replaces it live. Programs stay with the asset; placed copies keep
 independent shared state. See [the runtime guide](../docs/furniture-programs.md).
 

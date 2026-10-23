@@ -147,7 +147,10 @@ export const deleteAsset=mutation({args:{agentToken:v.string(),id:v.id('assets')
   const {player}=await agentFor(ctx,agentToken),asset=await ctx.db.get(id);
   if(!asset||asset.ownerId!==player._id)fail('That piece is not yours.');
   // Every copy goes, wherever it stands; a piece that sat on one of them is healed back to its owner's hands when that zone next changes.
-  for(const doc of await ctx.db.query('furniture').withIndex('by_type',q=>q.eq('type',assetType(asset))).collect())await ctx.db.delete(doc._id);
+  for(const doc of await ctx.db.query('furniture').withIndex('by_type',q=>q.eq('type',assetType(asset))).collect()){
+    for(const index of ['source','target'])for(const link of await ctx.db.query('programConnections').withIndex(`by_${index}`,q=>q.eq(`${index}Id`,doc.id)).collect())await ctx.db.delete(link._id);
+    await ctx.db.delete(doc._id);
+  }
   for(const storageId of new Set([asset.icon,...asset.parts.flatMap(p=>[p.storageId,p.foregroundStorageId].filter(Boolean))]))await ctx.storage.delete(storageId);
   for(const row of await ctx.db.query('programInstances').withIndex('by_asset',q=>q.eq('assetId',id)).collect())await ctx.db.delete(row._id);
   await ctx.db.delete(id);

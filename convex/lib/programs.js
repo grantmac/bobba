@@ -5,5 +5,6 @@ export async function discardRemovedPrograms(ctx,previous,next){
     if(keep.has(item.id)||!item.type.startsWith('asset_'))continue;
     const row=await ctx.db.query('programInstances').withIndex('by_item',q=>q.eq('itemId',item.id)).unique();
     if(row)await ctx.db.delete(row._id);
+    for(const index of ['source','target'])for(const link of await ctx.db.query('programConnections').withIndex(`by_${index}`,q=>q.eq(`${index}Id`,item.id)).collect())await ctx.db.delete(link._id);
   }
 }

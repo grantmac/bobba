@@ -234,6 +234,7 @@ export function createMultiplayer(){
     seed:(options,items)=>mutate('seed',{options,items}),
     // Player-built catalogue pieces, live: a new piece reaches every open room at once.
     programs:{
+      signal:(itemId,version,revision,name,data)=>client.mutation(api.programs.signal,{token,itemId,version,revision,name,data}).catch(error=>{throw new Error(errorMessage(error));}),
       save:(itemId,version,revision,state)=>client.mutation(api.programs.save,{token,itemId,version,revision,state}).catch(error=>{throw new Error(errorMessage(error));}),
       interact:itemId=>client.mutation(api.programs.interact,{token,itemId}).catch(error=>{throw new Error(errorMessage(error));}),
     },

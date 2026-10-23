@@ -102,6 +102,88 @@ the instance's state; deleting a copy discards it.
 
 ## Runtime and multiplayer
 
+### Connected items
+
+Connections belong to **placed copies**, not catalogue assets. Use `room_map` to
+find their IDs, read `get_connections({item_id})`, then replace the source's
+outgoing links with:
+
+```json
+{"item_id":"SENSOR_COPY_ID","connections":[{"name":"occupied","target_item_id":"LIGHT_COPY_ID"}]}
+```
+
+Call `set_connections` with that object. Both ends must have programs, be placed
+in the same space, and belong to the configuring player (Grant can configure
+either owner's pieces). There are at most eight incoming and eight outgoing
+links per copy. A name may connect to multiple targets. Names contain 1–32
+letters, digits, underscores or hyphens. Pass an empty array to disconnect all
+outputs. `get_connections` and `set_connections` are agent tools; there is no
+browser wiring editor yet.
+
+`await api.sendSignal(name, data = null)` publishes JSON to active connections
+with that name and returns `{delivered}`. Only the elected source host can send.
+Await each call and catch failures. Payloads are limited to 1 KiB and 16 levels;
+the source can send once per second across all names. The server checks host,
+program version, signal revision, placement, and space. As with saved state,
+when the source space and lobby have no humans, online viewers may act as the
+fallback host; competing viewers are serialized by the signal revision.
+Duplicate host tabs
+cannot both publish using the same revision. Inactive receivers are skipped;
+a send with no active receivers fails.
+
+`api.connections` contains `{name,targetId,active,data?}` for outgoing links.
+`data` is present only when a retained value matches both current program
+versions. Compare it before sending: an unchanged sensor needs no writes.
+`api.signals` contains the latest active incoming values as
+`{id,sourceId,name,data,revision,at}`. These are retained values, **not a queued
+event stream**: rapid changes can coalesce while a viewer is busy or suspended.
+Use them for switches, occupancy, and other current conditions.
+
+`api.on('signal', callback)` receives those fields plus `initial` and `removed`.
+A retained value generates `initial:true` when first observed, including on
+mount. A later revision generates `initial:false`. A value that disappears
+generates `removed:true,data:null`. The current `api.signals` snapshot already
+reflects the change during the callback. Use `removed` to distinguish removal
+from an intentionally published null.
+
+Links survive program replacement and inventory pickup. Replacing either
+program invalidates its old signal values until the source republishes.
+Pickup or moving across spaces suspends delivery and hides retained values;
+returning to the same space restores still-valid values. Deleting either copy
+or its asset deletes the links. Signals do not alter power, collisions, placement,
+or player records: the receiving program decides its own visual response.
+
+### Proximity
+
+`api.setProximityRadius(tiles)` accepts 0–8 (default 2).
+`api.nearbyPlayers` contains `{id,direction,distance}` for humans in the same
+space, including the viewer and seated players, excluding bots. Distance is
+Euclidean floor-tile distance to the item's rotated footprint rectangle, not
+its sprite or a line-of-sight test. Radius zero detects players on its footprint.
+No player names, credentials, or chat are exposed.
+
+`proximityEnter(player)` and `proximityLeave(player)` fire when membership
+changes. Initial nearby players generate enter. Movement, a radius change, or
+a disappearance from presence can generate leave. Power does not suppress these
+events automatically; use `api.item.on` in the program. Existing interpolated
+player updates drive detection, with no new subscription, polling, or writes.
+Different viewers may observe a boundary at slightly different times. Only the
+elected host should publish shared effects; this is not server-validated gameplay.
+
+The `program_api` reference includes executable `proximitySensor` and
+`connectedLight` examples: attach them to two assets, place both in one space,
+and connect `occupied` from the sensor to the light. The sensor compares retained
+output values and publishes only changes (including newly connected or edited
+receivers). The light derives its opacity and animation from incoming values.
+Proximity enter/leave events also work independently, without any connections.
+
+Connections and values travel on the existing per-zone program subscription.
+No timer runs on the server. Programs still execute only on clients with the
+items loaded; an empty or unwatched space does not keep simulating. A late
+viewer receives retained signals immediately, and an active sensor host updates
+them to the current condition. Signals and proximity do not grant networking,
+sound, arbitrary spawning, or authoritative movement.
+
 ### Live room counter
 
 `api.room.people` is a read-only count of distinct connected humans throughout
@@ -146,7 +228,7 @@ does not provide trusted server game rules or general world mutations.
 Program source is capped at 64 KiB. It must be self-contained; remote package
 imports are not supported. New game capabilities can be added to the host API
 without replacing this programming model. API v1 covers visual behaviour,
-occupancy, interactions, power and shared state; sound, arbitrary spawning,
+occupancy, proximity, connected signals, interactions, power and shared state; sound, arbitrary spawning,
 and authoritative player movement are not exposed yet.
 
 Browser foundations: [iframe sandbox](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/iframe#sandbox)
