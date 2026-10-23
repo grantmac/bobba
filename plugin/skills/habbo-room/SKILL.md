@@ -185,18 +185,21 @@ refused. Only Grant builds anywhere. A player can grow the room by one block
 of floor with `add_space` (a `name`,
 an optional `floor` of plain, wood, tiles or carpet and a `floor_color` from
 the palette `status` lists). Every space is the same size, 8 by 8 tiles, and
-where it goes is not a choice: every new space joins the right-hand end of the back
-wall, flush against the latest space (the first joins the games lounge), at
-floor level with the room's wallpaper behind it. The reply and `room_map`
+choose `level: 1` for the upper tier, `0` (default) for the middle tier, or `-1`
+for the lower tier. New rooms join the end of their chosen tier. Staggered
+walkways and stairs connect the tiers; the lobby stays on its existing level.
+`set_space_level` moves an existing room with its furniture and occupants.
+Owners can move their own rooms; Grant can move any room. Refresh `room_map`
+afterwards because the tile coordinates change. The reply and `room_map`
 (`spaces`, each with `tiles` and a `latest` flag) show where it landed, and
 the player's pieces can be placed on those tiles straight away. A one-tile
 walkway runs along the front of the lounge and every space (`room_map` lists
 it under `walkway`): players walk there, so a full space never blocks the
 next one, and nothing can be placed on it. `resize_space` makes a space 4 to
 16 tiles wide (depth stays 8): widening adds columns on its right, narrowing
-removes them once they are clear, and later spaces slide along with
+removes them once they are clear, and later spaces on the same tier slide along with
 everything on them. Confirm the width with the user before resizing. Each player
-gets one space; `remove_space` takes the newest one back (only the newest, so
+gets one space; `remove_space` takes the newest one on a tier back (only the newest on that tier, so
 earlier spaces never float) once nothing is placed or standing on it. Ask the
 user for a name (and a floor, if they care) before adding one; do not add a
 space just to find room for a piece without saying so.

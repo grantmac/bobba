@@ -6,7 +6,7 @@ const posterKind=v.union(...Object.keys(POSTERS).map(kind=>v.literal(kind)));
 const point=v.object({x:v.number(),z:v.number()});
 // A player-added block of floor; see shared/spaces.js. Order is placement order. The wall and
 // picture fields are the owner's styling: absent means the room's own wallpaper and no picture.
-const space=v.object({id:v.string(),owner:v.id('players'),ownerName:v.string(),name:v.string(),width:v.number(),depth:v.number(),floor:v.string(),floorColor:v.string(),createdAt:v.number(),
+const space=v.object({level:v.optional(v.number()),id:v.string(),owner:v.id('players'),ownerName:v.string(),name:v.string(),width:v.number(),depth:v.number(),floor:v.string(),floorColor:v.string(),createdAt:v.number(),
   wall:v.optional(v.string()),wallColor:v.optional(v.string()),floorImage:v.optional(v.id('_storage')),floorFit:v.optional(v.string()),wallImage:v.optional(v.id('_storage')),wallFit:v.optional(v.string())});
 export default defineSchema({
   programInstances:defineTable({itemId:v.string(),assetId:v.id('assets'),version:v.number(),state:v.any(),revision:v.number(),savedAt:v.number(),serial:v.number(),events:v.array(v.object({serial:v.number(),playerId:v.id('players'),at:v.number()}))}).index('by_item',['itemId']).index('by_asset',['assetId']),

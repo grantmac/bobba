@@ -221,3 +221,21 @@ required. The endpoint uses the existing `CONVEX_URL` / `VITE_CONVEX_URL`.
 Pairing tests use an isolated backend; the helper and endpoint tests never
 change real agent configuration. `test/agent-entry-browser.html` previews the
 approval window without connecting to the shared room.
+
+## Terraced rooms
+
+The room strip has upper, middle and lower tiers. The lobby stays at its existing
+level. Outer tiers step back or forward so every room remains visible; public
+walkways and a two-tile staircase at their far end connect them. Furniture cannot
+block these passages. Existing rooms default to the middle tier.
+
+Open **Teleport** and use a room's **Level** selector to move it. Owners can move
+their own rooms; Grant can move any room. Furniture, wall pieces, and saved
+characters move with their room. Active routes are recalculated when needed.
+Agents have the same control through `set_space_level`, and `add_space` accepts
+`level` (-1, 0, 1). Resizing only shifts later rooms on the same tier.
+
+Checks: `node --test test/layout.test.js test/furniture-model.test.js`,
+`npx vitest run test/multiplayer.test.js`, and `test/terraces-browser-smoke.mjs`
+with a local Vite origin and `CHROME_EXECUTABLE_PATH`. The browser fixture
+checks desktop/mobile rendering and controls without changing the live room.
