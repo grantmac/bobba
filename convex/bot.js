@@ -109,11 +109,11 @@ export const claim=internalMutation({args:{},handler:async ctx=>{
   if(!configured()){await ctx.db.patch(state._id,{scheduled:false,lastError:'Add FIREWORKS_API_KEY to the backend environment.'});return null;}
   for(const old of await ctx.db.query('botEvents').withIndex('by_status',q=>q.eq('status','running')).take(20))await ctx.db.patch(old._id,{status:old.attempts>=3?'failed':'pending'});
   const pending=await ctx.db.query('botEvents').withIndex('by_status',q=>q.eq('status','pending')).take(20),events=[];
-  // The bot hears and sees its own zone: events from elsewhere in the world are not its business.
+  // Typed chat is world-wide, like worldChatFeed. Arrivals and movement stay local.
   const botPlayer=await ctx.db.get(state.playerId),zone=playerZone(botPlayer);
   for(const event of pending){
     const p=await ctx.db.get(event.playerId);
-    if(!p||identityVersion(p)!==event.identityVersion||!isOnline(p)||event.createdAt<now-120000||p.blockedUntil>now||playerZone(p)!==zone){await ctx.db.patch(event._id,{status:'done'});continue;}
+    if(!p||identityVersion(p)!==event.identityVersion||!isOnline(p)||event.createdAt<now-120000||p.blockedUntil>now||(event.kind==='arrival'&&playerZone(p)!==zone)){await ctx.db.patch(event._id,{status:'done'});continue;}
     events.push({...event,name:p.name,role:p.role});
   }
   if(!events.length){await ctx.db.patch(state._id,{scheduled:false,busyUntil:0});return null;}
@@ -123,8 +123,8 @@ export const claim=internalMutation({args:{},handler:async ctx=>{
   await scheduleBotTick(ctx,state,61000);
   const players=await zonePlayers(ctx,zone,now),room=await roomFor(ctx),bot=botPlayer;
   await loadZones(ctx,room,[zone]);
-  const memories=(await ctx.db.query('botMemories').withIndex('by_updated').order('desc').take(100)).filter(m=>!m.playerId||players.some(p=>p._id===m.playerId&&identityVersion(p)===m.identityVersion));
-  const recent=(await ctx.db.query('messages').withIndex('by_zone_time',q=>q.eq('zone',zone).gt('sentAt',now-120000)).order('desc').take(25)).reverse();
+  const memories=(await ctx.db.query('botMemories').withIndex('by_updated').order('desc').take(100)).filter(m=>!m.playerId||players.some(p=>p._id===m.playerId&&identityVersion(p)===m.identityVersion)||events.some(e=>e.playerId===m.playerId&&e.identityVersion===m.identityVersion));
+  const recent=(await ctx.db.query('messages').withIndex('by_time',q=>q.gt('sentAt',now-120000)).order('desc').take(25)).reverse();
   const at=atTime(bot,now),occupied=playerTiles(players,now,bot._id);
   const tiles=zoneTiles(layoutFor(room.options,room.spaces??[]),zone).filter(([x,z])=>!occupied.has(`${x},${z}`)&&!blocked(room,x,z)).sort((a,b)=>Math.hypot(a[0]-at.x,a[1]-at.z)-Math.hypot(b[0]-at.x,b[1]-at.z)).slice(0,80);
   const seats=room.furniture.filter(i=>i.x!==null).flatMap(i=>{const seat=seatFor(i,room.definitions[i.type]);return seat?seat.cells.map(([x,z])=>({seatId:i.id,x,z})):[];}).slice(0,40);
