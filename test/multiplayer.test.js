@@ -1328,6 +1328,70 @@ describe('agents adding spaces',()=>{
     expect((await t.mutation(api.agents.addSpace,{agentToken,name:'Requested lower',level:-1})).level).toBe(-1);
     expect((await t.mutation(api.agents.addSpace,{agentToken,name:'Next middle'})).level).toBe(0);
   });
+  it('walks from rest into another room through a furnished connecting space',async()=>{
+    const player=await admin(),agentToken=await key(adminToken);
+    const first=await t.mutation(api.agents.addSpace,{agentToken,name:'First',level:0});
+    const middle=await t.mutation(api.agents.addSpace,{agentToken,name:'Middle',level:0});
+    const last=await t.mutation(api.agents.addSpace,{agentToken,name:'Last',level:0});
+    const state=await t.query(api.room.roomState,{token:adminToken});
+    const obstacles=[
+      {id:'right',type:'small_chair_armas',rotation:0,x:last.x+1,z:0},
+      {id:'front',type:'small_chair_armas',rotation:0,x:last.x,z:1},
+      {id:'detour',type:'small_chair_armas',rotation:0,x:last.x-1,z:2},
+    ];
+    await t.mutation(api.room.setFurniture,{token:adminToken,revision:state.revision,items:obstacles});
+    const arrival=await t.mutation(api.room.teleport,{token:adminToken,spaceId:first.spaceId});
+    const walk=await t.mutation(api.room.move,{token:adminToken,x:last.x,z:0});
+    expect(walk.route[0]).toEqual(arrival.route[0]);
+    expect(walk.route.at(-1)).toEqual({x:last.x+.5,z:.5});
+    expect(walk.route.some(p=>p.x>=middle.x&&p.x<middle.x+middle.width)).toBe(true);
+    for(const obstacle of obstacles)expect(walk.route.some(p=>Math.floor(p.x)===obstacle.x&&Math.floor(p.z)===obstacle.z)).toBe(false);
+    await t.run(ctx=>ctx.db.patch(player.id,{route:[walk.route.at(-1)],startedAt:Date.now()}));
+    const back=await t.mutation(api.room.move,{token:adminToken,x:first.x+3,z:3});
+    expect(back.route[0]).toEqual(walk.route.at(-1));
+    expect(back.route.at(-1)).toEqual({x:first.x+3.5,z:3.5});
+
+    // Capacity is reserved in the destination, not rooms crossed along the way.
+    const crowd=await t.run(async ctx=>{
+      const base=await ctx.db.get(player.id),ids=[];
+      for(let i=0;i<60;i++)ids.push(await ctx.db.insert('players',{
+        ...Object.fromEntries(Object.entries(base).filter(([k])=>!k.startsWith('_'))),
+        name:`Transit ${i}`,nameKey:`transit ${i}`,zone:middle.spaceId,
+        route:[{x:middle.x+3.5,z:3.5}],startedAt:Date.now(),
+      }));
+      return ids;
+    });
+    await t.mutation(api.room.teleport,{token:adminToken,spaceId:first.spaceId});
+    expect((await t.mutation(api.room.move,{token:adminToken,x:last.x,z:0})).route.at(-1)).toEqual({x:last.x+.5,z:.5});
+    await t.run(async ctx=>{for(const id of crowd)await ctx.db.delete(id);});
+
+    // The only entrance is in the connecting room; its player reservations count too.
+    const visitor=await guest();
+    await t.run(ctx=>ctx.db.patch(visitor.id,{zone:middle.spaceId,route:[{x:last.x-.5,z:.5}],startedAt:Date.now()}));
+    await t.mutation(api.room.teleport,{token:adminToken,spaceId:first.spaceId});
+    await expect(t.mutation(api.room.move,{token:adminToken,x:last.x,z:0})).rejects.toThrow('cannot be reached');
+    // Furniture in that connecting room must also be checked before accepting a route.
+    await t.run(ctx=>ctx.db.patch(visitor.id,{online:false}));
+    const updated=await t.query(api.room.roomState,{token:adminToken});
+    await t.mutation(api.room.setFurniture,{token:adminToken,revision:updated.revision,items:[...obstacles,{id:'entrance',type:'small_chair_armas',rotation:0,x:last.x-1,z:0}]});
+    await expect(t.mutation(api.room.move,{token:adminToken,x:last.x,z:0})).rejects.toThrow('cannot be reached');
+  });
+  it('redirects a long walk while the player is still inside the departure space',async()=>{
+    await admin();const agentToken=await key(adminToken);
+    const first=await t.mutation(api.agents.addSpace,{agentToken,name:'First',level:0});
+    const middle=await t.mutation(api.agents.addSpace,{agentToken,name:'Middle',level:0});
+    const last=await t.mutation(api.agents.addSpace,{agentToken,name:'Last',level:0});
+    const arrival=await t.mutation(api.room.teleport,{token:adminToken,spaceId:first.spaceId});
+    const walk=await t.mutation(api.room.move,{token:adminToken,x:last.x+3,z:last.z+3});
+    expect(walk.route[0]).toEqual(arrival.route[0]);
+    expect(walk.route.at(-1)).toEqual({x:last.x+3.5,z:last.z+3.5});
+    // The stored zone is already Last, but the avatar is still leaving First.
+    const redirected=await t.mutation(api.room.move,{token:adminToken,x:middle.x+3,z:middle.z+3});
+    expect(Math.floor(redirected.route[0].x)).toBe(Math.floor(arrival.route[0].x));
+    expect(redirected.route.at(-1)).toEqual({x:middle.x+3.5,z:middle.z+3.5});
+    const lobby=await t.mutation(api.room.move,{token:adminToken,x:3,z:4});
+    expect(lobby.route.at(-1)).toEqual({x:3.5,z:4.5});
+  });
   it('walks between fixed room tiers and preserves them when another tier is resized',async()=>{
     await admin();const agentToken=await key(adminToken);
     const middle=await t.mutation(api.agents.addSpace,{agentToken,name:'Middle'});
