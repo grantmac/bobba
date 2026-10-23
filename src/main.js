@@ -683,7 +683,11 @@ container.addEventListener('wheel',event=>{
   const current=displayScale*pixelRatio,most=Math.max(2,Math.round(3*pixelRatio));
   const next=direction>0?Math.min(most,Math.floor(current)+1):Math.max(.5,Math.ceil(current)-1);
   if(next===current)return;
-  zoom=next/scale;resize();
+  const nextZoom=next/scale,ratio=displayScaleForZoom(nextZoom,lastFit,pixelRatio)/displayScale;
+  // Keep the rendered world point beneath the cursor fixed through each snapped step.
+  panX+=(event.clientX-view.left-view.halfW-viewOffsetX)*(1-ratio);
+  panY+=(event.clientY-view.top-view.halfH-viewOffsetY)*(1-ratio);
+  zoom=nextZoom;resize();
 },{passive:false});
 function resize(){
   const w=container.clientWidth,h=container.clientHeight;

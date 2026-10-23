@@ -71,6 +71,21 @@ try{
     assert.equal(arrival.avatar.x,64.5);assert.equal(arrival.avatar.z,3.5);assert.equal(arrival.moving,'false');
     assert(arrival.zones.visible.includes('space-5'));assert(arrival.zones.drawn.includes('space-5'));assert(arrival.zones.subscribed.includes('space-5'));
     await page.screenshot({path:mobile?'/tmp/teleport-arrival-mobile.png':'/tmp/teleport-arrival-desktop.png'});
+    // Wheel zoom follows an off-centre cursor, including after panning to a distant space.
+    const cursor={x:mobile?120:420,y:280};
+    await page.mouse.move(cursor.x,cursor.y);
+    for(const deltaY of [-100,-100,100,100]){
+      await new Promise(resolve=>setTimeout(resolve,260));
+      const before=await page.evaluate(()=>window.__testCamera());
+      const anchor={x:(cursor.x-before.x)/before.scale,y:(cursor.y-before.y)/before.scale};
+      // Chrome's touch emulation does not route native mouse-wheel input.
+      if(mobile)await page.evaluate(({cursor,deltaY})=>document.querySelector('#scene').dispatchEvent(new WheelEvent('wheel',{clientX:cursor.x,clientY:cursor.y,deltaY,bubbles:true,cancelable:true})),{cursor,deltaY});
+      else await page.mouse.wheel({deltaY});
+      await page.waitForFunction(scale=>window.__testCamera().scale!==scale,{},before.scale);
+      const after=await page.evaluate(()=>window.__testCamera());
+      assert(Math.abs(after.x+anchor.x*after.scale-cursor.x)<2,'Wheel zoom keeps the horizontal cursor anchor');
+      assert(Math.abs(after.y+anchor.y*after.scale-cursor.y)<2,'Wheel zoom keeps the vertical cursor anchor');
+    }
     if(mobile){
       const cdp=await page.createCDPSession(),before=await page.evaluate(()=>window.__testCamera());
       const anchor={x:(195-before.x)/before.scale,y:(400-before.y)/before.scale};
@@ -113,5 +128,5 @@ try{
     assert(await page.evaluate(()=>window.__room.zones.visible.includes('main')));
     assert.deepEqual(errors,[]);await page.close();
   }
-  console.log('PASS: desktop/mobile space list, live rename, focus, pending/error states, avatar teleport, distant-space pinch at 2x/3x pixel density, camera streaming and lobby return.');
+  console.log('PASS: desktop/mobile space list, live rename, focus, pending/error states, avatar teleport, cursor-anchored wheel zoom, distant-space pinch at 2x/3x pixel density, camera streaming and lobby return.');
 }finally{await browser.close();}
