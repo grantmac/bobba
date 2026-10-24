@@ -13,6 +13,8 @@ describe('hosted MCP endpoint',()=>{
     const reply=await (await post(rpc('initialize',{protocolVersion:'2025-03-26',capabilities:{},clientInfo:{name:'t',version:'0'}}))).json();
     expect(reply.result.protocolVersion).toBe('2025-03-26');expect(reply.result.capabilities).toEqual({tools:{}});expect(reply.result.serverInfo.name).toBe('habbo-room');
     expect(reply.result.instructions).toContain('Use room_overview for routine room checks');
+    expect(reply.result.instructions).toContain('foreground_mask_storage_id to BOTH');
+    expect(reply.result.instructions).toContain('do not swap these rear views');
     expect(reply.result.instructions).not.toContain('room_picture');
     const newer=await (await post(rpc('initialize',{protocolVersion:'2099-01-01'}))).json();
     expect(newer.result.protocolVersion).toBe('2025-06-18');
@@ -31,6 +33,24 @@ describe('hosted MCP endpoint',()=>{
     expect(controls.inputSchema.required).toEqual(['asset_id','use','power']);
     expect(controls.inputSchema.properties.use.type).toEqual(['string','null']);
     expect((await post({jsonrpc:'2.0',method:'notifications/initialized'})).status).toBe(202);
+  });
+  it('delivers seating checks to static and animated builders without requiring a plugin or backend read',async()=>{
+    const query=vi.spyOn(ConvexHttpClient.prototype,'query'),mutation=vi.spyOn(ConvexHttpClient.prototype,'mutation');
+    try{
+      for(const extra of [{},{frames:4}]){
+        const {result}=await (await post(rpc('tools/call',{name:'design_asset',arguments:{name:'Armchair',description:'An enclosed green armchair.',kind:'seat',...extra}}),{Authorization:`Bearer ${'a'.repeat(64)}`})).json();
+        expect(result.isError).toBeUndefined();
+        const design=JSON.parse(result.content.find(c=>c.type==='text').text);
+        expect(design.seat_review).toContain('rotation 6 (bottom-left) must open toward upper-left');
+        expect(design.seat_review).toContain('rotation 0 (bottom-right) toward upper-right');
+        expect(design.seat_review).toContain('foreground_mask_storage_id to BOTH preview_asset and submit_asset/add_asset');
+        expect(design.seat_review).toContain('every supported rotation (and every animation frame)');
+        expect(design.seat_review).toContain('cannot fix reversed artwork or missing foreground layers');
+        expect(design.prompt).toContain('the direction the sitter looks and the seat opens');
+        expect(design.brief.views.map(v=>v.direction)).toEqual(extra.frames?[2,4]:[2,4,6,0]);
+      }
+      expect(query).not.toHaveBeenCalled();expect(mutation).not.toHaveBeenCalled();
+    }finally{query.mockRestore();mutation.mockRestore();}
   });
   it('exposes room tiers and forwards the selected level to the authenticated mutation',async()=>{
     const {result:listing}=await (await post(rpc('tools/list'))).json();
