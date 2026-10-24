@@ -1,4 +1,5 @@
 import {makeDraggable} from './draggable.js';
+import {CONNECTION_INTRO} from '../shared/agent-introduction.js';
 
 // The prompt contains a fresh agent key; keep it only while its setup view is open.
 export function createAgentPrompt({network,root,onAttached=()=>{},enterRoom=true}){
@@ -14,7 +15,7 @@ export function createAgentPrompt({network,root,onAttached=()=>{},enterRoom=true
       if(!prompt.value){
         const {agentToken}=await network.agents.key('Agent prompt');
         if(request!==generation)return;
-        prompt.value=`Help me build furniture for my room at ${roomUrl}.
+        prompt.value=`Help me create avatar clothing, activities and furniture for my room at ${roomUrl}.
 
 Connect to this HTTP MCP server:
 ${mcpUrl}
@@ -22,7 +23,9 @@ Authorization: Bearer ${agentToken}
 
 Use this key only with the MCP server above. Call tools/list to discover its tools, then call status.
 
-After status succeeds, tell me you're connected${enterRoom?' and remind me to click Enter room on the website':'. I am already in the room'}. Briefly explain that you can create my own space, style its floor and walls, turn pictures or ideas into furniture, and place or rearrange my furniture. Offer a few short examples, such as "make me a cosy reading corner", "turn this picture into a chair", or "give my space a checkerboard floor". Ask what I'd like to create first. Don't start building until I choose.`;
+After status succeeds, tell me you're connected${enterRoom?' and remind me to click Enter room on the website':'. I am already in the room'}.
+
+${CONNECTION_INTRO}`;
         prompt.hidden=false;
       }
       try{

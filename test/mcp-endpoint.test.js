@@ -34,6 +34,8 @@ describe('hosted MCP endpoint',()=>{
     expect(reply.result.instructions).toContain('Use room_overview for routine text room checks');
     expect(reply.result.instructions).toContain('design_wearable');
     expect(reply.result.instructions).toContain('create_activity');
+    expect(reply.result.instructions).toContain('After the first successful authenticated status');
+    expect(reply.result.instructions).toContain('Do not repeat the introduction on routine status checks');
     expect(reply.result.instructions).toContain('foreground_mask_storage_id to BOTH');
     expect(reply.result.instructions).toContain('do not swap these rear views');
     expect(reply.result.instructions).not.toContain('room_picture');
@@ -90,6 +92,24 @@ describe('hosted MCP endpoint',()=>{
     expect(result.isError).toBe(true);expect(result.content[0].text).toMatch(/Build with your agent/);
     const bad=await (await post(rpc('tools/call',{name:'status',arguments:{}}),{Authorization:'Bearer not-a-key'})).json();
     expect(bad.result.isError).toBe(true);
+  });
+  it('includes the connection introduction only after authenticated status succeeds',async()=>{
+    vi.stubEnv('CONVEX_URL','https://example.convex.cloud');
+    const mutation=vi.spyOn(ConvexHttpClient.prototype,'mutation').mockResolvedValue({});
+    const query=vi.spyOn(ConvexHttpClient.prototype,'query').mockResolvedValue({playerName:'Visitor',playerId:'player-1'});
+    try{
+      const headers={Authorization:`Bearer ${'a'.repeat(64)}`};
+      const {result}=await (await post(rpc('tools/call',{name:'status'}),headers)).json();
+      const status=JSON.parse(result.content[0].text);
+      expect(status.playerName).toBe('Visitor');
+      expect(status.capabilitySummary[0]).toMatch(/hats, helmets and jackets/);
+      expect(status.capabilitySummary[1]).toMatch(/quizzes and treasure hunts/);
+      expect(status.connectionInstructions).toContain('confirm the returned player name');
+      mutation.mockRejectedValueOnce(new Error('Revoked'));
+      const rejected=await (await post(rpc('tools/call',{name:'status'}),headers)).json();
+      expect(rejected.result.isError).toBe(true);
+      expect(JSON.stringify(rejected.result)).not.toContain('capabilitySummary');
+    }finally{mutation.mockRestore();query.mockRestore();vi.unstubAllEnvs();}
   });
   it('forwards wearable and activity actions using only the authenticated player',async()=>{
     vi.stubEnv('CONVEX_URL','https://example.convex.cloud');
