@@ -39,7 +39,7 @@ export async function createAppearance({prepareImage, onApply, onOpen, onRoomKey
   }
   let current=normalize(DEFAULT);
   let customItems=[];
-  const customSlot=group=>group==='hats'||group==='headwear'?'headwear':group==='jackets'?'jacket':null;
+  const customSlot=group=>group==='hats'||group==='headwear'?'headwear':group==='jackets'?'jacket':group==='top'?'top':null;
   function selectModel(look,group,model){
     const slot=customSlot(group);
     if(model.startsWith('wearable:')){
@@ -70,21 +70,27 @@ export async function createAppearance({prepareImage, onApply, onOpen, onRoomKey
     return painted.get(key);
   }
   // carry=true holds a drink: the right arm takes the carry pose in every action and the glass (item 1) is drawn in it.
-  async function render(look,direction=2,frame=-1,sitting=false,action=null,actionFrame=0,carry=false) {
+  async function render(look,direction=2,frame=-1,sitting=false,action=null,actionFrame=0,carry=false,{onlyGroup=null}={}) {
     const canvas=document.createElement('canvas');canvas.width=96;canvas.height=112;
     const ctx=canvas.getContext('2d');ctx.imageSmoothingEnabled=false;
     const order=catalog.orders[action==='wave'?'lh-up':sitting?'sit':'std']?.[direction]??catalog.orders.std[direction];
     const flips={lh:'rh',rh:'lh',ls:'rs',rs:'ls'},layers=new Map(),hidden=new Set();
     const normalized=normalize(look);
+    const customTop=!onlyGroup&&look?._wearables?.find(w=>w.slot==='top');
+    if(customTop)normalized.top={...normalized.top,model:catalog.aliases.top?.[customTop.templateModel]??customTop.templateModel};
+    const topImage=customTop?await loadWearable(customTop.url):null;
+    const topCell=customTop?wearableCell('top',direction,frame,sitting,action,actionFrame,carry):null;
     if(look?._wearables?.some(w=>w.slot==='headwear'))for(const group of ['hats','headwear'])normalized[group]={...normalized[group],model:'none'};
     if(look?._wearables?.some(w=>w.slot==='jacket'))normalized.jackets={...normalized.jackets,model:'none'};
-    if(carry)layers.set('ri',[{type:'ri',model:'1',index:0,colorable:false,tint:'#ffffff'}]);
+    if(carry&&!onlyGroup)layers.set('ri',[{type:'ri',model:'1',index:0,colorable:false,tint:'#ffffff'}]);
     for(const group of Object.keys(LABELS)){
+      if(onlyGroup&&group!==onlyGroup)continue;
       const selection=normalized[group],set=catalog.sets[group][selection.model];
+      if(!set)throw new Error('Choose a valid clothing template.');
       for(const hiddenPart of set.hidden)hidden.add(hiddenPart);
       for(const piece of set.parts){
         if(!layers.has(piece.type))layers.set(piece.type,[]);
-        layers.get(piece.type).push({...piece,tint:piece.colorable?(piece.colorindex>1?selection.color2??selection.color:selection.color):'#ffffff'});
+        layers.get(piece.type).push({...piece,group,tint:piece.colorable?(piece.colorindex>1?selection.color2??selection.color:selection.color):'#ffffff'});
       }
     }
     for(const part of order){
@@ -114,11 +120,21 @@ export async function createAppearance({prepareImage, onApply, onOpen, onRoomKey
       // Face shapes use skin colour (ink 41); eyes use their keyed alpha (ink 36).
       const image=await paintedPart(asset,part==='ey'?'#ffffff':piece.tint);
       const bob=frame>=0&&!action&&(partAction==='std'||partAction==='crr')&&frame%2?1:0;
-      ctx.save();if(mirrored){ctx.translate(96,0);ctx.scale(-1,1);}
-      ctx.drawImage(image,16-asset.regPoint.x+offsetX,94-asset.regPoint.y+offsetY+bob);ctx.restore();
+      const target=customTop&&piece.group==='top'?document.createElement('canvas'):canvas;
+      if(target!==canvas){target.width=96;target.height=112;}
+      const partCtx=target.getContext('2d');partCtx.imageSmoothingEnabled=false;
+      partCtx.save();if(mirrored){partCtx.translate(96,0);partCtx.scale(-1,1);}
+      partCtx.drawImage(image,16-asset.regPoint.x+offsetX,94-asset.regPoint.y+offsetY+bob);partCtx.restore();
+      if(target!==canvas){
+        // Replace each shirt/sleeve in its original layer, clipped to its fitted shape.
+        partCtx.globalCompositeOperation='source-in';
+        partCtx.drawImage(topImage,topCell.x,topCell.y,96,112,0,0,96,112);
+        ctx.drawImage(target,0,0);
+      }
       }
     }
     for(const wearable of [...(look?._wearables??[])].sort((a,b)=>(a.slot==='headwear')-(b.slot==='headwear'))){
+      if(onlyGroup||wearable.slot==='top')continue;
       const dance=action==='dance'&&wearable.slot==='headwear'?catalog.dance.hd:null;
       const i=actionFrame%8,cell=wearableCell(wearable.slot,direction+(dance?.OffD[i]??0),frame,sitting,action,actionFrame,carry);
       const bob=wearable.slot==='headwear'&&frame>=0&&!action&&frame%2?1:0;
@@ -193,7 +209,7 @@ export async function createAppearance({prepareImage, onApply, onOpen, onRoomKey
     dialog.querySelector('#choice-title').textContent=`Choose your ${LABELS[category].toLowerCase()}`;
     itemGrid.replaceChildren();colorGrid.replaceChildren();
     itemGrid.hidden=false;
-    const customs=['hats','jackets'].includes(category)?customItems.filter(w=>w.slot===customSlot(category)):[];
+    const customs=['hats','top','jackets'].includes(category)?customItems.filter(w=>w.slot===customSlot(category)):[];
     const customSelected=look._wearables?.some(w=>w.slot===customSlot(category));
     colorGrid.hidden=!!customSelected;colorGrid.previousElementSibling.hidden=!!customSelected;
     const models=[...customs.map(w=>'wearable:'+w.id),...appearanceChoices(catalog,category,gender)],pages=Math.ceil(models.length/15);page=Math.max(0,Math.min(page,pages-1));

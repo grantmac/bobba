@@ -35,6 +35,20 @@ test('missing angles or poses cannot be published',async()=>{
   const image=new Jimp({...wearableSize('jacket'),color:0});image.setPixelColor(0xff0000ff,40,30);
   await assert.rejects(prepareWearable(image,'jacket'),/Cell 2, row 1/);
 });
+test('custom tops use the complete animated sheet and fit the supplied shirt mask',async()=>{
+  assert.deepEqual(wearableSize('top'),{width:768,height:4032});
+  const template=new Jimp({width:768,height:4032,color:0}),art=template.clone();
+  for(let row=0;row<36;row++)for(let col=0;col<8;col++){
+    template.setPixelColor(0xffffffff,col*96+40,row*112+45);
+    art.setPixelColor(0xff0000ff,col*96+40,row*112+45);
+    art.setPixelColor(0x00ff00ff,col*96+2,row*112+2);
+  }
+  const result=await decodeImage(await prepareWearable(art,'top',template));
+  assert.equal(result.getPixelColor(40,45),0xff0000ff);
+  assert.equal(result.getPixelColor(2,2)&255,0);
+  art.setPixelColor(0,40,45);
+  await assert.rejects(prepareWearable(art,'top',template),/cover.*template/i);
+});
 test('submission cleans the source after saving and cleans a failed processed upload',async()=>{
   for(const fail of [false,true]){
     const source=new Jimp({...wearableSize('headwear'),color:0});

@@ -50,10 +50,13 @@ do not claim it is connected just because you opened the page.
    returned player name matches the browser. This calls the real authenticated
    MCP `status` tool, which also makes the room's connection indicator turn on.
 7. After that successful check, briefly introduce what the agent can do,
-   leading with the new capabilities: custom hats, helmets and jackets in the
+   leading with the new capabilities: custom shirts, tops, hats, helmets and jackets in the
    normal style editor (all eight angles, including walking, waving and
    dancing), and timed quizzes or treasure hunts with saved scores. Clothing
-   belongs to the avatar and needs no room placement. Also mention furniture
+   belongs to the avatar and needs no room placement. Custom tops replace the
+   shirt: use `design_wearable` with slot `top`, repaint its clothing-only fitting
+   template, and keep `template_model` in preview and submission. The renderer
+   fits the chest and sleeves to that cut in every pose. Also mention furniture
    creation and decorating a space. Use the returned `capabilitySummary` and
    `connectionInstructions` when available. Offer examples such as “make me a
    space helmet” or “host a music quiz”, then ask what they want to create.

@@ -14,7 +14,18 @@ try{
     await page.waitForFunction(()=>!document.querySelector('.appearance-apply').disabled);await click('Apply');await page.waitForFunction(()=>window.__equipped.length===1);
     assert.equal((await page.evaluate(()=>window.__equipped))[0][0].id,'hat');
     const pixels=await page.evaluate(async()=>{const frame=await window.__appearance.previewFrame({...window.__look,_wearables:[window.__hat]},2);return [...frame.getContext('2d').getImageData(40,20,1,1).data];});assert.deepEqual(pixels,[240,75,75,255]);
-    if(width===1280)assert.equal(await page.evaluate(()=>window.__checkJacket()),352);
+    if(width===1280){assert.equal(await page.evaluate(()=>window.__checkJacket()),352);assert.equal(await page.evaluate(()=>window.__checkTop()),352);}
+    await click('Appearance');await click('Tops');await page.waitForSelector('button[title="Custom shirt · Your creation"]');
+    await page.waitForFunction(()=>!document.querySelector('.appearance-apply').disabled);
+    await page.click('button[title="Custom shirt · Your creation"]');
+    await page.waitForFunction(()=>!document.querySelector('.appearance-apply').disabled);
+    await page.screenshot({path:'/tmp/custom-top-'+width+'.png'});
+    await click('Apply');await page.waitForFunction(()=>window.__equipped.length===2);
+    assert.equal((await page.evaluate(()=>window.__equipped[1])).find(w=>w.slot==='top').templateModel,'1');
+    await click('Appearance');await click('Tops');await page.waitForFunction(()=>!document.querySelector('.appearance-apply').disabled);
+    await page.click('.item-grid button:nth-child(2)');await page.waitForFunction(()=>!document.querySelector('.appearance-apply').disabled);await click('Apply');
+    await page.waitForFunction(()=>window.__equipped.length===3);
+    assert.equal((await page.evaluate(()=>window.__equipped[2])).some(w=>w.slot==='top'),false);
     await click('Activities');await click('Join activity');await page.waitForFunction(()=>document.querySelector('.activity-scores').textContent.includes('You'));
     await click('Start round');await page.waitForFunction(()=>[...document.querySelectorAll('button')].some(b=>b.textContent==='Buzz in'&&!b.disabled));await click('Buzz in');
     await page.waitForFunction(()=>[...document.querySelectorAll('button')].some(b=>b.textContent==='Saturn'&&!b.disabled));await click('Saturn');
