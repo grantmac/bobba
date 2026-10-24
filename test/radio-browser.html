@@ -2,8 +2,8 @@
 <script type="module">
 import {createRoomRadio} from '/src/room-radio.js';
 const audio=document.querySelector('audio'),radio=createRoomRadio({audio,onState:state=>document.querySelector('#status').textContent=JSON.stringify(state)});
-document.querySelector('#start').onclick=()=>radio.receive([{type:'custom_dj_decks',x:0,z:0}],true);
-document.querySelector('#stop').onclick=()=>radio.receive([],true);
+document.querySelector('#start').onclick=()=>radio.receive(true,true);
+document.querySelector('#stop').onclick=()=>radio.receive(false,true);
 document.querySelector('#mute').onclick=()=>radio.setMuted(true);
 window.addEventListener('pagehide',()=>radio.close());
 </script>

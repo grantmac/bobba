@@ -997,10 +997,10 @@ try{
       if(nextRoom!==roomKey){roomKey=nextRoom;roomSpaces=map.spaces??[];roomEditor.receive(map.options);}
       receiveStickies(map.stickies);
     };
-    const onSignals=({danceFloorOn,fridge})=>{receiveDanceFloor(danceFloorOn);receiveFridge(fridge);};
+    const onSignals=({danceFloorOn,fridge,musicOn})=>{receiveDanceFloor(danceFloorOn);receiveFridge(fridge);radio.receive(musicOn,true);};
     const onFurniture=({zones,inventory})=>{
       const items=[...[...zones.values()].flat(),...inventory];
-      furniture.receive(items);positionAwayPoster();positionDeckSign();radio.receive(items,true);
+      furniture.receive(items);positionAwayPoster();positionDeckSign();
       if(!furniturePrepared)furniture.whenReady().then(()=>{furniturePrepared=true;finishInitialLoad();}).catch(error=>{if(first)reject(error);else toolbar.status(error.message);});
     };
     network.watch({onState:state=>{

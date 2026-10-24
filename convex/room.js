@@ -209,7 +209,11 @@ export const registerVoice=internalMutation({args:{token:v.string(),identity:v.s
 export const roomMap=query({args:{token:v.string()},handler:async(ctx,{token})=>{
   await sessionFor(ctx,token);return await publicMap(ctx,await getRoom(ctx));
 }});
-export const signals=query({args:{},handler:async ctx=>publicSignals(await signalsFor(ctx))});
+export const signals=query({args:{},handler:async ctx=>{
+  // Music follows powered decks across the world, independently of the camera's zones.
+  const decks=await ctx.db.query('furniture').withIndex('by_type',q=>q.eq('type','custom_dj_decks')).collect();
+  return {...publicSignals(await signalsFor(ctx)),musicOn:decks.some(item=>isPlaced(item)&&item.on!==false)};
+}});
 // The furniture standing in one zone. Clients subscribe to the zones they can see.
 export const zoneFurniture=query({args:{token:v.string(),zone:v.string()},handler:async(ctx,{token,zone})=>{
   await sessionFor(ctx,token);return await zoneItems(ctx,zone);

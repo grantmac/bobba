@@ -1686,9 +1686,29 @@ describe('zones',()=>{
     const map=await t.query(api.room.roomMap,{token});
     expect(Object.keys(map).sort()).toEqual(['options','revision','spaces','stickies']);
     await t.mutation(api.room.setDanceFloor,{token,on:false});
-    expect(await t.query(api.room.signals,{})).toEqual({danceFloorOn:false,fridge:null});
+    expect(await t.query(api.room.signals,{})).toEqual({danceFloorOn:false,fridge:null,musicOn:false});
     expect(await t.query(api.room.roomMap,{token})).toEqual(map);
     expect((await t.query(api.room.preview,{})).room.danceFloorOn).toBe(false);
+  });
+  it('broadcasts deck power across zones, including power, pickup and removal changes',async()=>{
+    await admin();await guest();
+    const space=await spaceFor(token,'Distant room');
+    const edit=changes=>t.mutation(api.room.editFurniture,{token:adminToken,changes});
+    const music=async()=>(await t.query(api.room.signals,{})).musicOn;
+    const decks={id:'decks',type:'custom_dj_decks',rotation:2,x:1,z:1};
+    expect(await music()).toBe(false);
+    await edit([decks]);expect(await music()).toBe(true);
+    await t.mutation(api.room.move,{token,x:space.x+1,z:1});
+    expect(await t.query(api.room.zoneFurniture,{token,zone:space.spaceId})).toEqual([]);
+    expect(await music()).toBe(true);
+    await t.mutation(api.room.setDeckPower,{token,id:'decks',on:false});expect(await music()).toBe(false);
+    const distant={...decks,id:'distant-decks',x:space.x+3,z:3};
+    await edit([distant]);expect(await music()).toBe(true);
+    await edit([{...distant,x:null,z:null}]);expect(await music()).toBe(false);
+    await t.mutation(api.room.setDeckPower,{token,id:'decks',on:true});
+    await edit([distant]);
+    await edit([{id:'decks',removed:true}]);expect(await music()).toBe(true);
+    await edit([{id:'distant-decks',removed:true}]);expect(await music()).toBe(false);
   });
   it('checks furniture one zone at a time and never lets a piece straddle two spaces',async()=>{
     await admin();await guest();await friend();
@@ -1722,7 +1742,7 @@ describe('zones',()=>{
     expect(await t.mutation(internal.migrate.furniture,{})).toEqual({moved:3,players:1});
     expect((await t.run(ctx=>ctx.db.query('furniture').collect())).map(d=>[d.id,d.zone]).sort()).toEqual([['box',space.spaceId],['chair','main'],['held','inventory']]);
     expect((await t.run(ctx=>ctx.db.query('rooms').first())).furniture).toBeUndefined();
-    expect(await t.query(api.room.signals,{})).toEqual({danceFloorOn:false,fridge:null});
+    expect(await t.query(api.room.signals,{})).toEqual({danceFloorOn:false,fridge:null,musicOn:false});
     expect((await t.query(api.room.me,{token})).zone).toBe(space.spaceId);
     expect(await t.mutation(internal.migrate.furniture,{})).toEqual({moved:0,players:0});
   });
