@@ -28,6 +28,7 @@ import {createDiscoBall} from './disco-ball.js';
 import {createDiscoLights} from './disco-lights.js';
 import {loadDeckSign,SIGN_LIFT,SIGN_DENSITY} from './deck-sign.js';
 import {createRoomRadio} from './room-radio.js';
+import {createNotificationSounds} from './notification-sounds.js';
 // Cover every cold start until the furnished room and entry UI are ready together.
 // Slow connections must not reveal unfinished rooms after an arbitrary timeout.
 const veil=document.querySelector('#update-veil');
@@ -853,8 +854,13 @@ function animate(now){
 }
 requestAnimationFrame(animate);
 try{
-  toolbar=createToolbar({admin:false,onTeleport:teleportToSpace,onMusicMute:muted=>radio?.setMuted(muted),onMusicVolume:volume=>{radio?.setVolume(volume);radio?.setMuted(false);},onTyping:typing=>{if(ready){localTyping=typing;void network.typing(typing).catch(()=>{});}},onAppearance:()=>{if(ready)appearance.open();},onRoomEdit:()=>{if(ready&&network.me?.role==='admin')roomEditor.open();},onFurniture:()=>{if(ready)furniture.open();},onChat:(body,mode)=>{if(ready)return network.chat(body,mode);},onGesture:action=>{if(ready)network.gesture(action).catch(error=>toolbar.status(error.message));}});
+  const notificationSounds=createNotificationSounds();
+  toolbar=createToolbar({admin:false,onNotificationMute:muted=>{notificationSounds.setMuted(muted);toolbar.setNotificationMuted(muted);},onTeleport:teleportToSpace,onMusicMute:muted=>radio?.setMuted(muted),onMusicVolume:volume=>{radio?.setVolume(volume);radio?.setMuted(false);},onTyping:typing=>{if(ready){localTyping=typing;void network.typing(typing).catch(()=>{});}},onAppearance:()=>{if(ready)appearance.open();},onRoomEdit:()=>{if(ready&&network.me?.role==='admin')roomEditor.open();},onFurniture:()=>{if(ready)furniture.open();},onChat:(body,mode)=>{if(ready)return network.chat(body,mode);},onGesture:action=>{if(ready)network.gesture(action).catch(error=>toolbar.status(error.message));}});
   network=createMultiplayer();
+  toolbar.setNotificationMuted(notificationSounds.muted);
+  // Arm audio during entry too, before the async join has made the room ready.
+  for(const event of ['pointerdown','keydown','touchend'])document.addEventListener(event,()=>{void notificationSounds.unlock();});
+  window.addEventListener('pagehide',event=>{if(!event.persisted)notificationSounds.close();});
   const characterKey=createRoomKey({identity:network.identity});
   danceControls=createDanceFloorControls({onChange:on=>network.danceFloor(on),onError:message=>toolbar.status(message)});
   radio=createRoomRadio({onState:state=>toolbar.setMusicState(state)});
@@ -1003,7 +1009,7 @@ try{
       furniture.receive(items);positionAwayPoster();positionDeckSign();radio.receive(items,true);
       if(!furniturePrepared)furniture.whenReady().then(()=>{furniturePrepared=true;finishInitialLoad();}).catch(error=>{if(first)reject(error);else toolbar.status(error.message);});
     };
-    network.watch({onState:state=>{
+    network.watch({onJoin:()=>{void notificationSounds.play();},onMessage:()=>{void notificationSounds.play('message');},onState:state=>{
       selfPlayer=state.me;updatePeers(state.players);
       // Crossing into another zone keeps that zone in view.
       if(state.me.zone!==ownZone){ownZone=state.me.zone;lastZoneKey='';updateVisibleZones();}

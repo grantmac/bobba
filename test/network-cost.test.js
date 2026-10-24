@@ -24,6 +24,35 @@ const pulses=()=>fake.client.mutation.mock.calls.filter(([fn])=>getFunctionName(
 const watch=async(options={})=>{network=createMultiplayer();await network.resume();await network.watch({onState:vi.fn(),onError:vi.fn(),...options});};
 
 describe('room network budget',()=>{
+  it('sounds only fresh incoming messages, including while hidden',async()=>{
+    const onMessage=vi.fn();await watch({onMessage});
+    const receive=fake.client.onUpdate.mock.calls.find(([fn])=>getFunctionName(fn)==='room:worldChatFeed')[2];
+    const message=(id,playerId='other',sentAt=Date.now())=>({id,playerId,sentAt,body:'Hi'});
+    const history=message('history');receive([history]);expect(onMessage).not.toHaveBeenCalled();
+    document.hidden=true;
+    const fresh=message('fresh'),own=message('own','me'),old=message('old','other',Date.now()-60000);
+    receive([history,fresh,own,old]);receive([history,fresh,own,old]);
+    network.setZones(['distant']);
+    expect(onMessage).toHaveBeenCalledExactlyOnceWith(fresh);
+  });
+  it('announces each new person while hidden without repeating the initial roster or self',async()=>{
+    const onJoin=vi.fn();await watch({onJoin});
+    const subscription=fake.client.onUpdate.mock.calls.find(([fn])=>getFunctionName(fn)==='room:population');
+    const receive=playerIds=>subscription[2]({people:playerIds.length,playerIds});
+    receive(['already-here']);receive(['already-here','me']);
+    expect(onJoin).not.toHaveBeenCalled();
+    document.hidden=true;
+    receive(['already-here','me','new-person']);
+    expect(onJoin.mock.calls).toEqual([['new-person']]);
+    receive(['already-here','me','new-person']);
+    network.setZones(['distant']);
+    subscription[3](new Error('offline'));receive(['already-here','me','new-person']);
+    expect(onJoin).toHaveBeenCalledTimes(1);
+    // A departure and arrival can leave the count unchanged.
+    receive(['already-here','me','another-person']);
+    receive(['already-here','me','another-person','new-person']);
+    expect(onJoin.mock.calls).toEqual([['new-person'],['another-person'],['new-person']]);
+  });
   it('keeps one world chat subscription as camera zones change, retaining distant messages',async()=>{
     const onState=vi.fn();await watch({onState});
     const calls=name=>fake.client.onUpdate.mock.calls.filter(([fn])=>getFunctionName(fn)===name);

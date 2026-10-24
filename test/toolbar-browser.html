@@ -7,8 +7,9 @@ import {createAppearance} from '/src/appearance.js';
 import {prepareImage} from '/src/sprite-image.js';
 const assert=(ok,message)=>{if(!ok)throw Error(message);};
 let state={muted:false,volume:.79},gesture=null,appearanceCalls=0,furnitureCalls=0,roomCalls=0;
+let notificationsMuted=false;
 const external=document.createElement('dialog');external.innerHTML='<button>External control</button>';document.body.append(external);
-const toolbar=createToolbar({admin:true,onGesture:value=>gesture=value,onAppearance(){appearanceCalls++;external.showModal();external.querySelector('button').focus();},onRoomEdit(){roomCalls++;},onFurniture(){furnitureCalls++;},onChat(){},onMusicMute:muted=>{state.muted=muted;toolbar.setMusicState(state);},onMusicVolume:volume=>{state.volume=volume;toolbar.setMusicState(state);}});
+const toolbar=createToolbar({admin:true,onNotificationMute:muted=>{notificationsMuted=muted;toolbar.setNotificationMuted(muted);},onGesture:value=>gesture=value,onAppearance(){appearanceCalls++;external.showModal();external.querySelector('button').focus();},onRoomEdit(){roomCalls++;},onFurniture(){furnitureCalls++;},onChat(){},onMusicMute:muted=>{state.muted=muted;toolbar.setMusicState(state);},onMusicVolume:volume=>{state.volume=volume;toolbar.setMusicState(state);}});
 toolbar.setAppearanceEnabled(true);toolbar.setMusicState(state);
 const q=selector=>document.querySelector(selector),click=selector=>q(selector).click(),visible=element=>element.getBoundingClientRect().width>0;
 // Safari can blur a focused control on touch without focusing the tapped button.
@@ -39,6 +40,9 @@ try{
   volume.blur();assert(!q('.music-controls').hidden,'Safari blur dismissed music before the mute tap');
   click('.music-mute');assert(state.muted&&q('.music-mute').getAttribute('aria-pressed')==='true','Mute callback failed');
   volume.focus();volume.blur();click('.music-mute');assert(!state.muted,'Safari unmute callback failed');
+  safariTap('.notification-mute');assert(notificationsMuted&&q('.notification-mute').getAttribute('aria-pressed')==='true','Notification mute failed');
+  assert(!state.muted,'Notification mute changed music');
+  safariTap('.notification-mute');assert(!notificationsMuted&&q('.notification-mute').textContent==='Mute join & message sounds','Notification unmute failed');
   volume.focus();q('#chat-message').focus();assert(q('.music-controls').hidden,'Leaving music focus did not close it');
   openTools();click('.music-toggle');
   document.body.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));assert(q('.music-controls').hidden,'Outside press did not close music');

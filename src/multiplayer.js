@@ -100,11 +100,11 @@ export function createMultiplayer(){
     // lobby switches, world chat and what the player holds; `setZones` adds and drops a
     // presence and furniture subscription per zone as the camera moves. Only the zones in
     // view cost anything, however many exist.
-    async watch({onState,onError,onMap,onSignals,onFurniture,onPrograms}){
+    async watch({onState,onError,onMap,onSignals,onFurniture,onPrograms,onJoin,onMessage}){
       try{await pulse();}catch(error){onError(error.message);return;}
       unsubscribe?.();unsubscribeRoom?.();
       const error=e=>onError(errorMessage(e));
-      let queued=false,messages=[];
+      let queued=false,messages=[],present=null,messageIds=null;
       const emit=()=>{
         if(queued)return;queued=true;
         queueMicrotask(()=>{
@@ -128,8 +128,21 @@ export function createMultiplayer(){
         queueMicrotask(()=>{furnitureQueued=false;onFurniture?.({zones:new Map([...zones].filter(([,z])=>z.furniture).map(([id,z])=>[id,z.furniture])),inventory:inventory??[]});});
       };
       const stops=[
-        client.onUpdate(api.room.worldChatFeed,{token},value=>{messages=value;emit();},error),
-        client.onUpdate(api.room.population,{},value=>{population=value;},()=>{population={people:null};}),
+        client.onUpdate(api.room.worldChatFeed,{token},value=>{
+          const previous=messageIds;messageIds=new Set(value.map(message=>message.id));
+          messages=value;emit();
+          if(previous)for(const message of value){
+            if(!previous.has(message.id)&&message.playerId!==me?.id&&Date.now()+offset-message.sentAt<28000)onMessage?.(message);
+          }
+        },error),
+        client.onUpdate(api.room.population,{},value=>{
+          population={people:value.people};
+          // The first roster is a baseline. Camera changes, heartbeats and extra tabs
+          // for an existing player must never sound like a new arrival.
+          if(!Array.isArray(value.playerIds))return;
+          const next=new Set(value.playerIds),previous=present;present=next;
+          if(previous)for(const id of next)if(id!==me?.id&&!previous.has(id))onJoin?.(id);
+        },()=>{population={people:null};}),
         client.onUpdate(api.room.me,{token},value=>{me=value;emit();},error),
         client.onUpdate(api.room.roomMap,{token},value=>{room=value;onMap?.(value);},error),
         client.onUpdate(api.room.signals,{},value=>onSignals?.(value),error),

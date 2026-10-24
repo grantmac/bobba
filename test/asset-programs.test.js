@@ -306,18 +306,18 @@ describe('world-wide people count',()=>{
   it('counts connected humans once across zones and tracks clean and expired departures',async()=>{
     const a=await t.mutation(api.room.join,{token,name:'First',look});
     const b=await t.mutation(api.room.join,{token:otherToken,name:'Second',look});
-    expect(await t.query(api.room.population,{})).toEqual({people:0});
+    expect(await t.query(api.room.population,{})).toEqual({people:0,playerIds:[]});
     const ca='1'.repeat(64),ca2='2'.repeat(64),cb='3'.repeat(64);
     await t.mutation(api.room.heartbeat,{token,connectionId:ca});
     await t.mutation(api.room.heartbeat,{token,connectionId:ca2});
     await t.mutation(api.room.heartbeat,{token:otherToken,connectionId:cb});
     await t.run(async ctx=>{await ctx.db.patch(b.id,{zone:'far-away'});await ctx.db.insert('players',{kind:'bot',online:true,zone:'main',name:'Robot',nameKey:'robot',role:'guest',look,route:[{x:0,z:0}],startedAt:0,direction:2,seatId:null,lastSeen:Date.now(),lastChat:0});});
-    expect(await t.query(api.room.population,{})).toEqual({people:2});
-    await t.mutation(internal.room.disconnect,{token,connectionId:ca});expect(await t.query(api.room.population,{})).toEqual({people:2});
-    await t.mutation(api.room.leave,{token});expect(await t.query(api.room.population,{})).toEqual({people:1});
+    expect(await t.query(api.room.population,{})).toEqual({people:2,playerIds:[a.id,b.id].sort()});
+    await t.mutation(internal.room.disconnect,{token,connectionId:ca});expect(await t.query(api.room.population,{})).toEqual({people:2,playerIds:[a.id,b.id].sort()});
+    await t.mutation(api.room.leave,{token});expect(await t.query(api.room.population,{})).toEqual({people:1,playerIds:[b.id]});
     const lease=await t.run(ctx=>ctx.db.query('connections').withIndex('by_connection',q=>q.eq('connectionId',cb)).unique());
     vi.spyOn(Date,'now').mockReturnValue(lease.lastSeen+lease.timeoutMs+1);
     await t.mutation(internal.room.expireConnection,{connectionId:cb,seenAt:lease.lastSeen});
-    expect(await t.query(api.room.population,{})).toEqual({people:0});expect(a.id).not.toBe(b.id);
+    expect(await t.query(api.room.population,{})).toEqual({people:0,playerIds:[]});expect(a.id).not.toBe(b.id);
   });
 });

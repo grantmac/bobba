@@ -1,7 +1,7 @@
 import {createShare} from './share.js';
 import {createSpaceNavigator} from './space-navigator.js';
 
-export function createToolbar({onRoomEdit,onFurniture,onChat,onTyping,onAppearance,onGesture,onMusicMute,onMusicVolume,onTeleport,admin=true}) {
+export function createToolbar({onRoomEdit,onFurniture,onChat,onTyping,onAppearance,onGesture,onMusicMute,onMusicVolume,onNotificationMute,onTeleport,admin=true}) {
   const bar=document.createElement('div');bar.className='room-toolbar';
   bar.innerHTML=`<form class="room-chat">
     <div class="speech-picker"><button type="button" id="speech-mode" aria-label="Speech mode: Say" aria-haspopup="menu" aria-expanded="false"><span>Say</span><img src="/assets/bar/dropdown-arrow.png" alt=""></button>
@@ -29,17 +29,25 @@ export function createToolbar({onRoomEdit,onFurniture,onChat,onTyping,onAppearan
   // outside presses still dismiss the drawer through pointerdown above.
   icons.addEventListener('focusout',event=>{if(event.relatedTarget&&!icons.contains(event.relatedTarget)&&!toolsToggle.contains(event.relatedTarget))setToolsOpen(false);});
   const music=document.createElement('div');music.className='music-picker';
-  music.innerHTML='<button type="button" class="bar-icon music-toggle" title="Music volume" aria-label="Music volume" aria-haspopup="dialog" aria-expanded="false" aria-controls="music-controls"><img src="/assets/bar/music.png" width="32" height="40" alt=""></button><div id="music-controls" class="music-controls" role="dialog" aria-labelledby="music-title" hidden><header><h1 id="music-title">Music</h1><button type="button" class="appearance-close" aria-label="Close music controls">×</button></header><div class="music-body"><label for="music-volume">Volume <output for="music-volume">79%</output></label><input id="music-volume" type="range" min="0" max="100" value="79"><button type="button" class="music-mute" aria-pressed="false">Mute music</button></div></div>';
+  music.innerHTML='<button type="button" class="bar-icon music-toggle" title="Sound controls" aria-label="Sound controls" aria-haspopup="dialog" aria-expanded="false" aria-controls="music-controls"><img src="/assets/bar/music.png" width="32" height="40" alt=""></button><div id="music-controls" class="music-controls" role="dialog" aria-labelledby="music-title" hidden><header><h1 id="music-title">Sound</h1><button type="button" class="appearance-close" aria-label="Close sound controls">×</button></header><div class="music-body"><label for="music-volume">Music volume <output for="music-volume">79%</output></label><input id="music-volume" type="range" min="0" max="100" value="79"><button type="button" class="music-mute" aria-pressed="false">Mute music</button><button type="button" class="music-mute notification-mute" aria-pressed="false">Mute join &amp; message sounds</button></div></div>';
   const musicToggle=music.querySelector('.music-toggle'),musicPanel=music.querySelector('.music-controls'),musicVolume=music.querySelector('input'),musicMute=music.querySelector('.music-mute');
   // Popups live outside the mobile drawer so choosing a control can close the drawer.
   bar.append(musicPanel);
   const inMusic=target=>music.contains(target)||musicPanel.contains(target);
+  const notificationMute=musicPanel.querySelector('.notification-mute');
+  let notificationsMuted=false;
+  notificationMute.hidden=!onNotificationMute;
+  notificationMute.onclick=()=>onNotificationMute?.(!notificationsMuted);
+  function setNotificationMuted(muted){
+    notificationsMuted=muted;notificationMute.setAttribute('aria-pressed',String(muted));
+    notificationMute.textContent=muted?'Unmute join & message sounds':'Mute join & message sounds';
+  }
   let musicMuted=false;
   function setMusicOpen(open){musicPanel.hidden=!open;musicToggle.setAttribute('aria-expanded',String(open));if(open){positionPopup(musicPanel,musicToggle);setToolsOpen(false);musicVolume.focus();}}
   function setMusicState({muted,volume}){
     musicMuted=muted;musicVolume.value=Math.round(volume*100);musicPanel.querySelector('output').textContent=`${Math.round(volume*100)}%`;
     musicMute.textContent=muted?'Unmute music':'Mute music';musicMute.setAttribute('aria-pressed',String(muted));
-    musicToggle.title=muted||volume===0?'Music volume · muted':'Music volume';musicToggle.setAttribute('aria-label',musicToggle.title);
+    musicToggle.title=muted||volume===0?'Sound controls · music muted':'Sound controls';musicToggle.setAttribute('aria-label',musicToggle.title);
   }
   musicToggle.onclick=()=>setMusicOpen(musicPanel.hidden);
   musicPanel.querySelector('.appearance-close').onclick=()=>{setMusicOpen(false);focusTrigger(musicToggle);};
@@ -52,7 +60,7 @@ export function createToolbar({onRoomEdit,onFurniture,onChat,onTyping,onAppearan
     element.addEventListener('focusout',event=>{if(event.relatedTarget&&!inMusic(event.relatedTarget))setMusicOpen(false);});
   }
   document.addEventListener('pointerdown',event=>{if(!inMusic(event.target))setMusicOpen(false);});
-  if(onMusicMute||onMusicVolume)icons.append(music);
+  if(onMusicMute||onMusicVolume||onNotificationMute)icons.append(music);
   // The original hand icon opens the actions menu: Wave and Dance.
   const actions=document.createElement('div');actions.className='actions-picker';
   actions.innerHTML='<button type="button" class="bar-icon actions-toggle" title="Actions" aria-label="Actions" aria-haspopup="menu" aria-expanded="false"><img src="/assets/bar/inventory.png" alt=""></button><div class="speech-menu actions-menu" role="menu" aria-label="Actions" hidden><button type="button" role="menuitem" data-gesture="wave">Wave</button><button type="button" role="menuitemcheckbox" aria-checked="false" data-gesture="dance">Dance</button><button type="button" role="menuitemcheckbox" aria-checked="false" data-gesture="breakdance">Breakdance</button></div>';
@@ -89,7 +97,7 @@ export function createToolbar({onRoomEdit,onFurniture,onChat,onTyping,onAppearan
   const shareDialog=createShare({onClose:()=>focusTrigger(share)});
   share.onclick=()=>{setToolsOpen(false);setMusicOpen(false);setActionsOpen(false);setOpen(false);shareDialog.open();};
   icons.append(share);
-  for(const [button,label] of [[musicToggle,'Music'],[actionsToggle,'Actions'],[appearance,'My look'],[room,'Edit room'],[furniture,'Furniture'],[spaces,'Teleport'],[share,'Share']]){
+  for(const [button,label] of [[musicToggle,'Sound'],[actionsToggle,'Actions'],[appearance,'My look'],[room,'Edit room'],[furniture,'Furniture'],[spaces,'Teleport'],[share,'Share']]){
     const text=document.createElement('span');text.className='toolbar-icon-label';text.textContent=label;button.append(text);
   }
   icons.addEventListener('click',event=>{if(event.target.closest('.bar-icon'))setToolsOpen(false);});
@@ -148,5 +156,5 @@ export function createToolbar({onRoomEdit,onFurniture,onChat,onTyping,onAppearan
     button.addEventListener('pointerleave',()=>bar.querySelector('.bar-hint').textContent='Click to walk. Drag to pan. Scroll to zoom.');
   });
   document.body.append(bar);
-  return {setMusicState,setSpaces(value){navigator?.receive(value);},setTeleportEnabled(value){spaces.disabled=!value;},setDancing(action){actionsMenu.querySelectorAll('[role=menuitemcheckbox]').forEach(button=>button.setAttribute('aria-checked',String(button.dataset.gesture===action)));},setAvatar(canvas){const ctx=portrait.getContext('2d');ctx.clearRect(0,0,portrait.width,portrait.height);ctx.imageSmoothingEnabled=false;ctx.drawImage(canvas,24,16,48,60,0,0,portrait.width,portrait.height);},setAppearanceEnabled(value){appearance.disabled=!value;},setAdmin(value){adminButtons.forEach(button=>button.hidden=!value);},status(message){bar.querySelector('.bar-hint').textContent=message;}};
+  return {setMusicState,setNotificationMuted,setSpaces(value){navigator?.receive(value);},setTeleportEnabled(value){spaces.disabled=!value;},setDancing(action){actionsMenu.querySelectorAll('[role=menuitemcheckbox]').forEach(button=>button.setAttribute('aria-checked',String(button.dataset.gesture===action)));},setAvatar(canvas){const ctx=portrait.getContext('2d');ctx.clearRect(0,0,portrait.width,portrait.height);ctx.imageSmoothingEnabled=false;ctx.drawImage(canvas,24,16,48,60,0,0,portrait.width,portrait.height);},setAppearanceEnabled(value){appearance.disabled=!value;},setAdmin(value){adminButtons.forEach(button=>button.hidden=!value);},status(message){bar.querySelector('.bar-hint').textContent=message;}};
 }
