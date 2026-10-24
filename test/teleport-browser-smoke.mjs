@@ -4,7 +4,13 @@ import puppeteer from 'puppeteer-core';
 const origin=process.env.ROOM_RENDER_ORIGIN??'http://127.0.0.1:5197';
 // Expose the rendered transform only in this intercepted test module.
 const mainSource=await (await fetch(origin+'/src/main.js')).text();
-const cameraProbe='\nwindow.__testCamera=()=>({scale:displayScale,x:view.left+view.halfW+viewOffsetX,y:view.top+view.halfH+viewOffsetY});';
+const cameraProbe=`
+window.__testCamera=()=>({scale:displayScale,x:view.left+view.halfW+viewOffsetX,y:view.top+view.halfH+viewOffsetY});
+window.__testTeleport=()=>({active:teleportEffects.active(avatar),opacity:avatar.material.opacity,scale:avatar.scale.x});
+window.__teleportTrace=[];
+setInterval(()=>{if(avatar&&teleportEffects.active(avatar))window.__teleportTrace.push({x:position.x,opacity:avatar.material.opacity,scale:avatar.scale.x});},16);
+window.__testPeer=()=>{const peer=peers.get('peer');return peer?{visible:peer.mesh.visible,active:teleportEffects.active(peer.mesh),opacity:peer.mesh.material.opacity}:null;};
+`;
 const mock=`
 export {samplePlayer} from '/src/multiplayer.js?fixture-original';
 export function createMultiplayer(){
@@ -29,6 +35,7 @@ export function createMultiplayer(){
     },
   };
   window.__renameSpace=()=>{spaces=spaces.map((s,i)=>i===5?{...s,name:'Renamed garden'}:s);room.spaces=spaces;handlers.onMap(room);};
+  window.__setPeer=(x,startedAt)=>handlers.onState({me,players:[{...me,id:'peer',name:'Other visitor',route:[{x,z:5.5}],startedAt}],messages:[]});
   return network;
 }`;
 const browser=await puppeteer.launch({executablePath:process.env.CHROME_EXECUTABLE_PATH,headless:true,args:['--no-sandbox','--enable-unsafe-swiftshader']});
@@ -37,6 +44,8 @@ try{
     const mobile=deviceScaleFactor!==1;
     const page=await browser.newPage(),errors=[];
     await page.setViewport({width:mobile?390:1200,height:mobile?844:900,deviceScaleFactor,isMobile:mobile,hasTouch:mobile});
+    const reducedMotion=deviceScaleFactor===3;
+    await page.emulateMediaFeatures([{name:'prefers-reduced-motion',value:reducedMotion?'reduce':'no-preference'}]);
     page.on('pageerror',e=>errors.push(e.message));
     await page.setRequestInterception(true);
     page.on('request',request=>{
@@ -66,6 +75,12 @@ try{
     await page.click('[data-space-id="space-5"]');
     assert(await page.$$eval('.space-destination',buttons=>buttons.every(b=>b.disabled)));
     await page.waitForFunction(()=>!document.querySelector('.spaces-dialog').open&&document.querySelector('#scene').dataset.cell==='64,3');
+    await page.waitForFunction(()=>!window.__testTeleport().active);
+    const trace=await page.evaluate(()=>window.__teleportTrace);
+    if(!reducedMotion)assert(trace.some(frame=>frame.x===3.5&&frame.opacity>0&&frame.opacity<1&&frame.scale<1),'Dissolves on the departure tile before moving');
+    assert(trace.some(frame=>frame.x===64.5&&frame.opacity>0&&frame.opacity<1),'Fades in at the arrival tile');
+    if(reducedMotion)assert(trace.every(frame=>frame.scale===1),'Reduced motion avoids stretching');
+    assert.deepEqual(await page.evaluate(()=>window.__testTeleport()),{active:false,opacity:1,scale:1});
     assert.equal(await page.evaluate(()=>window.__teleportCalls),1);
     const arrival=await page.evaluate(()=>({avatar:window.__room.avatar,zones:window.__room.zones,moving:document.querySelector('#scene').dataset.moving}));
     assert.equal(arrival.avatar.x,64.5);assert.equal(arrival.avatar.z,3.5);assert.equal(arrival.moving,'false');
@@ -123,9 +138,17 @@ try{
     await page.waitForFunction(()=>document.querySelector('.spaces-status').textContent==='That space is full right now.');
     assert.equal(await page.$eval('.spaces-dialog',d=>d.open),true);
     assert.equal(await page.evaluate(()=>window.__room.avatar.x),64.5);
+    assert.deepEqual(await page.evaluate(()=>window.__testTeleport()),{active:false,opacity:1,scale:1},'Failed teleports leave the avatar fully visible');
     await page.evaluate(()=>window.__teleportError='');await page.click('[data-space-id="main"]');
     await page.waitForFunction(()=>!document.querySelector('.spaces-dialog').open&&document.querySelector('#scene').dataset.cell==='3,4');
+    await page.waitForFunction(()=>!window.__testTeleport().active);
     assert(await page.evaluate(()=>window.__room.zones.visible.includes('main')));
+    await page.evaluate(()=>window.__setPeer(5.5,Date.now()-10000));
+    await page.waitForFunction(()=>window.__testPeer()?.visible);
+    await page.evaluate(()=>window.__setPeer(2.5,Date.now()));
+    await page.waitForFunction(()=>window.__testPeer()?.active&&window.__testPeer().opacity<1);
+    await page.waitForFunction(()=>!window.__testPeer()?.active);
+    assert.equal(await page.evaluate(()=>window.__testPeer().opacity),1,'Remote teleports restore full visibility');
     assert.deepEqual(errors,[]);await page.close();
   }
   console.log('PASS: desktop/mobile space list, live rename, focus, pending/error states, avatar teleport, cursor-anchored wheel zoom, distant-space pinch at 2x/3x pixel density, camera streaming and lobby return.');

@@ -29,6 +29,7 @@ import {createDiscoLights} from './disco-lights.js';
 import {loadDeckSign,SIGN_LIFT,SIGN_DENSITY} from './deck-sign.js';
 import {createRoomRadio} from './room-radio.js';
 import {createNotificationSounds} from './notification-sounds.js';
+import {createTeleportEffects} from './teleport-effects.js';
 // Cover every cold start until the furnished room and entry UI are ready together.
 // Slow connections must not reveal unfinished rooms after an arbitrary timeout.
 const veil=document.querySelector('#update-veil');
@@ -170,6 +171,7 @@ let drawTarget=scene, roomCatalog, roomEditor, roomOptions={}, roomSpaces=[], ro
 const floorHeight=(x,z)=>layout?tileDrop(layout,x,z):0;
 const groundPoint=(x,z)=>{const p=iso(x,z);p.y+=floorHeight(x,z);return p;};
 const characterPoint=(x,z)=>{const p=iso(x,z);p.y+=layout?walkingDrop(layout,z,x):0;return p;};
+const teleportEffects=createTeleportEffects({scene,project:characterPoint,centerY:()=>CENTER_Y});
 // Pictures uploaded for space floors and walls, fetched once per URL before the room is built;
 // one that fails to load leaves the finish beneath showing.
 const spacePictures=new Map(),spacePictureLoads=new Map();
@@ -568,19 +570,23 @@ function ensureFreeTile(){
   const free=roomShape.tiles.filter(([x,z])=>canWalk(x,z)).sort((a,b)=>Math.hypot(a[0]+.5-position.x,a[1]+.5-position.z)-Math.hypot(b[0]+.5-position.x,b[1]+.5-position.z));
   if(free.length){position.x=free[0][0]+.5;position.z=free[0][1]+.5;}
 }
-let teleporting=false;
-async function teleportToSpace(spaceId){
+let teleporting=false,teleportDeparture=null;
+async function teleportToSpace(spaceId,onDepart=()=>{}){
   if(!ready||teleporting)throw new Error('Please wait until the room is ready.');
   teleporting=true;
+  teleportDeparture={...samplePlayer(selfPlayer,network.now()),moving:false};
   // Cancel a pending furniture interaction before it can start a walk after arrival.
   useRequest++;
   try{
     const arrival=await network.teleport(spaceId);
     selfPlayer={...selfPlayer,...arrival};
-    Object.assign(position,arrival.route[0]);
     seated=null;target=null;targetMarker.visible=false;
-    centreViewOnAvatar(true);
-  }finally{teleporting=false;}
+    const from=teleportDeparture;teleportDeparture=null;
+    onDepart();
+    await teleportEffects.start(avatar,{from,to:arrival.route[0],reducedMotion:reducedMotion.matches,onArrive:()=>{
+      Object.assign(position,arrival.route[0]);centreViewOnAvatar(true);
+    }});
+  }finally{teleportDeparture=null;teleporting=false;}
 }
 async function walkTo(cell,seatId=null,facing=null){
   if(teleporting||!ready||!cell||(!seatId&&!canWalk(cell.x,cell.z)))return false;
@@ -753,6 +759,7 @@ function positionTyping(player,point,visible){
   chat.typing(player.id,player.name,visible&&active,view.left+view.halfW+viewOffsetX+point.x*displayScale,view.top+view.halfH+viewOffsetY+(point.y-CENTER_Y-100)*displayScale);
 }
 function disposePeer(peer){
+  teleportEffects.cancel(peer.mesh);
   chat.removeTyping(peer.data.id);
   peer.version++;scene.remove(peer.mesh);peer.mesh.geometry.dispose();peer.mesh.material.dispose();peer.atlas?.dispose();peer.carryTextures?.dispose();peer.label.remove();
 }
@@ -761,7 +768,10 @@ function updatePeers(players){
   if(awayPoster)awayPoster.visible=!grantOnline;
   container.dataset.grantOnline=String(grantOnline);
   const present=new Set(players.filter(p=>p.id!==network.me?.id).map(p=>p.id));
-  for(const [id,peer] of peers)if(!present.has(id)){disposePeer(peer);peers.delete(id);}
+  for(const [id,peer] of peers)if(!present.has(id)){
+    if(ready&&peer.mesh.visible)teleportEffects.depart(samplePlayer(peer.data,network.now()),reducedMotion.matches);
+    disposePeer(peer);peers.delete(id);
+  }
   for(const data of players){
     if(data.id===network.me?.id)continue;
     let peer=peers.get(data.id);
@@ -770,6 +780,11 @@ function updatePeers(players){
       const mesh=sprite(blank,0,0,300);mesh.visible=false;mesh.material.map.dispose();mesh.material.map=null;
       const label=document.createElement('button');label.type='button';label.className='player-target';label.setAttribute('aria-label',`Select ${data.name}`);label.onclick=()=>selectPeer(peer);container.append(label);
       peer={mesh,label,atlas:null,carryTextures:null,carryLoading:null,version:0,lookKey:''};peers.set(data.id,peer);
+    }
+    const previous=peer.data;
+    if(previous&&data.startedAt!==previous.startedAt&&data.route.length===1){
+      const from=samplePlayer(previous,network.now()),to=data.route[0];
+      if(Math.hypot(from.x-to.x,from.z-to.z)>.5)void teleportEffects.start(peer.mesh,{from,to,reducedMotion:reducedMotion.matches});
     }
     peer.data=data;
     peer.label.dataset.away=String(data.away===true);
@@ -783,6 +798,9 @@ function updatePeers(players){
       peer.loading=peer.renderFrames().then(frames=>{
         if(version!==peer.version)return;
         peer.atlas?.dispose();peer.atlas=makeAtlas(frames);peer.frameKey='';peer.mesh.visible=true;
+        if(!previous&&ready&&peer.data.route.length===1&&network.now()-peer.data.startedAt<2000){
+          void teleportEffects.start(peer.mesh,{to:peer.data.route[0],reducedMotion:reducedMotion.matches});
+        }
       }).catch(error=>{if(version!==peer.version)return;peer.lookKey='';toolbar?.status(error.message);if(renderInput)throw error;});
     }
   }
@@ -813,14 +831,15 @@ function animate(now){
   updateHover();
   furniture?.animate(network?.now()??Date.now(),reducedMotion.matches,radio?.audible??false);
   if(ready&&selfPlayer){
-    const time=network.now(),sample=samplePlayer(selfPlayer,time);
+    const time=network.now(),sample=teleportDeparture??teleportEffects.sample(avatar,samplePlayer(selfPlayer,time),now);
     Object.assign(position,{x:sample.x,z:sample.z});direction=sample.direction;
     seated=!sample.moving&&selfPlayer.seatId?seatInfo(selfPlayer.seatId,sample):null;
     const carrying=hasDrink(selfPlayer,time);if(carrying)ensureCarryFrames();
     const pose=characterFrame(selfPlayer,sample,time,seated),key=`${carrying&&avatarCarryFrames?'drink:':''}${pose}`;
     if(lastFrame!==key){showFrame(avatar,(carrying&&avatarCarryFrames)||avatarAtlas,pose);lastFrame=key;}
     const avatarPoint=positionCharacter(avatar,position,seated);
-    positionTyping(selfPlayer,avatarPoint,avatar.visible);
+    teleportEffects.apply(avatar,now);
+    positionTyping(selfPlayer,avatarPoint,avatar.visible&&!teleporting);
     if(infoStand?.selected){const selected=peers.get(infoStand.selected);infoStand.update(selected?.data,selected?.atlas?.frames.get('2:-1'));}
     chat.update(now);targetMarker.visible=sample.moving&&!editingRoom;
     container.dataset.cell=`${Math.floor(position.x)},${Math.floor(position.z)}`;
@@ -830,13 +849,14 @@ function animate(now){
   }
   if(network&&furniture){const time=network.now();
     for(const peer of peers.values()){
-      const point=samplePlayer(peer.data,time),seat=!point.moving&&peer.data.seatId?seatInfo(peer.data.seatId,point):null;
+      const point=teleportEffects.sample(peer.mesh,samplePlayer(peer.data,time),now),seat=!point.moving&&peer.data.seatId?seatInfo(peer.data.seatId,point):null;
       const pose=characterFrame(peer.data,point,time,seat),carrying=hasDrink(peer.data,time);
       if(carrying&&!peer.carryTextures&&!peer.carryLoading){const version=peer.version;peer.carryLoading=peer.renderFrames(true).then(frames=>{if(version===peer.version)peer.carryTextures=makeAtlas(frames);}).catch(()=>{if(version===peer.version)peer.carryLoading=null;});}
       // Only touch the material and the label's styles when something actually changed.
       const key=`${carrying&&peer.carryTextures?'drink:':''}${pose}`;
       if(peer.frameKey!==key){peer.frameKey=key;showFrame(peer.mesh,(carrying&&peer.carryTextures)||peer.atlas,pose);}
       const p=positionCharacter(peer.mesh,point,seat);
+      teleportEffects.apply(peer.mesh,now);
       positionTyping(peer.data,p,peer.mesh.visible);
       const left=Math.round(view.halfW+viewOffsetX+(p.x-18)*displayScale),top=Math.round(view.halfH+viewOffsetY+(p.y-CENTER_Y-68)*displayScale);
       if(peer.labelLeft!==left||peer.labelTop!==top||peer.labelScale!==displayScale||peer.labelShown!==peer.mesh.visible){
@@ -845,6 +865,7 @@ function animate(now){
       }
     }
   }
+  teleportEffects.update(now);
   if(whiteboard&&whiteboardMesh&&whiteboard.update())whiteboardMesh.material.map.needsUpdate=true;
   if(blimp&&blimpMesh&&layout){
     // The blimp crosses behind the room, high above the walls.
