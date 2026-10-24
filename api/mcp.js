@@ -9,12 +9,13 @@ import {KINDS,CONVENTIONS} from '../shared/sprite-conventions.js';
 import {programReference} from '../shared/program-examples.js';
 import {readImage,splitSheet,splitStrip,singleSprite,prepareAsset,seatSpec,FRAME_MAX} from '../shared/sprite-build.js';
 import {designBrief} from '../shared/asset-geometry.js';
+import {SEAT_BUILD_GUIDANCE} from '../shared/seat-build-guidance.js';
 import {assetBlueprint} from '../shared/asset-blueprint.js';
 import {assetCatalogueEntry} from '../convex/lib/assets.js';
 import {SPACES_PER_PLAYER,SPACE_SIZE,SPACE_MIN_WIDTH,SPACE_MAX_WIDTH,SPACE_NAME_MAX,SPACE_FLOORS,SPACE_WALLS,SPACE_FITS} from '../shared/spaces.js';
 
 export const maxDuration=120;
-const api=anyApi,SERVER={name:'habbo-room',version:'0.9.0'},PROTOCOLS=['2024-11-05','2025-03-26','2025-06-18'];
+const api=anyApi,SERVER={name:'habbo-room',version:'0.9.1'},PROTOCOLS=['2024-11-05','2025-03-26','2025-06-18'];
 const INSTRUCTIONS=`Builds furniture into the shared Habbo-style room for the player whose agent key you hold. For any picture that is not already a game sprite: design_asset (prompt + reference image URLs) → draw the 2 by 2 sprite sheet with your image tool → upload_url → POST the PNG to it → submit_asset with the storage id. Then place it from room_map when the player says where. The player can also add one block of floor to the room with add_space: it joins the end of its chosen tier (upper, middle, or lower), with stairs between tiers, and the room_map shows it with its tiles; style_space then restyles that space's floor and back wall with colours, wallpapers or pictures; any picture starts with design_surface, and is remade at the game's pixel scale on the way in. Before publishing, preview_asset renders the prepared piece with footprint tiles and a test sitter. Use room_overview for routine room checks and room_map for placement. Mutation replies confirm changes; do not automatically take a picture after each change. Room observation is text-only; use preview_asset only to inspect an individual piece before publishing. ${CONVENTIONS}`;
 const NO_KEY='No agent key. Send the player\'s key as "Authorization: Bearer <key>": in the room, open Furniture → Build with your agent → Copy agent prompt, then paste the prompt into your agent.';
 const message=error=>typeof error?.data==='string'?error.data:(error?.message||String(error)).replace(/\[(CONVEX|Request ID)[^\]]*\]\s*/g,'').replace(/^Server Error\s*/,'').replace(/^Uncaught (\w*Error): /,'').split('\n')[0];
@@ -122,7 +123,7 @@ const HANDLERS={
   async status(_,{token}){await call('mutation',api.agents.connected,{agentToken:token});return {...await call('query',api.agents.status,{agentToken:token}),conventions:CONVENTIONS};},
   async design_asset(args,{origin}){
     args=defaults(args);
-    const result=value=>({content:[{type:'text',text:JSON.stringify(value)},{type:'image',mimeType:'image/webp',data:blueprint}]});
+    const result=value=>({content:[{type:'text',text:JSON.stringify({...value,...(args.kind==='seat'?{seat_review:SEAT_BUILD_GUIDANCE}:{})})},{type:'image',mimeType:'image/webp',data:blueprint}]});
     const blueprint=await assetBlueprint(args);
     const reference=name=>`${origin}/agent-reference/${name}`;
     if(args.frames)return result({brief:designBrief(args),prompt:stripPrompt(args),attach:[reference('room-style.png'),reference(args.kind==='wall'?'sprite-wall-speaker.png':'sprite-sofa.png')],attach_order:'the room first, then the sprite sample (download the URLs first)',

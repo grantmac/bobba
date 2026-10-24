@@ -11,6 +11,9 @@ try{
       makeVisual(canvas){const mesh={canvas,material:{map:{}},scale:{setScalar(){}}};visuals.push(mesh);return mesh;},disposeVisual(mesh){visuals.splice(visuals.indexOf(mesh),1);},positionVisual(mesh,x,y,w,h,order){Object.assign(mesh,{x,y,w,h,order});}});
     await furniture.whenReady();const seat=furniture.seat(item.id),[x,z]=seat.cells[0],order=300+(x+z)*10+9.5;
     if(visuals.length!==2||!(Math.min(...visuals.map(v=>v.order))<order&&Math.max(...visuals.map(v=>v.order))>order))throw Error('Seat layers must straddle the avatar in every rotation');
+    const avatar={key:'avatar',group:'avatar',seat:item.id,mesh:{},order,bounds:{minX:x+.5,maxX:x+.5,minZ:z+.5,maxZ:z+.5},screen:{left:-500,right:500,top:-500,bottom:500}};
+    furniture.sortDepth([avatar]);
+    if(!(Math.min(...visuals.map(v=>v.renderOrder))<avatar.mesh.renderOrder&&Math.max(...visuals.map(v=>v.renderOrder))>avatar.mesh.renderOrder))throw Error('Room depth sorting must preserve the seated foreground mask');
     if(asset.frameDuration){
       furniture.animate(0);const before=visuals.map(v=>v.canvas.toDataURL());
       furniture.animate(asset.frameDuration);
