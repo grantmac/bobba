@@ -15,7 +15,7 @@ beforeEach(async()=>{
   await t.mutation(api.room.join,{token,name:'Visitor',look});
 });
 afterEach(()=>{vi.useRealTimers();vi.unstubAllEnvs();vi.unstubAllGlobals();});
-const setup=()=>t.mutation(api.bot.configure,{token:adminToken,name:'Lobby',personality:'A welcoming room host.',enabled:true,roaming:true,moderation:'kick'});
+const setup=(name='Lobby')=>t.mutation(api.bot.configure,{token:adminToken,name,personality:'A welcoming room host.',enabled:true,roaming:true,moderation:'kick'});
 const emptyTurn=()=>({reply:'',memories:[],violations:[]});
 async function message(body='Lobby, hello!'){
   vi.stubEnv('FIREWORKS_API_KEY','test-key');vi.setSystemTime(Date.now()+3501);
@@ -24,6 +24,79 @@ async function message(body='Lobby, hello!'){
 }
 const finish=(job,turn)=>t.mutation(internal.bot.finish,{run:job.run,revision:job.revision,turn});
 const resident=async()=> (await t.query(api.room.presence,{})).players.find(p=>p.kind==='bot');
+
+async function hearingSetup(dx,dz=0){
+  await setup('Tnarg');vi.stubEnv('FIREWORKS_API_KEY','test-key');
+  const visitor=await t.query(api.room.me,{token}),bot=await resident();
+  await t.run(async ctx=>{
+    await ctx.db.patch(bot.id,{route:[{x:1.5,z:1.5}],startedAt:Date.now()});
+    await ctx.db.patch(visitor.id,{route:[{x:1.5+dx,z:1.5+dz}],startedAt:Date.now()});
+  });
+  return {visitor,bot};
+}
+
+it.each([
+  [5,0,'Hello there!',true],
+  [6,0,'Hello there!',true],
+  [6.01,0,'Hello there!',false],
+  [4,4,'Hello there!',true],
+  [5,5,'Hello there!',false],
+  [20,0,'Hey TNARG!',true],
+  [20,0,'@tnarg, can you hear me?',true],
+  [20,0,"Tnarg's got moves",true],
+  [20,0,'Antnarg is here',false],
+  [20,0,'Tnargish',false],
+])('limits chat at offset %s,%s with message %s',async(dx,dz,body,heard)=>{
+  await hearingSetup(dx,dz);
+  const job=await message(body);
+  expect(job!==null).toBe(heard);
+  if(heard){
+    await finish(job,{...emptyTurn(),reply:'Hello Visitor!'});
+    expect((await t.query(api.room.worldChatFeed,{token})).some(m=>m.name==='Tnarg')).toBe(true);
+  }else{
+    const fetch=vi.fn();vi.stubGlobal('fetch',fetch);
+    await t.action(internal.botBrain.respond,{});
+    expect(fetch).not.toHaveBeenCalled();
+    expect(await t.run(ctx=>ctx.db.query('botEvents').collect())).toEqual([]);
+  }
+});
+
+it('does not pass distant unaddressed chat as context for a later named message',async()=>{
+  await hearingSetup(20);
+  expect(await message('An unrelated distant conversation.')).toBeNull();
+  const job=await message('Tnarg, hello!');
+  expect(job.context.events.map(e=>e.body)).toEqual(['Tnarg, hello!']);
+  expect(job.context.recent.map(m=>m.body)).toEqual(['Tnarg, hello!']);
+  expect((await t.query(api.room.worldChatFeed,{token})).map(m=>m.body)).toEqual(['An unrelated distant conversation.','Tnarg, hello!']);
+});
+
+it('uses positions at send time even when both avatars move before processing',async()=>{
+  const {visitor,bot}=await hearingSetup(6);
+  await t.mutation(api.room.chat,{token,body:'Hello there!',mode:'Say'});
+  await t.run(async ctx=>{
+    await ctx.db.patch(visitor.id,{route:[{x:20.5,z:1.5}],startedAt:Date.now()});
+    await ctx.db.patch(bot.id,{route:[{x:0.5,z:0.5}],startedAt:Date.now()});
+  });
+  const job=await t.mutation(internal.bot.claim,{});
+  expect(job.context.events.map(e=>e.body)).toEqual(['Hello there!']);
+  expect(job.context.recent.map(m=>m.body)).toEqual(['Hello there!']);
+  await finish(job,emptyTurn());
+  expect(await message('Still talking from far away.')).toBeNull();
+  await t.run(ctx=>ctx.db.patch(visitor.id,{route:[{x:1.5,z:0.5}],startedAt:Date.now()}));
+  expect(await t.mutation(internal.bot.claim,{})).toBeNull();
+});
+
+it('applies the range rule to old queued messages without a hearing snapshot',async()=>{
+  const {bot}=await hearingSetup(6);
+  await t.mutation(api.room.chat,{token,body:'An old queued message.',mode:'Say'});
+  await t.run(async ctx=>{
+    const message=await ctx.db.query('messages').first();
+    await ctx.db.patch(message._id,{heardByBot:undefined});
+    await ctx.db.patch(bot.id,{route:[{x:20.5,z:1.5}],startedAt:Date.now()});
+  });
+  expect(await t.mutation(internal.bot.claim,{})).toBeNull();
+  expect((await t.run(ctx=>ctx.db.query('botEvents').first())).status).toBe('done');
+});
 
 it('shares a spontaneous dance, keeps it across turns, switches styles and stops on request',async()=>{
   await setup();await t.mutation(api.room.gesture,{token,action:'dance'});
@@ -220,6 +293,25 @@ it('learns visitor memories without allowing visitors to overwrite protected roo
   const next=await message('Lobby, forget my music preference.');
   await finish(next,{...emptyTurn(),memories:[{operation:'forget',scope:'visitor',sourceEventId:next.context.events[0].id,memoryId:memories.find(m=>!m.locked)._id}]});
   expect((await t.query(api.bot.manage,{token:adminToken})).memories.map(m=>m.text)).toEqual(['Be kind.']);
+});
+
+it('migrates only the obsolete protected hearing instruction once and invalidates an old turn',async()=>{
+  await setup();
+  const oldText="Assume people aren't talking to you unless they explicitly use your name.";
+  const locked=await t.mutation(api.bot.saveMemory,{token:adminToken,text:oldText});
+  await t.mutation(api.bot.saveMemory,{token:adminToken,text:'Be kind.'});
+  await t.run(ctx=>ctx.db.insert('botMemories',{text:oldText,locked:false,source:'Visitor',updatedAt:Date.now()}));
+  const before=await t.query(api.bot.manage,{token:adminToken}),job=await message();
+  expect(await t.mutation(internal.migrate.botHearingPreference,{})).toEqual({updated:1});
+  const after=await t.query(api.bot.manage,{token:adminToken});
+  expect(after.memories).toHaveLength(3);
+  expect(after.memories.find(m=>m._id===locked)).toMatchObject({locked:true,source:'Grant',text:expect.stringContaining('within six tiles')});
+  expect(after.memories.filter(m=>m._id!==locked)).toEqual(before.memories.filter(m=>m._id!==locked));
+  expect(after.settings.revision).toBe(before.settings.revision+1);
+  expect(await t.mutation(internal.migrate.botHearingPreference,{})).toEqual({updated:0});
+  expect((await t.query(api.bot.manage,{token:adminToken})).settings.revision).toBe(after.settings.revision);
+  await finish(job,{...emptyTurn(),reply:'Stale name-only turn'});
+  expect((await t.query(api.room.chatFeed,{token})).some(m=>m.body==='Stale name-only turn')).toBe(false);
 });
 
 it('updates a remembered preference in place and cannot overwrite another visitor’s memory',async()=>{
