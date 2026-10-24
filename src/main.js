@@ -67,7 +67,7 @@ let displayScale = 1,zoom=1;
 let editingRoom=false,viewOffsetX=0,viewOffsetY=0,panX=0,panY=0,positionBeforeEdit;
 let viewCentred=false;
 let logbook=null;
-let blimp=null,blimpMesh=null,whiteboard=null,whiteboardMesh=null,whiteboardFrame=null;
+let blimp=null,blimpMesh=null,blimpOffsetY=0,whiteboard=null,whiteboardMesh=null,whiteboardFrame=null;
 // The whiteboard is centered on the lounge's back wall.
 // That wall runs along x, so its right end sits lower.
 function placeWhiteboard(){
@@ -202,6 +202,8 @@ function buildRoom(options){
   toolbar?.setSpaces(layout.spaces);
   walkable=new Set(layout.tiles.map(([x,z])=>`${x},${z}`));
   roomWidth=layout.width;roomDepth=layout.baseDepth;
+  // Keep the flight path above the highest back wall, including its tier setback.
+  blimpOffsetY=layout.spaces.reduce((offset,space)=>Math.min(offset,space.z*32-space.level*TIER_RISE),0);
   // The lobby is the origin: adding a space beyond it never shifts what is already drawn.
   roomCenterX=(layout.baseWidth-roomDepth)*16;CENTER_Y=((layout.baseWidth+roomDepth)*16-116)/2;
   roomGroup.traverse(object=>{object.geometry?.dispose();if(object.material){object.material.map?.dispose();object.material.dispose();}});roomGroup.clear();drawTarget=roomGroup;deckSign=null;
@@ -872,7 +874,7 @@ function animate(now){
     if(blimp.draw(now,reducedMotion.matches))blimpMesh.material.map.needsUpdate=true;
     const span=(layout.baseWidth+roomDepth)*32,spot=reducedMotion.matches?{x:span/4,y:-340+span/8}:blimp.position(network?.now()??Date.now(),span);
     blimpMesh.visible=!!spot;
-    if(spot)place(blimpMesh,Math.round(spot.x-roomCenterX),Math.round(spot.y),blimp.width,blimp.height);
+    if(spot)place(blimpMesh,Math.round(spot.x-roomCenterX),Math.round(spot.y+blimpOffsetY),blimp.width,blimp.height);
   }
   if(danceFloor&&danceMesh&&danceFloor.draw(reducedMotion.matches?0:Math.floor((network?.now()??Date.now())/900)%6,danceFloorOn))danceMesh.material.map.needsUpdate=true;
   if(pool&&poolMesh&&pool.draw(reducedMotion.matches?0:Math.floor(now/220)%6))poolMesh.material.map.needsUpdate=true;
