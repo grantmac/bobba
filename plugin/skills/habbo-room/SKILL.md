@@ -20,6 +20,8 @@ anything. Do not repeat the introduction on routine status checks.
 
 ## Custom avatar clothing
 
+Read the current `design_wearable` response and [crisp clothing guide](https://chat.grantm.ac/clothing.md), even if this installed skill is older. For simple tops, use a small native-resolution front/back master, at most eight opaque colours, deterministic bitmap lettering and nearest-neighbour sampling. Do not generate a full atlas of independently drawn shirts. Measure lettering; never silently abbreviate or blur it to fit. Use verified mappings for the specific cut, not guessed torso anchors. Inspect native-size front/back previews before zooms and all animation poses. The guide distinguishes today's upload workflow from the proposed `render_top` compiler; do not claim proposed tools are available.
+
 Use `design_wearable` for a custom shirt/T-shirt/top (`top`), hat or helmet (`headwear`), or jacket (`jacket`). It returns the exact image prompt and an avatar alignment guide. Generate only the clothing on transparency, keeping every cell aligned. Upload with `upload_url`, inspect `preview_wearable`, then save with `submit_wearable`. These pieces belong to the avatar and appear in the **normal appearance editor**, under Hats, Tops or Jackets. They need no room placement and the player does not need to be online. Use `list_wearables` to inspect the player's creations and `equip_wearable` only when they ask to wear one (null removes the slot). Never change another player's outfit. All pieces have eight viewing angles. Tops and jackets have 36 pose rows covering walking, sitting, standing/seated waves, all eight dance frames, and drink-carrying variants; follow the design tool's guide, not the furniture sheet layout.
 
 Custom tops **replace the base shirt**. Do not describe them as limited to overlays or switch to browser editing for a custom shirt. `design_wearable` returns two images for tops: the avatar alignment guide and a clothing-only fitting template, plus `template_model` and a structured `layout` with each direction and pose row. Repaint every visible template pixel with opaque clothing artwork. Keep the template's shirt cut, sleeves and cell positions; use a different built-in top before designing if the player wants a different cut. Pass the returned `template_model` unchanged to preview and submission. Missing coverage is rejected and stray pixels are clipped; the renderer places the chest and sleeves in their original layers under hands, hair and outerwear. The template controls fit; inspect the generated design in the preview for visual quality.
@@ -29,9 +31,10 @@ Custom tops **replace the base shirt**. Do not describe them as limited to overl
 Use `create_activity` to build a timed buzzer quiz or treasure hunt in the player's own space. Find the space and placed treasure item IDs with `room_map`. Quizzes take prompts, 2–6 choices and a zero-based correct answer; those answers stay on the server. Hunts take item IDs and clues. `list_activities` returns deadlines, scores, the current round and the player's saved progress. `manage_activity` starts the next round, finishes it, or deletes the activity; each new round keeps cumulative scores. `play_activity` joins, buzzes, answers or collects on behalf of this player only. Read the current round before answering or collecting. The player must be present in that space, and within two tiles of a treasure to collect it. The styled Activities modal exposes the same flows to players. Do not claim arbitrary furniture programs can write the scoreboard.
 
 The `habbo-room` MCP server (https://chat.grantm.ac/api/mcp) builds catalogue
-pieces for one player of the shared isometric room. It never draws anything
-itself: you draw the sprite sheet with your image-generation tool, upload the
-PNG, and the server cuts it into the piece.
+pieces for one player of the shared isometric room. Furniture artwork uses
+the image-generation workflow below. For clothing, follow the crisp clothing
+guide: simple shapes and lettering can be drawn deterministically by the agent.
+Upload the finished artwork for the server to process and preview.
 
 ## 0. Enter from a URL
 
