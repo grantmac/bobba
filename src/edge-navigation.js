@@ -18,7 +18,7 @@ export function installEdgeNavigation(canvas,{enabled,pan}){
     if(!desktop.matches||!enabled()||document.hidden||typing||document.querySelector('dialog[open]')||document.elementFromPoint(pointer.x,pointer.y)!==canvas){reset();return;}
     const rect=canvas.getBoundingClientRect();
     if(rect.width<=640){reset();return;}
-    const band=48;
+    const band=80;
     const axis=(p,start,end)=>p<start||p>end?0:p<start+band?(start+band-p)/band:p>end-band?-(p-end+band)/band:0;
     let x=axis(pointer.x,rect.left,rect.right),y=axis(pointer.y,rect.top,rect.bottom);
     if(!x&&!y){since=null;last=null;return;}
@@ -26,6 +26,6 @@ export function installEdgeNavigation(canvas,{enabled,pan}){
     const elapsed=last===null?0:Math.min(50,Math.max(0,now-last));last=now;
     if(now-since<200)return;
     const length=Math.max(1,Math.hypot(x,y));
-    pan(x/length*480*elapsed/1000,y/length*480*elapsed/1000,pointer.event);
+    pan(x/length*720*elapsed/1000,y/length*720*elapsed/1000,pointer.event);
   };
 }
