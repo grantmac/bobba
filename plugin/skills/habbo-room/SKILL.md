@@ -41,6 +41,22 @@ lower-right, lower-left / upper-left, upper-right. Four-view sheets use separate
 artwork; animation strips and single sprites supply one view and its horizontal
 mirror, directions 2 and 4 only. Wall pieces hang only at 2 or 4.
 
+### Lock the projection before adding detail
+
+Use the room's exact **2:1 pixel-isometric** projection: every grid-aligned
+edge travels **2 pixels across for 1 up or down** (26.565°, not a generic 30°
+isometric camera). For example, an edge spanning 64 pixels horizontally rises
+or falls 32 pixels. Keep uprights vertical and opposite edges parallel.
+This ratio applies at every source resolution, in every view and animation frame.
+Check long edges of bases, tops, frames and panels, not curves, tapered legs or
+deliberately sloped parts. Keep construction guides out of the final sprite.
+
+For wall pieces, the face's top and bottom edges must follow the wall exactly:
+rotation 2 rises to the right (slope -1/2); rotation 4 falls to the right (+1/2).
+The face's side edges remain vertical, and details follow that same wall plane.
+Do not draw a front-on rectangle and merely tilt it. A wrong drawn angle needs
+regeneration; placement nudges or resizing cannot correct its projection.
+
 
 For any picture that is not already a finished game sprite (photos, logos,
 concept art, screenshots, real objects):
@@ -65,6 +81,13 @@ concept art, screenshots, real objects):
    surface and avatar-anchor pixel positions for every rotation. Call
    `preview_asset` with `asset_id` to inspect the revised seat without asking the
    player to sit on it.
+   If just one rotation is off, use `seat_offsets: [{rotation: 6, x: 0, y: -4}]`
+   for a view-specific adjustment in room pixels. These x/y values **replace**
+   the shared nudges for that rotation; they are not added or mirrored. Positive
+   x moves right, positive y moves down, and y still combines with `seat_height`.
+   Omitted rotations keep the shared nudges. Read `my_assets` first and resend
+   the complete seat settings to `set_seat`, including any existing per-view
+   adjustments: the call replaces the settings. Preview all rotations again.
 2. The result has `prompt`, the `attach` list and the `attach_order`. The room
    and sprite references are URLs: download them first (`curl -sO <url>`).
    Generate ONE image with your image-generation tool using the prompt verbatim
@@ -76,6 +99,10 @@ concept art, screenshots, real objects):
      midlines. Top row is the two front views, bottom row the two back views.
    - The two back views must be different rotations, not the same drawing
      twice. The two front views must mirror each other in orientation.
+   - Measure a long structural edge in each view: its vertical change must be
+     half its horizontal change, allowing for the pixel stair-steps at the
+     endpoints. Compare wall faces and furniture bases with the room/footprint
+     reference. Check both edges of a frame so perspective taper is caught too.
    - The background is real alpha, not a painted grey checkerboard. If the
      generator painted a checkerboard, regenerate asking for a flat solid
      magenta (#FF00FF) background instead; a flat colour is keyed out on
@@ -91,7 +118,12 @@ concept art, screenshots, real objects):
    It returns a PNG showing all supported rotations, labelled footprint tiles,
    an avatar at the same scale and a test sitter. It does not publish or place
    anything. Check the drawn base, seat surface, real transparency and intentional
-   overhang. Review warnings; these are heuristics, not proof the drawing is correct.
+   overhang. Compare structural edge slopes with the footprint or wall in EVERY
+   view. For seats, check hips on the cushion, back against the backrest and legs
+   facing forward; check which arms, rim or backrest should hide the avatar.
+   Fix offsets for positioning, use a foreground mask for occlusion, or regenerate
+   incorrect geometry. Re-upload changed artwork/masks and preview again before
+   publishing. Review warnings; no warnings is not proof that angles or seating passed.
    Then call `submit_asset` with that `storage_id`, the same `name`, `kind`, `width`
    and `depth`. The server keys, trims, splits and scales the four views and
    registers the piece for everyone in the room at once.
@@ -113,14 +145,26 @@ If the user describes a piece in words only, still call `design_asset`
 without `reference_image_path`; the prompt then describes the piece instead of
 redrawing a reference. Attach the room and sprite references it lists.
 
-### Seats with a front panel
+### Seats the avatar sits inside
 
-Upload an optional foreground mask PNG with exactly the same dimensions and grid
-as the original sprite sheet/strip. Keep its background truly transparent; make
-only the rim or front panel opaque. Mask RGB is ignored: alpha selects the original
-artwork that draws in front of the sitter. Pass its ID as
+For an armchair, sofa, cockpit or any enclosed seat, check occlusion separately
+from the sitting position. Without a foreground mask, the whole sprite draws
+behind the avatar: even correctly placed hips can look perched on top, and rear
+views can show the body through the backrest. Open stools may need no mask.
+
+Whenever a part should cover the sitter, make a foreground mask PNG with exactly
+the same dimensions and grid as the original sprite sheet/strip. Edit against
+the finished sprite, preserving its coordinates; do not generate a separately
+positioned chair. Keep the background truly transparent and make only the
+occluding parts opaque: the near arm/front rim in front views, and the visible
+backrest and near arm in rear views as appropriate. Leave the cushion, gaps and
+far arm transparent wherever they belong behind the avatar. Do not mask the
+entire chair. Mask RGB is ignored: alpha selects the original artwork that
+draws in front of the sitter. Upload the mask and pass its ID as
 `foreground_mask_storage_id` to preview and submission. It rotates and animates
-with the piece. Check every direction in the preview.
+with the piece. Inspect a seated avatar in every supported direction before
+publishing. Moving the avatar cannot repair missing foreground layers; `set_seat`
+changes positions only, not the artwork or mask.
 
 ## 4. Housekeeping
 
@@ -139,7 +183,10 @@ facing-right view; the other side is mirrored). Call `design_asset` with
 frames of the same piece, identical apart from the part that moves (a flame,
 a blinking light, a screen). Check the PNG: the frames must line up in equal
 columns with nothing crossing the column lines, same size and ground line in
-every frame, real transparent background. Upload it and call `add_asset`
+every frame, the same exact 2:1 geometry, and real transparent background.
+For animated seats, include any foreground mask and verify the seated position
+and occlusion across the frames. Upload it, call `preview_asset` with
+`format: "strip"` and the same settings, then call `add_asset`
 with `frames`, `frame_ms` (how long each frame shows, 250 is a steady blink)
 and `switchable: true` if players should be able to click it off and on
 (off freezes it on its first frame). Its builder clicks it to select it and

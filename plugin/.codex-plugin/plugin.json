@@ -1,6 +1,6 @@
 {
   "name": "habbo-room",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "description": "Build furniture into the Habbo-style room: redraw any picture as an isometric pixel-art piece with four rotations, then place it, or add a block of floor to the room.",
   "author": { "name": "Grant Mac" },
   "interface": {

@@ -11,6 +11,7 @@ export const assetType=asset=>`asset_${asset._id}`;
 // and the seat top's height in pixels. The other rotations follow: 4 is 2 mirrored (x and z swap),
 // 6 and 0 are 2 and 4 turned about. The avatar's anchor sits 26 px above a floor-level seat, plus
 // the builder's pixel nudge: sideways flips with the mirrored rotations, up and down does not.
+// Optional per-rotation offsets replace those shared nudges in screen pixels, without mirroring.
 import {seatSpots} from '../../shared/asset-geometry.js';
 export {seatSpots} from '../../shared/asset-geometry.js';
 export function assetDefinition(asset){

@@ -4,7 +4,7 @@ import {Jimp,ResizeStrategy} from 'jimp';
 import {encodePng} from './png.js';
 import {assetThumbnail} from './asset-thumbnail.js';
 import {DENSITY,KINDS} from './sprite-conventions.js';
-import {seatReport,designBrief} from './asset-geometry.js';
+import {seatReport,designBrief,validateSeatOffsets} from './asset-geometry.js';
 export async function readImage(buffer){
   if(buffer.length>12*1024*1024)throw new Error('Image is over 12 MB.');
   const image=await Jimp.read(buffer);
@@ -84,9 +84,11 @@ export function buildSprite(image,{kind,width,depth,display_width,facing,base_in
   let W=display_width??(kind==='rug'?span:kind==='wall'?48:kind==='tabletop'?40:Math.round(span*.85));
   W=Math.max(8,Math.min(200,Math.round(W)));
   if(kind==='wall')W=Math.min(96,W);
-  let H=Math.max(4,Math.min(200,Math.round(W*image.height/image.width)));
-  // A wall piece must fit on the 117 px wall face with room to hang it: cap its height, keeping its shape.
-  if(kind==='wall'&&H>96){W=Math.max(8,Math.round(W*96/H));H=96;}
+  // Cap both dimensions with ONE scale: clamping height alone changes the isometric slopes.
+  // Wall pieces need clearance on the 117 px wall; floor sprites may be up to 200 px tall.
+  const scale=Math.min(W/image.width,(kind==='wall'?96:200)/image.height);
+  W=Math.round(image.width*scale);const H=Math.round(image.height*scale);
+  if(W<(kind==='wall'?8:4)||H<4)throw new Error('Sprite proportions are too narrow or flat at this display size. Adjust display_width or redraw the proportions; stretching would distort the isometric angles.');
   image.resize({w:W*DENSITY,h:H*DENSITY,mode:ResizeStrategy.BICUBIC});
   const inset=base_inset??(kind==='rug'?0:2);
   // Registration: the sprite's top-left is (-reg.x-32, -reg.y+16) from the tile's top corner,
@@ -102,22 +104,25 @@ export function buildSprite(image,{kind,width,depth,display_width,facing,base_in
 // stores one and returns its storage id. Gives the createAsset arguments (minus the agent
 // token) and a function that turns the mutation's result into the agent's summary.
 // The seat settings an agent gives, in the shape the server stores.
-export const seatSpec=args=>({x:args.seat_x??0,z:args.seat_z??0,height:args.seat_height??10,...(args.seat_offset_x?{offsetX:args.seat_offset_x}:{}),...(args.seat_offset_y?{offsetY:args.seat_offset_y}:{})});
+export const seatSpec=args=>({x:args.seat_x??0,z:args.seat_z??0,height:args.seat_height??10,...(args.seat_offset_x?{offsetX:args.seat_offset_x}:{}),...(args.seat_offset_y?{offsetY:args.seat_offset_y}:{}),...(args.seat_offsets!==undefined?{offsets:args.seat_offsets}:{})});
 export async function prepareAsset(args,views,upload){
   if(!Object.hasOwn(KINDS,args.kind)||![args.width,args.depth].every(n=>Number.isInteger(n)&&n>=1&&n<=4))throw new Error('Choose a valid kind and a footprint of 1 to 4 tiles each way.');
   if(args.display_width!==undefined&&(!Number.isFinite(args.display_width)||args.display_width<8||args.display_width>200))throw new Error('display_width must be 8 to 200 room pixels.');
   if(args.base_inset!==undefined&&(!Number.isFinite(args.base_inset)||Math.abs(args.base_inset)>16))throw new Error('base_inset must be -16 to 16 room pixels.');
-  const seatGiven=['seat_x','seat_z','seat_height','seat_offset_x','seat_offset_y'].some(key=>args[key]!==undefined);
+  const seatGiven=['seat_x','seat_z','seat_height','seat_offset_x','seat_offset_y','seat_offsets'].some(key=>args[key]!==undefined);
   if(seatGiven){const s=seatSpec(args);if(args.kind!=='seat')throw new Error('Seat settings apply to kind "seat" only.');if(!Number.isInteger(s.x)||s.x<0||s.x>=args.depth||!Number.isInteger(s.z)||s.z<0||s.z>=args.width||!Number.isInteger(s.height)||s.height<0||s.height>40||[s.offsetX??0,s.offsetY??0].some(n=>!Number.isInteger(n)||Math.abs(n)>24))throw new Error('Seat tile must be within the footprint, height 0–40 px and offsets -24–24 px.');}
+  validateSeatOffsets(args.seat_offsets,Object.keys(views).length===1?[2,4]:Object.keys(views).map(Number));
   if(Object.values(views).some(v=>(Array.isArray(v)?v:[v]).some(i=>i.foreground))&&args.kind!=='seat')throw new Error('Foreground masks are supported for seats only.');
   const animated=Object.values(views).some(Array.isArray);
   if(args.switchable&&!animated)throw new Error('Only an animated piece (frames) can be switchable.');
   if(animated&&args.frame_ms!==undefined&&(!Number.isInteger(args.frame_ms)||args.frame_ms<80||args.frame_ms>2000))throw new Error('frame_ms must be 80 to 2000 milliseconds.');
   const parts=[],viewList=[],warnings=[];let meta=null,iconImage=null;
+  if(args.kind==='seat'&&!seatGiven)warnings.push({code:'default_seat_position',message:'No seat position was supplied: every footprint tile seats at chair height. Set the cushion tile and height, then inspect a sitter in every rotation.'});
   for(const direction of Object.keys(views).map(Number).sort((a,b)=>a-b)){
     if(args.kind==='wall'&&![2,4].includes(direction))continue;
     const source=views[direction],single=Object.keys(views).length===1,strip=Array.isArray(source)?source:null,image=strip?strip[0]:source;
     const foregrounds=(strip??[image]).map(i=>i.foreground);
+    if(args.kind==='seat'&&!foregrounds.some(mask=>mask?.bitmap.data.some((value,i)=>i%4===3&&value>0)))warnings.push({code:'seat_foreground_review',direction,message:'No foreground pixels cover the sitter in this view. For near arms, a front rim or a rear-facing backrest, supply a foreground mask and preview the sitter. An open stool may need no mask.'});
     // A fully opaque bounding rectangle often means the generated background survived keying.
     const data=image.bitmap.data;let opaque=0;for(let i=3;i<data.length;i+=4)if(data[i]>240)opaque++;
     if(opaque/(image.width*image.height)>.97)warnings.push({code:'possible_background',direction,message:'Almost the entire view is opaque. Inspect for a painted background.'});
