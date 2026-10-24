@@ -4,7 +4,7 @@ import puppeteer from 'puppeteer-core';
 const origin=process.env.ROOM_RENDER_ORIGIN??'http://127.0.0.1:5189';
 // Expose the rendered transform only in this intercepted test module.
 const mainSource=await (await fetch(origin+'/src/main.js')).text();
-const cameraProbe='\nwindow.__terraceView=()=>{zoom=.5;panX=-320;panY=-90;resize();};window.__viewTile=(x,z,close=false)=>{if(close){zoom=2;resize();}const p=groundPoint(x,z);panX=-p.x*displayScale;panY=-(p.y-CENTER_Y)*displayScale;resize();};\nwindow.__testCamera=()=>({scale:displayScale,x:view.left+view.halfW+viewOffsetX,y:view.top+view.halfH+viewOffsetY});';
+const cameraProbe='\nwindow.__terraceView=()=>{zoom=.5;panX=-320;panY=-90;resize();};window.__viewTile=(x,z,close=false)=>{if(close){zoom=2;resize();}const p=groundPoint(x,z);panX=-p.x*displayScale;panY=-(p.y-CENTER_Y)*displayScale;resize();};\nwindow.__teleportPending=()=>teleporting;window.__testCamera=()=>({scale:displayScale,x:view.left+view.halfW+viewOffsetX,y:view.top+view.halfH+viewOffsetY});';
 const mock=`
 import {roomLayout} from '/shared/room-layout.js';
 import {shapes} from '/convex/lib/catalog.js';
@@ -67,6 +67,7 @@ try{
       await page.waitForFunction(id=>!document.querySelector('.spaces-dialog').open&&window.__room.zones.drawn.includes(id),{},id);
       await page.waitForFunction(id=>window.__room.visuals.some(v=>v.id===(id==='space-2'?'upper-':'lower-')),{},id);
       const cell=await page.evaluate(id=>{const s=window.__room.layout.spaces.find(s=>s.id===id);return {x:s.x+3.5,z:s.z+3.5};},id);
+      await page.waitForFunction(cell=>!window.__teleportPending()&&window.__room.avatar.x===cell.x&&window.__room.avatar.z===cell.z,{},cell);
       assert.deepEqual(await page.evaluate(()=>({x:window.__room.avatar.x,z:window.__room.avatar.z})),cell);
     }
     await page.waitForFunction(()=>window.__room.visuals.some(v=>v.id==='lower-'));
@@ -83,6 +84,7 @@ try{
       await page.evaluate(cell=>window.__viewTile(cell.x+.5,cell.z+.5),cell);
       const screen=await page.evaluate(cell=>{const p=window.__room.groundPoint(cell.x+.5,cell.z+.5),c=window.__testCamera();return {x:c.x+p.x*c.scale,y:c.y+(p.y-window.__room.centerY)*c.scale};},cell);
       await page.mouse.click(screen.x,screen.y);
+      assert.equal(await page.$eval('.dance-floor-controls',panel=>panel.hidden),true,'Room tiles must not open the lobby dance floor controls');
       await page.waitForFunction(count=>window.__walkRoutes?.length===count+1,{},count);
       const route=await page.evaluate(()=>window.__walkRoutes.at(-1));
       assert.deepEqual(route.at(-1),{x:cell.x+.5,z:cell.z+.5});
@@ -92,6 +94,14 @@ try{
       await page.waitForFunction(cell=>Math.hypot(window.__room.avatar.x-cell.x-.5,window.__room.avatar.z-cell.z-.5)<.01,{},cell);
     }
     assert.deepEqual(await page.evaluate(()=>window.__room.layout.spaces.map(s=>[s.id,s.x,s.z,s.level])),fixed);
+    // The lobby dance floor still opens its controls; a lower walkway dismisses them.
+    for(const dance of [true,false]){
+      const cell=await page.evaluate(dance=>{const l=window.__room.layout;return dance?{x:2,z:l.danceStart+2}:{x:l.walkways.find(w=>w.level===-1).x+2,z:l.walkways.find(w=>w.level===-1).z};},dance);
+      await page.evaluate(cell=>window.__viewTile(cell.x+.5,cell.z+.5),cell);
+      const screen=await page.evaluate(cell=>{const p=window.__room.groundPoint(cell.x+.5,cell.z+.5),c=window.__testCamera();return {x:c.x+p.x*c.scale,y:c.y+(p.y-window.__room.centerY)*c.scale};},cell);
+      await page.mouse.click(screen.x,screen.y);
+      assert.equal(await page.$eval('.dance-floor-controls',panel=>panel.hidden),!dance,'Only dance floor tiles open the controls');
+    }
     if(!mobile){
       await page.evaluate(()=>{const s=window.__room.layout.stairs[0];window.__viewTile(s.x+1,s.z+s.depth/2,true);});
       await page.screenshot({path:'/tmp/terraces-stairs.png'});

@@ -657,7 +657,7 @@ container.addEventListener('pointerup',event=>{
     else if(overCharacter(event))appearance.open();
     else{
       infoStand?.hide();walkTo(cell);
-      if(ready&&cell?.z>=layout.danceStart)danceControls?.open();
+      if(ready&&cell&&layout.danceTiles.some(([x,z])=>x===cell.x&&z===cell.z))danceControls?.open();
       container.focus({preventScroll:true});
     }
   }
