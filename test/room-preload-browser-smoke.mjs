@@ -5,6 +5,7 @@ const origin=process.env.ROOM_RENDER_ORIGIN??'http://127.0.0.1:5198';
 const mainSource=await (await fetch(origin+'/src/main.js')).text();
 const probe=`
 window.__viewSpace=id=>{const s=layout.spaces.find(s=>s.id===id),p=groundPoint(s.x+4,s.z+4);panX=-p.x*displayScale;panY=-(p.y-CENTER_Y)*displayScale;resize();};
+window.__panPosition=()=>({x:panX,y:panY});
 `;
 const mock=`
 import {roomLayout} from '/shared/room-layout.js';
@@ -69,9 +70,40 @@ try{
     assert(arrival.zones.drawn.includes(ahead));
     assert(arrival.visuals.some(v=>v.id===chair.slice(0,6)),'Furniture is already drawn on the first frame in the room');
     assert.equal(images.length,downloads,'Scrolling into the prepared room does not fetch its sprites again');
+    const rect=await page.$eval('#scene',el=>{const r=el.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom};});
+    const center={x:(rect.left+rect.right)/2,y:(rect.top+rect.bottom)/2};
+    const position=()=>page.evaluate(()=>window.__panPosition());
+    const pause=()=>new Promise(resolve=>setTimeout(resolve,600));
+    await page.mouse.move(center.x,center.y);
+    const beforeEdge=await position();
+    await page.mouse.move(rect.right-2,center.y);await pause();
+    if(mobile){
+      assert.deepEqual(await position(),beforeEdge,'Edge scrolling stays disabled on mobile');
+    }else{
+      assert((await position()).x<beforeEdge.x-50,'Right edge pans toward rooms on the right');
+      await page.mouse.move(center.x,center.y);await pause();
+      const stopped=await position();await pause();
+      assert.deepEqual(await position(),stopped,'Leaving the edge stops movement');
+      for(const [x,y,axis,sign] of [[rect.left+2,center.y,'x',1],[center.x,rect.top+2,'y',1],[center.x,rect.bottom-2,'y',-1]]){
+        const before=await position();await page.mouse.move(x,y);await pause();
+        assert(((await position())[axis]-before[axis])*sign>50,'Each edge pans in its own direction');
+      }
+      await page.mouse.down();const held=await position();await pause();
+      assert.deepEqual(await position(),held,'Holding a mouse button suspends edge scrolling');
+      await page.mouse.up();
+      await page.evaluate(()=>{const dialog=document.createElement('dialog');dialog.id='test-edge-dialog';document.body.append(dialog);dialog.showModal();});
+      await page.mouse.move(rect.right-2,center.y);const modal=await position();await pause();
+      assert.deepEqual(await position(),modal,'A modal suspends edge scrolling');
+      await page.evaluate(()=>document.querySelector('#test-edge-dialog').remove());
+      await page.mouse.move(center.x,center.y);
+      await page.evaluate(()=>{const input=document.createElement('input');input.id='test-edge-input';document.body.append(input);input.focus();});
+      await page.mouse.move(rect.right-2,center.y);const typing=await position();await pause();
+      assert.deepEqual(await position(),typing,'Typing suspends edge scrolling');
+      await page.evaluate(()=>document.querySelector('#test-edge-input').remove());
+    }
     await page.waitForFunction(()=>window.__room.visuals.length>0);
     assert.deepEqual(errors,[]);
     await page.close();
   }
-  console.log('PASS: nearby furniture loads ahead of the camera on desktop and mobile; far rooms remain unloaded.');
+  console.log('PASS: nearby furniture preloads on desktop/mobile; desktop edge scrolling pans in all directions and pauses for controls; mobile stays unchanged.');
 }finally{await browser.close();}

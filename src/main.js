@@ -14,6 +14,7 @@ import {createAwayPoster} from './away-poster.js';
 import {createAgentLink} from './agent-link.js';
 import {createStickies} from './stickies.js';
 import {installTouchNavigation} from './touch-navigation.js';
+import {installEdgeNavigation} from './edge-navigation.js';
 import {displayScaleForZoom} from './view-scale.js';
 import {createBotPanel} from './bot-panel.js';
 import {robotFrames} from './robot-avatar.js';
@@ -715,7 +716,7 @@ function resize(){
   // Phones start at native pixel size and pan around the room rather than shrinking it to fit.
   const fit=Math.max(mobile?1:0,Math.min(1.5,(w-reserved)/((fitWidth+roomDepth)*32+(mobile?80:90)),h/((fitWidth+roomDepth)*16+(mobile?130:160))));
   const pixelRatio=Math.min(window.devicePixelRatio,3);lastFit=fit;
-  renderer.setPixelRatio(pixelRatio);
+  if(renderer.getPixelRatio()!==pixelRatio)renderer.setPixelRatio(pixelRatio);
   // Normal levels use whole device pixels; the extra overview uses half-size sampling.
   // The default fit rounds down so the whole room still fits on screen.
   displayScale=displayScaleForZoom(zoom,fit,pixelRatio);
@@ -730,7 +731,7 @@ function resize(){
   viewOffsetY=Math.round((h/2+panY-CENTER_Y*displayScale)*pixelRatio)/pixelRatio-h/2+CENTER_Y*displayScale;
   camera.left=(-w/2-viewOffsetX)/displayScale;camera.right=(w/2-viewOffsetX)/displayScale;
   camera.top=(h/2+viewOffsetY)/displayScale;camera.bottom=(-h/2+viewOffsetY)/displayScale;camera.updateProjectionMatrix();
-  renderer.setSize(w,h);
+  if(view.halfW!==w/2||view.halfH!==h/2)renderer.setSize(w,h);
   const rect=container.getBoundingClientRect();view.halfW=w/2;view.halfH=h/2;view.top=rect.top;view.left=rect.left;
   updateVisibleZones();
 }
@@ -750,6 +751,10 @@ installTouchNavigation(container,{
   getMinZoom:()=>.5/(lastFit*Math.min(window.devicePixelRatio,3)),
   setView:view=>{zoom=view.zoom;panX=view.panX;panY=view.panY;resize();},
   cancelTap:()=>{down=null;hover.visible=false;}
+});
+const updateEdgeNavigation=installEdgeNavigation(renderer.domElement,{
+  enabled:()=>ready&&!editingRoom&&!teleporting&&!renderInput,
+  pan:(x,y,event)=>{panX+=x;panY+=y;resize();hoverEvent=event;}
 });
 const chat=createChat({
   getSpeaker:()=>({id:network?.me?.id,name:network?.me?.name??'You',color:appearance?.chatColor()??'#6b8c64',...position}),
@@ -841,6 +846,7 @@ function characterFrame(player,point,time,seat){
   return `${point.direction}:${seat?'sit':-1}`;
 }
 function animate(now){
+  updateEdgeNavigation(now);
   updateHover();
   furniture?.animate(network?.now()??Date.now(),reducedMotion.matches,radio?.audible??false);
   if(ready&&selfPlayer){
