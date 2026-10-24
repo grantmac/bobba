@@ -25,7 +25,8 @@ export function wearableHandlers({call,api,render,loadSource,uploader}){
       const {look,wearables=[]}=await call('query',api.wearables.outfit,{agentToken:token});
       const templateModel=wearables.find(w=>w.slot==='top')?.templateModel??look.top.model;
       const data=await render(origin,{mode:'wearable',look,slot:args.slot,guide:true,templateModel});
-      const content=[{type:'text',text:JSON.stringify({prompt:wearablePrompt(args),size:wearableSize(args.slot),layout:wearableLayout(args.slot),...(args.slot==='top'?{template_model:templateModel}:{}),next:'Use the attached guide and fitting template to align the generated clothing. upload_url → preview_wearable → submit_wearable → equip_wearable when requested. For tops, keep template_model in preview and submission.'})},{type:'image',mimeType:'image/webp',data}];
+      const next=args.slot==='top'?'Use the attached guide and fitting template to align the generated clothing. Keep template_model in preview and submission.':'Use the attached guide to align the generated clothing.';
+      const content=[{type:'text',text:JSON.stringify({prompt:wearablePrompt(args),size:wearableSize(args.slot),layout:wearableLayout(args.slot),...(args.slot==='top'?{template_model:templateModel}:{}),next:next+' upload_url → preview_wearable → submit_wearable → equip_wearable when requested.'})},{type:'image',mimeType:'image/webp',data}];
       if(args.slot==='top')content.push({type:'image',mimeType:'image/webp',data:await render(origin,{mode:'wearable',look,slot:'top',template:true,templateModel})});
       return {content};
     },
