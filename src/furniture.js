@@ -9,6 +9,7 @@ import {createAssetPrograms} from './asset-program-runtime.js';
 import {createProgramDisplays} from './program-display.js';
 import {furnitureControls} from '../shared/furniture-controls.js';
 import {createFurnitureViewLoader} from './furniture-view-loader.js';
+import {depthOrder,footprintBounds} from './depth-order.js';
 
 const ROOT='/assets/furniture/';
 // Built pieces reference their sprites by URL; the shipped catalogue by file name.
@@ -59,9 +60,11 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
       // Parts tagged with a state (the fridge's open door) only appear in that state's frame.
       const resting=layers.filter(p=>!p.state);
       const full=paint(resting,def.frameDuration?0:5);
-      // Original chair/sofa layers straddle the seated avatar's depth.
+      // Original furniture zshift values use 1000 units per tile; separate parts
+      // allow an avatar to appear between the backrest and the seat front.
       const hasForeground=resting.some(p=>p.foreground);
-      const slices=def.category==='Seating'&&(!def.frameDuration||hasForeground)?resting.filter(p=>p.width>1&&p.height>1).map(p=>({...paint([p],def.frameDuration?0:5),orderShift:p.z/100,foreground:!!p.foreground,part:p})):null;
+      const layered=!['Rugs','Wall'].includes(def.category)&&(def.category==='Seating'||new Set(resting.map(p=>p.z)).size>1);
+      const slices=layered&&(!def.frameDuration||hasForeground)?resting.filter(p=>p.width>1&&p.height>1).map(p=>({...paint([p],def.frameDuration?0:5),orderShift:(p.z??0)/100,foreground:!!p.foreground,part:p})):null;
       const frame={...full,density,left:(view.mirror?64-right:left)-32,top:top+16};
       if(def.frameDuration)frame.off={...frame,...paint(resting.map(p=>p.offCanvas?{...p,cells:null,canvas:p.offCanvas}:p),0)};
       if(layers.some(p=>p.state==='open'))frame.open={...frame,...paint(layers.filter(p=>!p.state||p.state==='open'),def.frameDuration?0:5)};
@@ -210,7 +213,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     // A piece on a table draws just above the table (front ones last) but under an avatar on the
     // same diagonal (+9.5): someone sitting at the desk is in front of what is on it.
     const seatCells=frame.foreground?(def.seat?.[item.rotation]?.cells??[def.seat?.[item.rotation]?.cell??[cells.at(-1)[0]-item.x,cells.at(-1)[1]-item.z]]):null;
-    const order=frame.foreground?300+(item.x+item.z+Math.max(...seatCells.map(([x,z])=>x+z)))*10+9.6:def.category==='Rugs'?20:def.category==='Seating'?300+(item.x+item.z)*10+9+(frame.orderShift??0):300+Math.max(...orderCells.map(([x,z])=>x+z))*10+9+(table?0.1+(item.x+item.z)/1000:0);
+    const order=frame.foreground?300+(item.x+item.z+Math.max(...seatCells.map(([x,z])=>x+z)))*10+9.6:def.category==='Rugs'?20:!table&&(def.category==='Seating'||frame.part)?300+(item.x+item.z)*10+9+(frame.orderShift??0):300+Math.max(...orderCells.map(([x,z])=>x+z))*10+9+(table?0.1+(item.x+item.z)/1000:0);
     const lift=surfaceHeight(item,viewItems,definitions)-floorHeight(item.x,item.z);
     return {x:p.x+frame.left,y:p.y+frame.top-lift+(table?def.tableOffsetY??0:0),order};
   }
@@ -218,6 +221,16 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
   // Meshes persist across redraws, keyed by item and slice; only pieces whose frame
   // changed, appeared or vanished are created or disposed.
   const meshes=new Map(),lastFrames=new Map();
+  let depthEntries=[],depthDirty=true,lastCharacters=[],lastCharacterKey='',sortedDepth=[];
+  function sortDepth(characters=[]){
+    const key=JSON.stringify(characters.map(({key,bounds,screen,order,seat})=>[key,bounds,screen,order,seat]));
+    const changed=depthDirty||key!==lastCharacterKey||characters.some((c,i)=>c.mesh!==lastCharacters[i]?.mesh);
+    if(changed){
+      sortedDepth=depthOrder([...depthEntries,...characters]);depthDirty=false;lastCharacterKey=key;lastCharacters=characters;
+    }
+    sortedDepth.forEach((entry,i)=>{const order=300+500*i/(sortedDepth.length+1);if(entry.setOrder)entry.setOrder(order);else entry.mesh.renderOrder=order;});
+    if(changed)visuals.sort((a,b)=>b.mesh.renderOrder-a.mesh.renderOrder);
+  }
   const redrawLoads=new WeakSet();
   function redraw(){
     programs.sync(items.filter(visible),definitions);
@@ -259,9 +272,17 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     refreshPositions();
   }
   function refreshPositions(){
+    depthEntries=[];depthDirty=true;
+    const byId=new Map(viewItems.map(item=>[item.id,item])),bounds=new Map();
     for(const {item,frame,mesh} of visuals){
       const origin=originFor(item,frame);
       positionVisual(mesh,origin.x,origin.y,frame.canvas.width/frame.density,frame.canvas.height/frame.density,origin.order);
+      const def=definitions.get(item.type);
+      if(def.category==='Rugs'||isWallItem(def))continue;
+      const root=byId.get(item.supportId)??item;
+      if(!bounds.has(root.id))bounds.set(root.id,footprintBounds(footprint(root,definitions.get(root.type))));
+      depthEntries.push({key:`${item.id}:${frame.part?.layer??'whole'}`,group:item.id,root:root.id,bounds:bounds.get(root.id),
+        screen:{left:origin.x,top:origin.y,right:origin.x+frame.canvas.width/frame.density,bottom:origin.y+frame.canvas.height/frame.density},order:origin.order,mesh});
     }
     const item=pending||items.find(i=>i.id===selected);
     const cells=item&&visible(item)&&!isWallItem(definitions.get(item.type))?footprint(item,definitions.get(item.type)):[];
@@ -475,7 +496,7 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     return null;
   }
   render();
-  return {open,pointer,key,roomChanged,redraw,seat,animate,debugVisuals:()=>visuals.map(v=>({id:v.item.id.slice(0,6),type:v.item.type.slice(0,22),x:v.item.x,z:v.item.z,u:v.item.u,h:v.item.height,on:v.item.supportId?.slice(0,6)??null,order:v.mesh.renderOrder,meshX:v.mesh.position.x,meshY:v.mesh.position.y,w:v.frame.canvas.width/v.frame.density,height:v.frame.canvas.height/v.frame.density,top:v.frame.top,left:v.frame.left})),approach:(id,from,canWalk)=>{const item=items.find(i=>i.id===id);return item&&visible(item)?approachFor(item,items,definitions,from,canWalk):null;},blocks:(x,z)=>blocksTile(x,z,items,definitions),close:()=>{cancel();selected=null;panel.hidden=true;render();},get placing(){return !!pending;},
+  return {open,pointer,key,roomChanged,redraw,seat,animate,sortDepth,debugVisuals:()=>visuals.map(v=>({id:v.item.id.slice(0,6),type:v.item.type.slice(0,22),x:v.item.x,z:v.item.z,u:v.item.u,h:v.item.height,on:v.item.supportId?.slice(0,6)??null,order:v.mesh.renderOrder,meshX:v.mesh.position.x,meshY:v.mesh.position.y,w:v.frame.canvas.width/v.frame.density,height:v.frame.canvas.height/v.frame.density,top:v.frame.top,left:v.frame.left})),approach:(id,from,canWalk)=>{const item=items.find(i=>i.id===id);return item&&visible(item)?approachFor(item,items,definitions,from,canWalk):null;},blocks:(x,z)=>blocksTile(x,z,items,definitions),close:()=>{cancel();selected=null;panel.hidden=true;render();},get placing(){return !!pending;},
     getItems:()=>structuredClone(items),
     async whenReady(){
       await Promise.all(items.filter(i=>isPlaced(i)&&definitions.has(i.type)).map(i=>loadDefinition(definitions.get(i.type),effectFor(i.id).direction??i.rotation)));

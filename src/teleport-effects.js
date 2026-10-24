@@ -59,6 +59,10 @@ export function createTeleportEffects({scene,project,centerY}){
       const t=Math.min(1,(now-start)/500);
       if(t===1){scene.remove(group);geometry.dispose();material.dispose();ring.geometry.dispose();ring.material.dispose();bursts.delete(effect);continue;}
       const p=project(point.x,point.z),order=300+(point.x+point.z-1)*10+9.6;
+      effect.depth={key:group.uuid,group:group.uuid,mesh:group,order,
+        bounds:{minX:point.x,maxX:point.x,minZ:point.z,maxZ:point.z},
+        screen:{left:p.x-40,right:p.x+40,top:p.y-90,bottom:p.y+25},
+        setOrder:value=>{for(const child of group.children)child.renderOrder=value;}};
       group.position.set(Math.round(p.x),centerY()-Math.round(p.y),0);
       material.opacity=(1-t)*.9;ring.material.opacity=(1-t)*.8;
       ring.scale.setScalar(.6+t*.9);ring.renderOrder=order;
@@ -70,7 +74,7 @@ export function createTeleportEffects({scene,project,centerY}){
       }
     }
   }
-  return {start,sample,apply,update,cancel,
+  return {start,sample,apply,update,cancel,depthEntries:()=>[...bursts].map(effect=>effect.depth).filter(Boolean),
     depart(point,reducedMotion){if(!reducedMotion)burst(point,'out',performance.now());},
     active:mesh=>transitions.has(mesh)};
 }

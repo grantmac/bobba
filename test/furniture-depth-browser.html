@@ -1,0 +1,69 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Furniture depth regression</title>
+<style>body{background:#30363c;color:white;font:14px sans-serif}canvas{max-width:100%;image-rendering:pixelated}section,dialog{display:none}</style>
+<p id="result">Running…</p><canvas id="picture" width="700" height="460"></canvas>
+<script type="module">
+import {createFurniture} from '/src/furniture.js';
+import {prepareImage} from '/src/sprite-image.js';
+const iso=(x,z)=>({x:(x-z)*32,y:(x+z)*16});
+const assert=(value,message)=>{if(!value)throw Error(message);};
+try{
+  const visuals=[],table={id:'table',type:'goth_table',rotation:0,x:2,z:2},front={id:'front',type:'penguin_boxer',rotation:4,x:3,z:2};
+  const furniture=await createFurniture({prepareImage,initialItems:[table,front],worldPoint:iso,isTile:()=>true,getAvatar:()=>({x:10,z:10}),stopWalking(){},onChanged(){},onSit(){},focusRoom(){},markTiles(){},
+    makeVisual(canvas){const mesh={canvas,position:{x:0,y:0},material:{map:{}}};visuals.push(mesh);return mesh;},disposeVisual(mesh){visuals.splice(visuals.indexOf(mesh),1);},positionVisual(mesh,x,y,w,h,renderOrder){Object.assign(mesh,{x,y,w,h,renderOrder});}});
+  await furniture.whenReady();
+  const tableLayers=()=>furniture.debugVisuals().filter(v=>v.id==='table');
+  assert(tableLayers().length>1,'Long table must retain independently sortable artwork sections');
+  furniture.sortDepth([]);
+  assert(Math.max(...tableLayers().map(v=>v.order))<furniture.debugVisuals().find(v=>v.id==='front').order,'Near-side object must draw in front of the long table');
+  const character={key:'avatar',group:'avatar',bounds:{minX:3.5,maxX:3.5,minZ:2.5,maxZ:2.5},screen:{left:-48,top:-100,right:100,bottom:200},order:300+5*10+9.5,mesh:{}};
+  furniture.sortDepth([character]);
+  assert(Math.max(...tableLayers().map(v=>v.order))<character.mesh.renderOrder,'Avatar walking beside the far end must appear in front');
+  character.bounds={minX:1.5,maxX:1.5,minZ:2.5,maxZ:2.5};character.order=339.5;
+  furniture.sortDepth([character]);
+  assert(Math.min(...tableLayers().map(v=>v.order))>character.mesh.renderOrder,'Avatar behind the table must appear behind');
+  furniture.sortDepth([]);
+  const original=[...visuals].sort((a,b)=>a.renderOrder-b.renderOrder);
+  const canvas=document.querySelector('#picture'),ctx=canvas.getContext('2d');ctx.imageSmoothingEnabled=false;
+  for(const v of original)ctx.drawImage(v.canvas,v.x*2+370,v.y*2+50,v.w*2,v.h*2);
+  const alpha=(v,x,y)=>{const px=Math.floor((x-v.x)*v.canvas.width/v.w),py=Math.floor((y-v.y)*v.canvas.height/v.h);return px<0||py<0||px>=v.canvas.width||py>=v.canvas.height?0:v.canvas.getContext('2d').getImageData(px,py,1,1).data[3];};
+  const prop=original.at(-1);let hit;
+  for(let y=prop.y;y<prop.y+prop.h&&!hit;y++)for(let x=prop.x;x<prop.x+prop.w;x++)if(alpha(prop,x,y)>200&&original.slice(0,-1).some(v=>alpha(v,x,y)>200)){hit={x,y};break;}
+  assert(hit,'Fixture must contain overlapping opaque pixels');
+  furniture.connect({admin:true,onSave:async()=>{}});furniture.sortDepth([]);
+  furniture.pointer(hit,{x:3,z:2},true);
+  assert(document.querySelector('.furniture-selection').textContent.includes('Penguin Boxer'),'Clicking overlapping pixels must select the visible foreground object');
+  for(const rotation of [0,6]){
+    const rotated=rotation===6,position=rotated?{x:2,z:3}:{x:3,z:2};
+    furniture.receive([{...table,rotation},{...front,...position}]);await furniture.whenReady();furniture.sortDepth([]);
+    assert(Math.max(...tableLayers().map(v=>v.order))<furniture.debugVisuals().find(v=>v.id==='front').order,'Near-side ordering must survive rotation');
+    furniture.receive([{...table,rotation},{...front,id:'cup',type:'duck',rotation:0,x:2,z:2,supportId:'table'}]);await furniture.whenReady();furniture.sortDepth([]);
+    assert(Math.max(...tableLayers().map(v=>v.order))<furniture.debugVisuals().find(v=>v.id==='cup').order,'Tabletop item must remain above every supporting section');
+  }
+  furniture.receive([{...table,z:-12},{...front,z:-12}]);await furniture.whenReady();furniture.sortDepth([]);
+  assert(furniture.debugVisuals().every(v=>v.order>=300&&v.order<800),'Terraced furniture must stay above walls and below overhead effects');
+  // A second stationary frame must preserve the same result even when callers
+  // restore an avatar's authored order before sorting.
+  furniture.sortDepth([character]);const held=character.mesh.renderOrder;character.mesh.renderOrder=-1;furniture.sortDepth([character]);
+  assert(character.mesh.renderOrder===held,'Stationary cached ordering must restore character depth');
+  const custom=(id,name,width,depth,direction,w,h,reg)=>({id,name,width,depth,category:'Decor',spriteDensity:3,surfaceHeight:0,
+    parts:[{file:location.origin+`/test/fixtures/depth/${id}.png`,layer:'base',direction,width:w,height:h,reg,z:0,alphaPrepared:true}],views:[{direction,source:direction,mirror:false}]});
+  const assets=[custom('bar','Sub Club bar',3,1,6,131,102,{x:65.5,y:56}),custom('bag','Bag of Bad Decisions',1,1,2,54,95,{x:-5,y:81})];
+  const items=[{id:'bar',type:'bar',x:2,z:2,rotation:6},{id:'bag',type:'bag',x:3,z:2,rotation:2}];
+  furniture.setAssets(assets);furniture.receive(items);await furniture.whenReady();
+  function picture(label){
+    const title=document.createElement('h2');title.textContent=label;document.body.append(title);
+    const c=document.createElement('canvas');c.width=440;c.height=310;document.body.append(c);const context=c.getContext('2d');context.imageSmoothingEnabled=false;
+    for(const v of [...visuals].sort((a,b)=>a.renderOrder-b.renderOrder))context.drawImage(v.canvas,v.x*2+240,v.y*2+20,v.w*2,v.h*2);
+    return c;
+  }
+  const before=picture('Screenshot assets · previous draw order');
+  furniture.sortDepth([]);const after=picture('Screenshot assets · corrected draw order');
+  const visible=furniture.debugVisuals();assert(visible.find(v=>v.id==='bar').order<visible.find(v=>v.id==='bag').order,'Screenshot bar must be behind the punching bag');
+  const oldPixels=before.getContext('2d').getImageData(0,0,440,310).data,newPixels=after.getContext('2d').getImageData(0,0,440,310).data;
+  assert(newPixels.some((value,i)=>value!==oldPixels[i]),'Screenshot fixture must change visible overlap pixels');
+  window.__DEPTH_SCENE__={assets,serverTime:Date.now(),players:[],room:{furniture:items,spaces:[],stickies:[],options:{shape:'square',wall:'plain',wallColor:'#dcded4',floor:'wood',floorColor:'#f7de9c',window:true}},region:{x:0,z:0,width:8,depth:8}};
+  furniture.disposePrograms();
+  window.__TEST_RESULT__='passed';document.querySelector('#result').textContent='PASS: sections, neighbours, avatars, rotation, tabletop objects, click selection, terraces and stationary frames.';
+}catch(error){window.__TEST_RESULT__=error.message;document.querySelector('#result').textContent=error.message;}
+</script>

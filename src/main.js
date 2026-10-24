@@ -817,6 +817,9 @@ function positionCharacter(mesh,point,seat){
   const p=characterPoint(point.x,point.z);p.x+=seat?.offsetX??0;p.y+=seat?.offsetY??0;
   place(mesh,Math.round(p.x)-48,Math.round(p.y)-101,96,112);
   mesh.renderOrder=300+(point.x+point.z-1)*10+9.5;
+  mesh.userData.depth={key:mesh.uuid,group:mesh.uuid,seat:seat?.id,mesh,order:mesh.renderOrder,
+    bounds:{minX:point.x,maxX:point.x,minZ:point.z,maxZ:point.z},
+    screen:{left:p.x-48,right:p.x+48,top:p.y-101,bottom:p.y+11}};
   return p;
 }
 function characterFrame(player,point,time,seat){
@@ -868,6 +871,7 @@ function animate(now){
     }
   }
   teleportEffects.update(now);
+  furniture?.sortDepth([avatar,...[...peers.values()].map(peer=>peer.mesh)].filter(mesh=>mesh?.visible&&mesh.userData.depth).map(mesh=>mesh.userData.depth).concat(teleportEffects.depthEntries()));
   if(whiteboard&&whiteboardMesh&&whiteboard.update())whiteboardMesh.material.map.needsUpdate=true;
   if(blimp&&blimpMesh&&layout){
     // The blimp crosses behind the room, high above the walls.
@@ -982,6 +986,7 @@ try{
   ensureFreeTile();
   const blank=document.createElement('canvas');blank.width=96;blank.height=112;
   avatar=sprite(blank,0,0,300);avatar.material.map.dispose();avatar.visible=false;
+  if(import.meta.env.DEV)window.__room={get centerY(){return CENTER_Y;},iso,groundPoint,get layout(){return layout;},get zones(){return {subscribed:network.zones,visible:[...visibleZoneIds],drawn:[...spaceVisuals.keys()]};},get visuals(){return furniture.debugVisuals();},get avatar(){return {order:avatar.renderOrder,x:position.x,z:position.z};},get peers(){return [...peers.values()].map(p=>({name:p.data.name,order:p.mesh.renderOrder,seat:p.data.seatId?.slice(0,6)??null}));}};
   if(renderInput){
     await furniture.whenReady();receiveFridge(initialRoom.room.fridge);updatePeers(renderInput.players);
     await Promise.all([...peers.values()].map(p=>p.loading));
@@ -1018,7 +1023,6 @@ try{
   network.whiteboard.all().then(all=>{whiteboard.load(all);network.whiteboard.watch(all.serial,update=>whiteboard.receive(update));}).catch(error=>toolbar.status(error.message));
   stickies.connect(admin);
   furniture.connect({admin,me:network.me.id,onSave:changes=>network.furniture(changes),onPower:(id,on)=>network.deckPower(id,on),onError:message=>toolbar.status(message)});
-  if(import.meta.env.DEV)window.__room={get centerY(){return CENTER_Y;},iso,groundPoint,get layout(){return layout;},get zones(){return {subscribed:network.zones,visible:[...visibleZoneIds],drawn:[...spaceVisuals.keys()]};},get visuals(){return furniture.debugVisuals();},get avatar(){return {order:avatar.renderOrder,x:position.x,z:position.z};},get peers(){return [...peers.values()].map(p=>({name:p.data.name,order:p.mesh.renderOrder,seat:p.data.seatId?.slice(0,6)??null}));}};
   network.assets.watch(list=>furniture.setAssets(list),message=>toolbar.status(message));
   window.addEventListener('pagehide',()=>furniture.disposePrograms());
   window.addEventListener('pageshow',event=>{if(event.persisted)furniture.redraw();});
