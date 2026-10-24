@@ -1,4 +1,4 @@
-import {encodePng} from './png.js';
+import {encodeWebp} from './image-codec.js';
 import {wearableSize} from './wearables.js';
 export async function prepareWearable(image,slot){
   if(!['headwear','jacket'].includes(slot))throw new Error('Choose headwear or jacket.');
@@ -13,5 +13,5 @@ export async function prepareWearable(image,slot){
     }
     if(!transparent||!visible)throw new Error(`Cell ${col+1}, row ${row+1} needs visible artwork on a transparent background. Include every angle and pose.`);
   }
-  return encodePng(output);
+  return encodeWebp(output);
 }

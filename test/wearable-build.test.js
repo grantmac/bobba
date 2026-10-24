@@ -4,10 +4,13 @@ import {Jimp} from 'jimp';
 import {prepareWearable} from '../shared/wearable-build.js';
 import {wearableCell,wearableSize,WEARABLE_POSES,WEARABLE_DIRECTIONS} from '../shared/wearables.js';
 import {wearableHandlers} from '../server/wearables-mcp.js';
+import {decodeImage} from '../shared/image-codec.js';
 test('wearable processing preserves transparent cell alignment at native scale',async()=>{
   const source=new Jimp({width:1536,height:224,color:0});
   for(let col=0;col<8;col++)source.setPixelColor(col===1?0x00ff00ff:0xff0000ff,col*192+100,60);
-  const image=await Jimp.read(await prepareWearable(source,'headwear'));
+  const buffer=await prepareWearable(source,'headwear');
+  assert.equal(buffer.toString('ascii',8,12),'WEBP');
+  const image=await decodeImage(buffer);
   assert.deepEqual({width:image.width,height:image.height},wearableSize('headwear'));
   assert.equal(image.getPixelColor(50,30),0xff0000ff);assert.equal(image.getPixelColor(146,30),0x00ff00ff);assert.equal(image.getPixelColor(0,0),0);
 });

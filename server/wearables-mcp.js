@@ -15,13 +15,13 @@ export function wearableHandlers({call,api,render,loadSource,uploader}){
       if(!['headwear','jacket'].includes(args.slot))throw new Error('Choose headwear or jacket.');
       const {look}=await call('query',api.wearables.outfit,{agentToken:token});
       const data=await render(origin,{mode:'wearable',look,slot:args.slot,guide:true});
-      return {content:[{type:'text',text:JSON.stringify({prompt:wearablePrompt(args),size:wearableSize(args.slot),next:'Use the attached guide to align the generated transparent clothing. upload_url → preview_wearable → submit_wearable → equip_wearable when requested.'})},{type:'image',mimeType:'image/png',data}]};
+      return {content:[{type:'text',text:JSON.stringify({prompt:wearablePrompt(args),size:wearableSize(args.slot),next:'Use the attached guide to align the generated transparent clothing. upload_url → preview_wearable → submit_wearable → equip_wearable when requested.'})},{type:'image',mimeType:'image/webp',data}]};
     },
     async preview_wearable(args,{token,origin}){
       const buffer=await prepareWearable(await loadSource(token,args),args.slot);
       const {look,wearables}=await call('query',api.wearables.outfit,{agentToken:token});
-      const data=await render(origin,{mode:'wearable',look:{...look,_wearables:wearables},slot:args.slot,wearable:{slot:args.slot,url:'data:image/png;base64,'+buffer.toString('base64')}});
-      return {content:[{type:'image',mimeType:'image/png',data},{type:'text',text:'Check all eight directions and, for jackets, walking, sitting, standing/seated waving, all eight dance frames and the drink-carrying versions. Publish with submit_wearable only if every pose is aligned.'}]};
+      const data=await render(origin,{mode:'wearable',look:{...look,_wearables:wearables},slot:args.slot,wearable:{slot:args.slot,url:'data:image/webp;base64,'+buffer.toString('base64')}});
+      return {content:[{type:'image',mimeType:'image/webp',data},{type:'text',text:'Check all eight directions and, for jackets, walking, sitting, standing/seated waving, all eight dance frames and the drink-carrying versions. Publish with submit_wearable only if every pose is aligned.'}]};
     },
     async submit_wearable(args,{token}){
       const buffer=await prepareWearable(await loadSource(token,args),args.slot),storageId=await uploader(token)(buffer);

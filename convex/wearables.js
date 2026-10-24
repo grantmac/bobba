@@ -8,7 +8,7 @@ export const create=mutation({args:{agentToken:v.string(),name:v.string(),slot,s
   const {player}=await agentFor(ctx,args.agentToken),name=args.name.normalize('NFKC').trim();
   if(!name||name.length>40)fail('Use a name of 1–40 characters.');
   const file=await ctx.db.system.get(args.storageId);
-  if(!file||file.contentType!=='image/png'||file.size>4*1024*1024)fail('Upload a PNG smaller than 4 MB.');
+  if(!file||!['image/png','image/webp'].includes(file.contentType)||file.size>4*1024*1024)fail('Upload a PNG or WebP smaller than 4 MB.');
   const id=await ctx.db.insert('wearables',{ownerId:player._id,ownerName:player.name,name,slot:args.slot,storageId:args.storageId,createdAt:Date.now()});
   return {id,name,slot:args.slot};
 }});
