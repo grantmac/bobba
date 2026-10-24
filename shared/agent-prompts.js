@@ -1,12 +1,14 @@
 // Image-generation prompts for new pieces, in the shape that has produced good results:
 // one standalone transparent sprite, the room's pixel-art style, strict 2:1 isometric
 // geometry with the orientation spelled out, then the design, then what to leave out.
+const GEOMETRY=`Projection lock: use the room's exact 2:1 pixel-isometric geometry, not a generic 30-degree isometric camera. A grid-aligned edge travels 2 pixels horizontally for every 1 pixel vertically (26.565 degrees from horizontal): for example, 64 across means exactly 32 up or down. The two ground-plane axes have slopes +1/2 and -1/2; upright edges remain vertical. Parallel structural edges stay parallel with no perspective convergence or camera roll. Apply this to bases, tops, frames, panels and seams aligned with the object's axes; curved, tapered or deliberately angled parts need not follow these slopes. Keep this ratio at any source resolution and in every view or animation frame. Do not draw the construction grid in the delivered sprite.`;
+const SEATING=`Seat construction: keep the cushion or sitting surface at the same physical location and height within the footprint in every rotation. Leave room for an avatar's hips on the cushion, back against the backrest and legs toward the facing direction. Show consistent near and far arms, front rim and backrest so the parts that should cover the sitter can be isolated into a foreground mask afterwards. Do not draw an avatar into the sprite.`;
 const STYLE=`Art direction: match the reference image's retro hand-drawn pixel-art furniture: crisp stair-step contours, thin near-black outlines, compact shading ramps and slightly chunky proportions. Scale against 64 by 32 pixel floor diamonds and a roughly 95 pixel standing avatar; these are game display pixels, not the resolution of this source sheet. Upper-left light, subtle shading within the asset, no external cast shadows. It must look like it belongs beside the room's existing sofas, fridge and DJ booth, not a realistic miniature render. Avoid glossy gradients, smooth vector edges, antialiasing, blurry texture or excessive tiny detail; keep details readable at game scale.`;
 const DELIVER=`Deliver the COMPLETE piece alone, fully visible, with ample transparent margins and genuine transparent alpha outside it and through any gaps. No room wall, ceiling, floor platform, floor tiles, signs, text, typography, people, other furniture, labels, borders or watermark. Do not recreate the room screenshot; output only the new placeable sprite.`;
 const KIND_NOTES={
   floor:'a freestanding floor piece',tabletop:'a small object that can also sit on a tabletop',table:'a table whose top other small objects can sit on',
   seat:'a seat an avatar can sit on, with the sitting surface about ten pixels above the floor at game scale',plant:'a potted plant',lamp:'a floor or table lamp',
-  rug:'a flat rug lying on the floor, drawn as the floor diamond itself with no height',wall:'a wall-mounted piece seen flat against the wall',
+  rug:'a flat rug lying on the floor, drawn as the floor diamond itself with no height',wall:'a wall-mounted piece flush against the isometric wall plane, not a front-on rectangle pasted onto it',
 };
 export function assetPrompt({description,kind='floor',width=1,depth=1,facing='right',details=''}){
   const long=depth===width?null:(width>depth)===(facing!=='left')?'lower-left to upper-right':'upper-left to lower-right';
@@ -20,7 +22,7 @@ export function assetPrompt({description,kind='floor',width=1,depth=1,facing='ri
   return [
     `Create ONE standalone transparent isometric pixel-art ${kind==='wall'?'WALL PIECE':'FURNITURE PIECE'} for the game shown in the reference image.`,
     `The reference image is authoritative for the game's pixel-art style, furniture scale and orientation. ${description.trim()} It is ${KIND_NOTES[kind]??KIND_NOTES.floor}.`,
-    geometry,
+    geometry,GEOMETRY,kind==='seat'?SEATING:'',
     details.trim()?`Design: ${details.trim()}`:'',
     STYLE,DELIVER,
   ].filter(Boolean).join('\n');
@@ -30,8 +32,8 @@ export function sheetPrompt({description,kind='floor',width=1,depth=1,details=''
   const front=width===1?'one tile wide':`${width} tiles long`;
   const sized=kind==='wall'?`Its face is ${front} along the wall.`:`Its front is ${front} and it is ${depth===1?'one tile':`${depth} tiles`} deep, at the scale of the furniture in the room reference.`;
   const views=kind==='wall'
-    ?['TOP-LEFT: hanging on the left-hand wall, whose lines rise from lower left to upper right, its face foreshortened 2:1 and turned toward the lower-right.',
-      'TOP-RIGHT: hanging on the right-hand wall, whose lines fall from upper left to lower right, its face turned toward the lower-left.',
+    ?['TOP-LEFT: hanging on the left-hand wall, facing lower-right. The face\'s top and bottom edges both rise exactly 1 pixel per 2 pixels to the right (screen slope -1/2); its side edges are vertical. All face details follow this same wall plane.',
+      'TOP-RIGHT: hanging on the right-hand wall, facing lower-left. The face\'s top and bottom edges both fall exactly 1 pixel per 2 pixels to the right (screen slope +1/2); its side edges are vertical. All face details follow this same wall plane.',
       'BOTTOM-LEFT: the same as top-left.','BOTTOM-RIGHT: the same as top-right.']
     :['TOP-LEFT: front facing the lower-right, its width edge running from lower left up to upper right; depth runs upper left to lower right.',
       'TOP-RIGHT: front facing the lower-left, its width edge running from upper left down to lower right; depth runs lower left to upper right.',
@@ -42,7 +44,7 @@ export function sheetPrompt({description,kind='floor',width=1,depth=1,details=''
     `The piece: ${description.trim()} It is ${KIND_NOTES[kind]??KIND_NOTES.floor}. ${sized}`,
     details.trim()?`Design: ${details.trim()}`:'',
     `Layout: a 2 by 2 grid of FOUR views of the SAME piece, one per quadrant, each centred in its quadrant with clear transparent space around it and nothing crossing the grid midlines. Same size, same colours, same ground level and consistent details in every view; only the rotation changes. All verticals vertical, strict orthographic 2:1 isometric projection, no perspective convergence.`,
-    views.join('\n'),
+    GEOMETRY,views.join('\n'),kind==='seat'?SEATING:'',
     STYLE,DELIVER.replace('the COMPLETE piece alone','the complete sheet with the four views and nothing else'),
   ].filter(Boolean).join('\n');
 }
@@ -72,6 +74,8 @@ export function stripPrompt({description,kind='floor',width=1,depth=1,details=''
     `The piece: ${description.trim()} It is ${KIND_NOTES[kind]??KIND_NOTES.floor}, ${width===1&&depth===1?'one game tile':`${width} by ${depth} game tiles`} at the scale of the furniture in the room reference.`,
     details.trim()?`Design: ${details.trim()}`:'',
     `Layout: divide the canvas into ${frames} equal columns and draw one frame centred in each column with clear transparent space around it and nothing crossing the column lines; keep every frame's outline identical apart from the animated part. All verticals vertical, strict orthographic 2:1 isometric projection, no perspective convergence.`,
+    GEOMETRY,kind==='seat'?SEATING:'',
+    kind==='wall'?`Wall plane: the face's top and bottom edges both ${facing==='left'?'fall':'rise'} exactly 1 pixel per 2 pixels to the right, with vertical side edges; all face details follow that plane in every frame.`:'',
     STYLE,DELIVER.replace('the COMPLETE piece alone','the complete strip of frames and nothing else'),
   ].filter(Boolean).join('\n');
 }

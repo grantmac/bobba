@@ -1,7 +1,17 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {Jimp} from 'jimp';
-import {splitStrip,prepareAsset} from '../shared/sprite-build.js';
+import {buildSprite,splitStrip,prepareAsset} from '../shared/sprite-build.js';
+test('height limits scale both sprite axes instead of flattening the isometric projection',()=>{
+  for(const [kind,w,h,display_width,expected] of [['floor',100,400,100,[50,200]],['wall',100,600,48,[16,96]],['floor',100,50,100,[100,50]]]){
+    const image=new Jimp({width:w,height:h,color:0x446688ff});
+    const sprite=buildSprite(image,{kind,width:1,depth:1,display_width,prepared:true});
+    assert.deepEqual([sprite.width,sprite.height],expected);
+    assert.equal(sprite.width/sprite.height,w/h);
+    assert.equal(image.width/image.height,w/h);
+  }
+  assert.throws(()=>buildSprite(new Jimp({width:100,height:1,color:0x446688ff}),{kind:'floor',width:1,depth:1,display_width:200,prepared:true}),/stretching would distort/);
+});
 // A three-frame strip of a lamp whose glow grows: the frames share one box so the lamp never jumps.
 function strip(frames,cell=64){
   const image=new Jimp({width:cell*frames,height:cell,color:0x00000000});

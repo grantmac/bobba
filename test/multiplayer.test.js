@@ -1077,6 +1077,18 @@ describe('agents building pieces',()=>{
     await t.mutation(api.agents.setSeat,{agentToken,assetId:stool.id,seat:{x:0,z:0,height:5,offsetX:6,offsetY:-3}});
     expect((await entry()).seat[2].offset).toEqual([6,18]);expect((await entry()).seat[4].offset).toEqual([-6,18]);
     expect((await t.query(api.agents.status,{agentToken})).assets.find(a=>a.id===stool.id).seat).toEqual({x:0,z:0,height:5,offsetX:6,offsetY:-3});
+    // A correction for a separately drawn view must not mirror or disturb the other view.
+    const calibrated={x:0,z:0,height:5,offsetX:6,offsetY:-3,offsets:[{rotation:4,x:2,y:-8}]};
+    const adjusted=await t.mutation(api.agents.setSeat,{agentToken,assetId:stool.id,seat:calibrated});
+    expect((await entry()).seat[2].offset).toEqual([6,18]);expect((await entry()).seat[4].offset).toEqual([2,13]);
+    expect(adjusted.positions.rotations.find(r=>r.direction===4).seats[0].surface).toEqual({x:2,y:3});
+    expect((await t.query(api.agents.status,{agentToken})).assets.find(a=>a.id===stool.id).seat).toEqual(calibrated);
+    expect((await t.query(api.agents.previewAsset,{agentToken,assetId:stool.id})).asset.seat[4].offset).toEqual([2,13]);
+    for(const offsets of [[{rotation:6,x:0,y:0}],[{rotation:4,x:0,y:25}],[{rotation:4,x:0,y:0},{rotation:4,x:1,y:0}]]){
+      await expect(t.mutation(api.agents.setSeat,{agentToken,assetId:stool.id,seat:{...calibrated,offsets}})).rejects.toThrow();
+    }
+    await expect(t.mutation(api.agents.setSeat,{agentToken:other,assetId:stool.id,seat:calibrated})).rejects.toThrow('not yours');
+    expect((await entry()).seat[4].offset).toEqual([2,13]);
     await t.mutation(api.agents.setSeat,{agentToken,assetId:stool.id,seat:null});
     expect((await entry()).seat).toBeUndefined();
     await t.mutation(api.room.move,{token,x:25,z:5,seatId:itemId});

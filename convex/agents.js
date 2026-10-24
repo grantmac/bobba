@@ -9,7 +9,8 @@ import {ASSET_CATEGORIES,assetType,assetCatalogueEntry,definitionsFor} from './l
 import {loadZones,zoneItems,ownedItems,itemDoc,applyChanges} from './lib/furnitureStore.js';
 import {floorColors} from './lib/catalog.js';
 import {playerFor,sessionFor} from './room.js';
-import {seatReport} from '../shared/asset-geometry.js';
+import {seatReport,validateSeatOffsets} from '../shared/asset-geometry.js';
+import {seatArg} from './lib/seat.js';
 import {isWallItem} from '../shared/furniture-model.js';
 import {furnitureControls} from '../shared/furniture-controls.js';
 import {SPACES_PER_PLAYER,SPACE_SIZE,SPACE_MIN_WIDTH,SPACE_MAX_WIDTH,SPACE_FLOORS,SPACE_WALLS,SPACE_FITS,SPACE_IMAGE_MAX} from '../shared/spaces.js';
@@ -95,16 +96,16 @@ export const discardUpload=mutation({args:{agentToken:v.string(),storageId:v.str
 const cell=v.object({x:v.number(),y:v.number(),width:v.number(),height:v.number()});
 const part=v.object({storageId:v.id('_storage'),foregroundStorageId:v.optional(v.id('_storage')),direction:v.number(),width:v.number(),height:v.number(),reg:v.object({x:v.number(),y:v.number()}),frames:v.optional(v.array(cell))});
 const view=v.object({direction:v.number(),source:v.number(),mirror:v.boolean()});
-const seatArg=v.object({x:v.number(),z:v.number(),height:v.number(),offsetX:v.optional(v.number()),offsetY:v.optional(v.number())});
 // A seat's sitting spot: one footprint tile (as placed facing lower-right: x across the depth, z
 // along the width) and the seat top's height above the floor, 0 (a cushion) to 40 px.
-function validSeat(seat,{category,width,depth}){
+function validSeat(seat,{category,width,depth,views}){
   if(category!=='Seating')fail('Only seats have a sitting spot.');
   const whole=Number.isInteger;
   if(!whole(seat.x)||!whole(seat.z)||seat.x<0||seat.x>=depth||seat.z<0||seat.z>=width)fail(`The seat tile must be within the footprint as placed facing lower-right: x 0 to ${depth-1}, z 0 to ${width-1}.`);
   if(!whole(seat.height)||seat.height<0||seat.height>40)fail('Seat height is 0 to 40 pixels above the floor.');
   const nudge=n=>{if(n!==undefined&&(!whole(n)||n<-24||n>24))fail('Seat offsets are -24 to 24 pixels.');return n;};
-  return {x:seat.x,z:seat.z,height:seat.height,...(nudge(seat.offsetX)?{offsetX:seat.offsetX}:{}),...(nudge(seat.offsetY)?{offsetY:seat.offsetY}:{})};
+  try{validateSeatOffsets(seat.offsets,views.map(v=>v.direction));}catch(error){fail(error.message);}
+  return {x:seat.x,z:seat.z,height:seat.height,...(nudge(seat.offsetX)?{offsetX:seat.offsetX}:{}),...(nudge(seat.offsetY)?{offsetY:seat.offsetY}:{}),...(seat.offsets?.length?{offsets:seat.offsets}:{})};
 }
 // Set where an avatar sits on a built seat and how high, or clear it with null so the whole piece
 // seats at chair height again. The builder's own pieces, or any for Grant; open clients pick it up live.

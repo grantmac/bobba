@@ -101,6 +101,18 @@ describe('hosted MCP endpoint',()=>{
     const wall=JSON.parse((await (await post(rpc('tools/call',{name:'design_asset',arguments:{name:'Sign',description:'A neon sign.',kind:'wall'}}),{Authorization:`Bearer ${key}`})).json()).result.content[0].text);
     expect(wall.attach).toEqual(['https://chat.example.test/agent-reference/room-style.png','https://chat.example.test/agent-reference/sprite-wall-speaker.png']);
   });
+  it('passes per-rotation seating corrections through the agent tool without mirroring them',async()=>{
+    vi.stubEnv('CONVEX_URL','https://example.convex.cloud');
+    const mutation=vi.spyOn(ConvexHttpClient.prototype,'mutation').mockResolvedValue({assetId:'chair'});
+    try{
+      const seat_offsets=[{rotation:6,x:0,y:-4}];
+      const {result}=await (await post(rpc('tools/call',{name:'set_seat',arguments:{asset_id:'chair',seat_x:0,seat_z:1,seat_height:20,seat_offset_x:3,seat_offsets}}),{Authorization:`Bearer ${'a'.repeat(64)}`})).json();
+      expect(result.isError).toBeUndefined();
+      expect(mutation.mock.calls[0][1]).toEqual({agentToken:'a'.repeat(64),assetId:'chair',seat:{x:0,z:1,height:20,offsetX:3,offsets:seat_offsets}});
+      const {result:listing}=await (await post(rpc('tools/list'))).json();
+      for(const name of ['set_seat','submit_asset','add_asset','preview_asset'])expect(listing.tools.find(t=>t.name===name).inputSchema.properties.seat_offsets.items.required).toEqual(['rotation','x','y']);
+    }finally{mutation.mockRestore();vi.unstubAllEnvs();}
+  });
   it('writes a floor or wall picture prompt at the game\'s pixel scale',async()=>{
     const key='a'.repeat(64);
     const floor=JSON.parse((await (await post(rpc('tools/call',{name:'design_surface',arguments:{surface:'floor',description:'Black and white chequered tiles.'}}),{Authorization:`Bearer ${key}`})).json()).result.content[0].text);
