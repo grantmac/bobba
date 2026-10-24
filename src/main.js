@@ -40,6 +40,7 @@ import {createPlantWall} from './plant-wall.js';
 import {createLoungeFloor,loadSunkenSofa} from './lounge.js';
 import {createWhiteboard} from './whiteboard.js';
 import {createLogbook} from './logbook.js';
+import {createHomepage} from './homepage.js';
 import {createBlimp} from './blimp.js';
 const renderInput=window.__ROOM_RENDER_INPUT__?.mode==='room'?window.__ROOM_RENDER_INPUT__.scene:null;
 
@@ -66,7 +67,7 @@ const ROOT = '/assets/private-room/';
 let displayScale = 1,zoom=1;
 let editingRoom=false,viewOffsetX=0,viewOffsetY=0,panX=0,panY=0,positionBeforeEdit;
 let viewCentred=false;
-let logbook=null;
+let logbook=null,homepage=null;
 let blimp=null,blimpMesh=null,blimpOffsetY=0,whiteboard=null,whiteboardMesh=null,whiteboardFrame=null;
 // The whiteboard is centered on the lounge's back wall.
 // That wall runs along x, so its right end sits lower.
@@ -930,6 +931,7 @@ try{
   blimp=createBlimp({texts:['SUPERHANDS']});blimpMesh=sprite(blimp.canvas,0,0,1);blimpMesh.visible=false;
   whiteboard=createWhiteboard({send:{draw:stroke=>network.whiteboard.draw(stroke),clear:()=>network.whiteboard.clear()},onError:message=>toolbar.status(message)});
   logbook=createLogbook({fetchPage:before=>network.visits.page(before),watch:(onPage,onError)=>network.visits.watch(onPage,onError),onError:message=>toolbar.status(message)});
+  if(!renderInput)homepage=createHomepage({api:network.homepage,onVisitors:()=>logbook.open(),focusRoom:()=>container.focus({preventScroll:true})});
   whiteboardMesh=sprite(whiteboard.canvas,0,0,96);whiteboardMesh.scale.setScalar(1/2);whiteboardMesh.material.map.minFilter=THREE.LinearFilter;whiteboardMesh.material.map.magFilter=THREE.LinearFilter;
   {const positions=whiteboardMesh.geometry.attributes.position;for(let i=0;i<positions.count;i++)positions.setY(i,positions.getY(i)-positions.getX(i)/2);positions.needsUpdate=true;whiteboardMesh.geometry.computeBoundingSphere();}
   placeWhiteboard();
@@ -967,7 +969,7 @@ try{
     programNow:()=>network.now(),programReducedMotion:()=>reducedMotion.matches,programRoom:()=>network.population,
     prepareImage,worldPoint:iso,isTile:(x,z)=>valid(x,z)&&!isPoolWater(layout,x,z)&&!onWalkway(layout,x,z),floorHeight,getAvatar:()=>position,stopWalking,onChanged:()=>{ensureFreeTile();positionAwayPoster();positionDeckSign();},onSit:sitOn,onUse:useItem,
     // Furniture carries its own builder credit; dismiss the character/space stand.
-    onInspect:()=>infoStand.hide(),
+    onInspect:item=>{infoStand.hide();return homepage?.inspect(item)??false;},
     // Builders may only drop pieces in a space they own (the server enforces the same).
     canBuildAt:(x,z)=>layout.spaces.some(s=>s.owner===network?.me?.id&&x>=s.x&&x<s.x+s.width&&z>=s.z&&z<s.z+s.depth),
     focusRoom:()=>container.focus({preventScroll:true}),
@@ -1019,6 +1021,7 @@ try{
     stopPreview();
   }
   const admin=network.me.role==='admin';
+  homepage?.setAdmin(admin);
   botPanel=createBotPanel({api:network.bot,admin});
   network.whiteboard.all().then(all=>{whiteboard.load(all);network.whiteboard.watch(all.serial,update=>whiteboard.receive(update));}).catch(error=>toolbar.status(error.message));
   stickies.connect(admin);

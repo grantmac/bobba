@@ -221,6 +221,11 @@ export function createMultiplayer(){
         subscribe();return ()=>{ended=true;stop?.();};
       },
     },
+    homepage:{
+      notes:args=>identityCall('query',api.homepage.notes,{token,...args}),
+      add:args=>identityCall('mutation',api.homepage.addNote,{token,...args}),
+      review:args=>identityCall('mutation',api.homepage.reviewNote,{token,...args}),
+    },
     visits:{
       page:before=>client.query(api.visits.page,{token,...(before?{before}:{})}).catch(error=>{throw new Error(errorMessage(error));}),
       watch:(onPage,onError)=>client.onUpdate(api.visits.page,{token},onPage,error=>onError(errorMessage(error))),
