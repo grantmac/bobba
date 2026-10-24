@@ -7,11 +7,11 @@ import {join,resolve} from 'node:path';
 import {spawn} from 'node:child_process';
 import {createAgent,options,installation} from '../public/room-agent.mjs';
 
-let server,origin,directory,requests,phase,agentToken;
+let server,origin,directory,requests,phase,agentToken,introduction;
 const text=value=>({content:[{type:'text',text:JSON.stringify(value)}]});
 beforeEach(async()=>{
   directory=await mkdtemp(join(tmpdir(),'room-entry-test-'));vi.stubEnv('ROOM_AGENT_HOME',directory);
-  requests=[];phase='pending';agentToken='d'.repeat(64);
+  requests=[];phase='pending';agentToken='d'.repeat(64);introduction={};
   server=createServer(async(req,res)=>{
     let raw='';for await(const chunk of req)raw+=chunk;
     const body=JSON.parse(raw);requests.push({url:req.url,auth:req.headers.authorization,body});
@@ -19,7 +19,7 @@ beforeEach(async()=>{
     if(req.url==='/api/connect')reply=body.action==='start'?{agentToken,launchUrl:`${origin}/#pair=${'e'.repeat(64)}`,verification:'AABBCCDD',expiresAt:Date.now()+600000}:{state:phase};
     else if(body.method==='initialize')reply={jsonrpc:'2.0',id:1,result:{protocolVersion:'2025-06-18',capabilities:{tools:{}},serverInfo:{name:'habbo-room',version:'test'}}};
     else if(body.method==='tools/list')reply={jsonrpc:'2.0',id:1,result:{tools:[{name:'status',inputSchema:{type:'object',properties:{}}},{name:'room_map',inputSchema:{type:'object',properties:{}}}]}};
-    else reply={jsonrpc:'2.0',id:1,result:phase==='revoked'?{isError:true,content:[{type:'text',text:'Not attached'}]}:text({playerName:'Visitor',playerId:'player-1'})};
+    else reply={jsonrpc:'2.0',id:1,result:phase==='revoked'?{isError:true,content:[{type:'text',text:'Not attached'}]}:text({playerName:'Visitor',playerId:'player-1',...introduction})};
     res.setHeader('Content-Type','application/json');res.end(JSON.stringify(reply));
   });
   await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));origin=`http://127.0.0.1:${server.address().port}`;
@@ -28,6 +28,15 @@ afterEach(async()=>{await new Promise(resolve=>server.close(resolve));await rm(d
 const agent=client=>createAgent(options(['connect','--origin',origin,'--client',client??'chatgpt']));
 async function savedPath(){const [sub]=await readdir(directory);return join(directory,sub,'chatgpt.json');}
 describe('portable room agent helper',()=>{
+  it('passes the server introduction to the agent after connection approval',async()=>{
+    introduction={capabilitySummary:['Create avatar clothing','Host quizzes and treasure hunts'],connectionInstructions:'Summarize these after connecting.'};
+    const bridge=agent();await bridge.connect();
+    expect(await bridge.status()).toEqual({state:'pending'});
+    phase='approved';
+    const result=await bridge.dispatch('tools/call',{name:'connection_status'});
+    expect(JSON.parse(result.content[0].text)).toEqual({state:'connected',playerName:'Visitor',playerId:'player-1',...introduction});
+    expect(JSON.stringify(result)).not.toContain(agentToken);
+  });
   it('launches without leaking secrets and verifies an actual MCP call before saying connected',async()=>{
     const bridge=agent(),launch=await bridge.connect();
     expect(JSON.stringify(launch)).not.toContain(agentToken);expect(launch.verification).toBe('AABBCCDD');

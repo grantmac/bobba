@@ -4,6 +4,7 @@
 import {ConvexHttpClient} from 'convex/browser';
 import {wearableTools,wearableHandlers} from '../server/wearables-mcp.js';
 import {activityTools,activityHandlers} from '../server/activities-mcp.js';
+import {CAPABILITY_SUMMARY,CONNECTION_INTRO} from '../shared/agent-introduction.js';
 import {anyApi} from 'convex/server';
 import {sheetPrompt,surfacePrompt,stripPrompt} from '../shared/agent-prompts.js';
 import {prepareSurface,surfaceSize,SURFACE_COLORS} from '../shared/surface-build.js';
@@ -17,7 +18,7 @@ import {assetCatalogueEntry} from '../convex/lib/assets.js';
 import {SPACES_PER_PLAYER,SPACE_SIZE,SPACE_MIN_WIDTH,SPACE_MAX_WIDTH,SPACE_NAME_MAX,SPACE_FLOORS,SPACE_WALLS,SPACE_FITS} from '../shared/spaces.js';
 
 export const maxDuration=120;
-const api=anyApi,SERVER={name:'habbo-room',version:'0.12.0'},PROTOCOLS=['2024-11-05','2025-03-26','2025-06-18'];
+const api=anyApi,SERVER={name:'habbo-room',version:'0.12.1'},PROTOCOLS=['2024-11-05','2025-03-26','2025-06-18'];
 const INSTRUCTIONS=`Build furniture, avatar clothing and activities for the player whose agent key you hold. Furniture: design_asset (prompt + reference image URLs) → draw the 2 by 2 sprite sheet with your image tool → upload_url → POST the PNG → preview_asset → submit_asset. Then place it from room_map when the player says where. Clothing: design_wearable returns an exact avatar alignment guide covering all eight angles and jacket animations. Generate transparent clothing, upload_url → preview_wearable → submit_wearable. Inspect every pose before saving; never treat a single clothing picture as a complete sheet. Clothing belongs to the avatar, works offline, and appears in the normal Hats/Jackets editor without room placement. equip_wearable changes only the authenticated player's outfit. Activities: create_activity makes quizzes or treasure hunts in the player's space; list_activities, manage_activity and play_activity expose host controls and play. add_space creates a space on the chosen tier (upper, middle, lower); style_space restyles its floor and walls, with pictures starting at design_surface. Use room_overview for routine text room checks and room_map for placement. Mutation replies confirm changes; do not automatically take a picture after each change. Use preview_asset or preview_wearable to inspect individual creations before publishing. ${CONVENTIONS}`;
 const NO_KEY='No agent key. Send the player\'s key as "Authorization: Bearer <key>": in the room, open Furniture → Build with your agent → Copy agent prompt, then paste the prompt into your agent.';
 const message=error=>typeof error?.data==='string'?error.data:(error?.message||String(error)).replace(/\[(CONVEX|Request ID)[^\]]*\]\s*/g,'').replace(/^Server Error\s*/,'').replace(/^Uncaught (\w*Error): /,'').split('\n')[0];
@@ -126,7 +127,7 @@ const HANDLERS={
   async set_program({asset_id,source,initial_state,expected_revision},{token}){
     return call('mutation',api.programs.set,{agentToken:token,assetId:asset_id,source,...(initial_state!==undefined?{initialState:initial_state}:{}),...(expected_revision!==undefined?{expectedRevision:expected_revision}:{})});
   },
-  async status(_,{token}){await call('mutation',api.agents.connected,{agentToken:token});return {...await call('query',api.agents.status,{agentToken:token}),conventions:CONVENTIONS};},
+  async status(_,{token}){await call('mutation',api.agents.connected,{agentToken:token});return {...await call('query',api.agents.status,{agentToken:token}),conventions:CONVENTIONS,capabilitySummary:CAPABILITY_SUMMARY,connectionInstructions:CONNECTION_INTRO};},
   async design_asset(args,{origin}){
     args=defaults(args);
     const result=value=>({content:[{type:'text',text:JSON.stringify({...value,...(args.kind==='seat'?{seat_review:SEAT_BUILD_GUIDANCE}:{})})},{type:'image',mimeType:'image/webp',data:blueprint}]});
@@ -211,7 +212,7 @@ async function handle(m,context){
   switch(method){
     case 'initialize':
       if(context.token){try{await call('mutation',api.agents.connected,{agentToken:context.token});}catch(error){return rpcError(id,-32603,message(error));}}
-      return reply(id,{protocolVersion:PROTOCOLS.includes(params.protocolVersion)?params.protocolVersion:PROTOCOLS.at(-1),capabilities:{tools:{}},serverInfo:SERVER,instructions:INSTRUCTIONS});
+      return reply(id,{protocolVersion:PROTOCOLS.includes(params.protocolVersion)?params.protocolVersion:PROTOCOLS.at(-1),capabilities:{tools:{}},serverInfo:SERVER,instructions:CONNECTION_INTRO+'\n\n'+INSTRUCTIONS});
     case 'ping':return reply(id,{});
     case 'tools/list':return reply(id,{tools:TOOLS});
     case 'tools/call':{
