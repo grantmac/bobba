@@ -65,9 +65,9 @@ full first-visit download.
 The final production build, including the new homepage artwork, converted
 7,706 static images from 21,301,084 to 14,142,286 bytes (**33.6% smaller**).
 Backend and frontend were released together with the concurrent homepage and
-layering changes. Deployment `dpl_59Ys2nBDCDSTGK2qqLVGshDa1bTG` is live at
+layering and room-activity changes. Deployment `dpl_Ed5UBLwHcnercM5DeNKS3ZiCDTgr` is live at
 `https://chat.grantm.ac`; legacy image URLs and MCP blueprint responses were
-verified as WebP. The combined suite passed 334 backend/API tests, and the
+verified as WebP. The combined suite passed 343 backend/API tests, and the
 homepage and layering browser checks passed on desktop and mobile.
 
 A concurrent backend deployment interrupted one migration batch. Its completed
