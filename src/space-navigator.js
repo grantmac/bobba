@@ -23,7 +23,7 @@ export function createSpaceNavigator({onTeleport,onClose=()=>{}}){
         busy=true;dialog.setAttribute('aria-busy','true');
         list.querySelectorAll('button').forEach(b=>b.disabled=true);
         status.textContent=`Teleporting to ${space.name}…`;
-        try{await onTeleport(space.id);dialog.close();}
+        try{await onTeleport(space.id,()=>dialog.close());if(dialog.open)dialog.close();}
         catch(error){status.textContent=error.message||'Could not teleport. Please try again.';}
         finally{
           busy=false;dialog.removeAttribute('aria-busy');
