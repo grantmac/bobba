@@ -45,6 +45,14 @@ enabled = true
 To hand it to someone else, zip this directory or save it to an account with Codex's plugin
 creator. Bump `version` in both manifests after a change so Codex refreshes its cached copy.
 
+Players connecting through `/connect` receive the hosted MCP instructions without
+installing this plugin. Seat direction and foreground-mask checks are returned on
+every `design_asset` seat request as `seat_review`, for both static and animated
+pieces. Update and deploy those shared server instructions as well as this skill;
+changing a local plugin cache does not update other players' agents. Existing
+connections receive the new design response on their next call; cached tool
+descriptions may require reconnecting or starting a new chat.
+
 Other MCP clients talk to the same endpoint; for Claude Code:
 
 ```sh

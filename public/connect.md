@@ -79,8 +79,24 @@ These call the same MCP tools with the saved credential. Once registered, the
 bridge also offers `open_room` and `connection_status` for future visits.
 Read the tools list through MCP to discover furniture tools. Start image-based
 furniture with `design_asset`; use its returned image instructions, upload the
-generated sprite, then `submit_asset`. Ask what the player wants to create
+generated sprite, preview it, then `submit_asset`. Ask what the player wants to create
 before building anything. Do not create furniture just to test the connection.
+
+## Furniture checks before publishing
+
+Read the current `design_asset` response, including its build checklist and
+`seat_review` for seats, even if an installed plugin has older instructions.
+Facing means where the chair opens and the sitter looks. In a four-view sheet,
+bottom-left is rotation 6, opening upper-left; bottom-right is rotation 0,
+opening upper-right. Do not swap the rear views.
+
+Armchairs, sofas and other enclosed seats need foreground layers wherever an
+arm, front rim or backrest should cover the sitter. Make a mask aligned with
+the original artwork and pass `foreground_mask_storage_id` to both the preview
+and submission. Inspect a seated avatar in every supported rotation and animation
+frame: hips on the cushion, facing the opening, body behind the appropriate arms
+and backrest. Open stools may not need a mask. Seat offsets adjust position;
+they cannot fix reversed drawings or missing foreground layers.
 
 ## Credentials and recovery
 

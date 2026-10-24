@@ -81,7 +81,7 @@ concept art, screenshots, real objects):
    surface and avatar-anchor pixel positions for every rotation. Call
    `preview_asset` with `asset_id` to inspect the revised seat without asking the
    player to sit on it.
-   If just one rotation is off, use `seat_offsets: [{rotation: 6, x: 0, y: -4}]`
+   If just one rotation's seated position is misaligned, use `seat_offsets: [{rotation: 6, x: 0, y: -4}]`
    for a view-specific adjustment in room pixels. These x/y values **replace**
    the shared nudges for that rotation; they are not added or mirrored. Positive
    x moves right, positive y moves down, and y still combines with `seat_height`.
@@ -99,6 +99,12 @@ concept art, screenshots, real objects):
      midlines. Top row is the two front views, bottom row the two back views.
    - The two back views must be different rotations, not the same drawing
      twice. The two front views must mirror each other in orientation.
+   - For seats, facing means where the sitter looks and the chair opens, not
+     where the visible backrest points. Bottom-left (6) opens upper-left;
+     bottom-right (0) opens upper-right. Check the opening against the seated
+     avatar in each preview: two rear drawings can still be assigned backwards.
+     Correct their artwork orientation before publishing; seat offsets cannot
+     repair swapped views.
    - Measure a long structural edge in each view: its vertical change must be
      half its horizontal change, allowing for the pixel stair-steps at the
      endpoints. Compare wall faces and furniture bases with the room/footprint
