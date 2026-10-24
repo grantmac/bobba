@@ -5,6 +5,19 @@ description: Open and connect to the shared room at chat.grantm.ac from ChatGPT 
 
 # Habbo Room
 
+## Introduce capabilities when connected
+
+After the first successful authenticated `status` or `connection_status` check,
+confirm the returned player name and give a brief introduction. Lead with
+custom hats, helmets and jackets in the normal style editor, with all eight
+angles and walking, waving and dancing poses; clothing belongs to the avatar
+and needs no room placement. Then mention timed quizzes and treasure hunts
+with saved scores, furniture creation, and decorating a space. Follow the
+returned `capabilitySummary` and `connectionInstructions` for the current list.
+Offer “make me a space helmet” or “host a music quiz” as examples and ask what
+they want to create. Wait for their choice before building or equipping
+anything. Do not repeat the introduction on routine status checks.
+
 ## Custom avatar clothing
 
 Use `design_wearable` for a custom hat, helmet (`headwear`) or jacket (`jacket`). It returns the exact image prompt and an avatar alignment guide. Generate only the clothing on transparency, keeping every cell aligned. Upload with `upload_url`, inspect `preview_wearable`, then save with `submit_wearable`. These pieces belong to the avatar and appear in the **normal appearance editor**, under Hats or Jackets. They need no room placement and the player does not need to be online. Use `list_wearables` to inspect the player's creations and `equip_wearable` only when they ask to wear one (null removes the slot). Never change another player's outfit. All pieces have eight viewing angles. Jackets have 36 pose rows covering walking, sitting, standing/seated waves, all eight dance frames, and drink-carrying variants; follow the design tool's guide, not the furniture sheet layout.

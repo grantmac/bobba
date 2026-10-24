@@ -77,7 +77,9 @@ export function createAgent(opts){
     if(result.error||result.result?.isError)return {state:'revoked',message:'Open a new room connection.'};
     const player=JSON.parse(result.result.content[0].text);
     if(saved.pending)await save({...saved,pending:false});
-    return {state:'connected',playerName:player.playerName,playerId:player.playerId};
+    return {state:'connected',playerName:player.playerName,playerId:player.playerId,
+      ...(player.capabilitySummary?{capabilitySummary:player.capabilitySummary}:{}),
+      ...(player.connectionInstructions?{connectionInstructions:player.connectionInstructions}:{})};
     });
   }
   const content=value=>({content:[{type:'text',text:JSON.stringify(value)}]});
