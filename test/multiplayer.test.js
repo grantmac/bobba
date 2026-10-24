@@ -1124,9 +1124,11 @@ describe('agents building pieces',()=>{
     expect((await t.query(api.room.roomState,{token:adminToken})).furniture).toEqual([stored]);
     expect(await t.query(api.assets.list,{})).toHaveLength(1);
   });
-  it('animates a built piece from frame cells and lets anyone switch it off and on',async()=>{
+  it.each([2,8])('animates a built piece with %i frames and lets anyone switch it off and on',async frameCount=>{
     await admin();const {player,agentToken,storageId}=await attach();
-    const cells=[{x:0,y:0,width:48,height:60},{x:48,y:0,width:48,height:60}];
+    const cells=Array.from({length:frameCount},(_,i)=>({x:i*48,y:0,width:48,height:60}));
+    const tooMany=Array.from({length:9},(_,i)=>({x:i*48,y:0,width:48,height:60}));
+    await expect(t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId,{frameDuration:100,parts:[{storageId,direction:2,width:48,height:60,reg:{x:-8,y:46},frames:tooMany}]})})).rejects.toThrow('2 to 8 frame cells');
     await expect(t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId,{parts:[{storageId,direction:2,width:48,height:60,reg:{x:-8,y:46},frames:cells}]})})).rejects.toThrow('needs a frameDuration');
     await expect(t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId,{switchable:true})})).rejects.toThrow('Only an animated');
     await expect(t.mutation(api.agents.createAsset,{agentToken,...await spec(storageId,{frameDuration:5000,parts:[{storageId,direction:2,width:48,height:60,reg:{x:-8,y:46},frames:cells}]})})).rejects.toThrow('80 to 2000');

@@ -2,6 +2,7 @@ import {applySpaceLayout} from './lib/spaceLayout.js';
 // Agents build into the room on a player's behalf through the hosted MCP endpoint
 // (api/mcp.js). The player makes a long-lived agent key in the room; only its hash is kept.
 import {mutation,query} from './_generated/server.js';
+import {FRAME_MAX} from '../shared/sprite-conventions.js';
 import {v} from 'convex/values';
 import {fail,layoutFor,validateSpace,validateSpaceStyle,isPlaced,cells,atTime,playerTiles,zonePlayers,zonesPlayers,MAIN_ZONE} from './lib/rules.js';
 import {backWallTiles} from '../shared/room-layout.js';
@@ -91,7 +92,7 @@ export const discardUpload=mutation({args:{agentToken:v.string(),storageId:v.str
   if(owned.some(a=>a.icon===id||a.parts.some(p=>p.storageId===id||p.foregroundStorageId===id)))fail('That file belongs to a piece.');
   await ctx.storage.delete(id);
 }});
-// An animated part carries its frame cells (2 to 4, in the stored sheet's pixels); the piece then
+// An animated part carries its frame cells (in the stored sheet's pixels); the piece then
 // has a frameDuration, and may be switchable: players use its power button to freeze it on its first frame.
 const cell=v.object({x:v.number(),y:v.number(),width:v.number(),height:v.number()});
 const part=v.object({storageId:v.id('_storage'),foregroundStorageId:v.optional(v.id('_storage')),direction:v.number(),width:v.number(),height:v.number(),reg:v.object({x:v.number(),y:v.number()}),frames:v.optional(v.array(cell))});
@@ -129,7 +130,7 @@ export const createAsset=mutation({args:{agentToken:v.string(),name:v.string(),c
     if(![0,2,4,6].includes(p.direction)||!whole(p.width)||!whole(p.height)||p.width<4||p.height<4||p.width>200||p.height>200||!Number.isFinite(p.reg.x)||!Number.isFinite(p.reg.y))fail('Sprite sizes must be 4 to 200 room pixels.');
     if(!await ctx.db.system.get(p.storageId))fail('A sprite upload is missing.');
     if(p.foregroundStorageId&&(spec.category!=='Seating'||!await ctx.db.system.get(p.foregroundStorageId)))fail('Foreground masks require a seat and a valid uploaded foreground.');
-    if(p.frames!==undefined&&(p.frames.length<2||p.frames.length>4||p.frames.some(c=>!whole(c.x)||!whole(c.y)||!whole(c.width)||!whole(c.height)||c.width<1||c.height<1)))fail('An animated sprite has 2 to 4 frame cells.');
+    if(p.frames!==undefined&&(p.frames.length<2||p.frames.length>FRAME_MAX||p.frames.some(c=>!whole(c.x)||!whole(c.y)||!whole(c.width)||!whole(c.height)||c.width<1||c.height<1)))fail(`An animated sprite has 2 to ${FRAME_MAX} frame cells.`);
   }
   const animated=spec.parts.some(p=>p.frames);
   if(spec.frameDuration!==undefined&&(!animated||!whole(spec.frameDuration)||spec.frameDuration<80||spec.frameDuration>2000))fail('frameDuration is 80 to 2000 ms, for an animated piece.');
