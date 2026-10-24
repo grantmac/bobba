@@ -11,6 +11,8 @@ import {furnitureControls} from '../shared/furniture-controls.js';
 import {createFurnitureViewLoader} from './furniture-view-loader.js';
 import {depthOrder,footprintBounds} from './depth-order.js';
 
+import homepageFurniture from '../shared/homepage-furniture.json' with {type:'json'};
+
 const ROOT='/assets/furniture/';
 // Built pieces reference their sprites by URL; the shipped catalogue by file name.
 const src=file=>/^(https?:\/\/|data:image\/)/.test(file)?file:ROOT+file;
@@ -23,7 +25,7 @@ const USABLE=new Set(['custom_dj_decks','fridge','dmg_fridge','custom_logbook','
 export async function createFurniture({prepareImage,makeVisual,disposeVisual,positionVisual,markTiles,worldPoint,isTile,getAvatar,stopWalking,onChanged,onSit,onUse=()=>{},onInspect=()=>{},canBuildAt=()=>true,focusRoom,onAttachAgent,floorHeight=()=>0,hasWall=()=>false,walls=()=>[],initialItems=[],initialAssets=[],programPlayers=()=>[],programProximityPlayers=programPlayers,programRoom=()=>({people:null}),programMe=()=>null,programNow=null,programReducedMotion=()=>false,onProgramSave=()=>Promise.reject(new Error('Enter the room first.')),onProgramSignal=()=>Promise.reject(new Error('Enter the room first.')),onProgramUse=()=>{}}){
   const response=await fetch(ROOT+'catalog.json');
   if(!response.ok)throw new Error('Furniture could not be loaded.');
-  let catalog=[...await response.json(),...initialAssets];const definitions=new Map(catalog.map(d=>[d.id,d]));
+  let catalog=[...await response.json(),...homepageFurniture,...initialAssets];const definitions=new Map(catalog.map(d=>[d.id,d]));
   const frames=new Map();
   const loadDefinition=createFurnitureViewLoader(async(def,selectedParts,selectedViews)=>{
     const parts=await Promise.all(selectedParts.map(part=>new Promise((resolve,reject)=>{
@@ -442,7 +444,8 @@ export async function createFurniture({prepareImage,makeVisual,disposeVisual,pos
     if(click){
       // Selection only opens the card. The agent-defined buttons invoke behaviour.
       const programmed=hit&&!!definitions.get(hit.item.type)?.program;
-      selected=hit&&(definitions.get(hit.item.type)?.ownerName||programmed||editable&&canEdit(hit.item)||(networkPower&&switchable(hit.item)))?hit.item.id:null;render();onInspect(hit?.item??null,hit?definitions.get(hit.item.type):null);
+      if(onInspect(hit?.item??null,hit?definitions.get(hit.item.type):null)===true){selected=null;render();return true;}
+      selected=hit&&(definitions.get(hit.item.type)?.ownerName||programmed||editable&&canEdit(hit.item)||(networkPower&&switchable(hit.item)))?hit.item.id:null;render();
       const spot=hit&&clickedSeat(hit.item.id,point);if(spot)onSit(spot);else if(hit&&USABLE.has(hit.item.type))onUse(hit.item.id);
     }
     return !!hit&&definitions.get(hit.item.type).category!=='Rugs';

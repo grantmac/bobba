@@ -45,6 +45,39 @@ foregrounds and space floor/wall IDs, confirm they exist and have
 report no changes. Originals deliberately remain in storage, so this reduces
 download bytes rather than immediately reducing stored bytes.
 
+### Applied WebP rollout
+
+The migration converted 423 assets and 13 spaces: 1,616 source files became
+1,537 distinct WebP files after consolidating 79 duplicates within assets.
+The converted images total **79,100,010 → 55,631,884 bytes**, a saving of
+23,468,126 bytes (**29.7%**). All 1,537 current image references exist and have
+`image/webp` metadata. Original files remain stored.
+
+The initial inventory contained 422 assets and 1,610 referenced files totaling
+78,476,229 bytes. That same cohort now totals 55,138,782 bytes (29.74% smaller).
+One asset was added and the Forest Velvet Armchair gained four foreground layers
+while work was underway; the migration included those additions and retained
+the original dimensions and placement metadata. The saved 14-image lobby sample
+changed from 2,139,018 to 1,515,472 bytes (**29.2% smaller**). This sample covers
+custom lobby sprites, not JavaScript, avatars, all nearby spaces or a measured
+full first-visit download.
+
+The final production build, including the new homepage artwork, converted
+7,706 static images from 21,301,084 to 14,142,286 bytes (**33.6% smaller**).
+Backend and frontend were released together with the concurrent homepage and
+layering and room-activity changes. Deployment `dpl_Ed5UBLwHcnercM5DeNKS3ZiCDTgr` is live at
+`https://chat.grantm.ac`; legacy image URLs and MCP blueprint responses were
+verified as WebP. The combined suite passed 343 backend/API tests, and the
+homepage and layering browser checks passed on desktop and mobile.
+
+A concurrent backend deployment interrupted one migration batch. Its completed
+asset was recovered from the saved inventories and all five recovered files
+were independently decoded and compared pixel-for-pixel. Resuming independent
+batches completed the migration. Repeat apply checks on the first asset page and
+all surfaces produced no changes; the full reference inventory contains no
+non-WebP images. The [permanent migration inventory](webp-migration-2026-10-24.json)
+records replacements, byte counts, concurrent additions and verification results.
+
 ## Identical sprite files — 24 October 2026
 
 A read-only inventory of the live `perfect-peacock-308` deployment found 415
@@ -67,8 +100,9 @@ only duplicate references; it neither downloads nor deletes original files.
 Existing storage usage therefore stays unchanged. Refreshed clients receive the
 shared URLs; already-open clients may retain their old sprite URLs.
 
-This change is tested locally but **not deployed or applied**. After deploying
-the backend and upload pipeline, inventory with
+The upload pipeline and maintenance functions are deployed. The WebP backfill
+also consolidates byte-identical replacements within each asset. To inspect
+any remaining duplicate references, inventory with
 `node tools/deduplicate-sprites.mjs --deployment-name perfect-peacock-308`,
 then add `--apply` to consolidate references. Retain the JSONL output as the
 old/new reference inventory. Tests cover shared and distinct images, foregrounds,
@@ -226,6 +260,9 @@ separate screenshots from player downloads, so no total savings percentage is
 claimed.
 
 ## Existing sprite compression and resolution — 22 October 2026
+
+This section records the earlier PNG rollout. The 24 October WebP migration
+above supersedes its size thresholds and current `spriteBackfill.run` behavior.
 
 A read-only inventory from `perfect-peacock-308` found 159 assets and 478 distinct
 sprite PNGs, including nine animation sheets. Each source was downloaded once

@@ -18,6 +18,7 @@ import type * as botBrain from "../botBrain.js";
 import type * as botVoice from "../botVoice.js";
 import type * as captures from "../captures.js";
 import type * as crons from "../crons.js";
+import type * as homepage from "../homepage.js";
 import type * as http from "../http.js";
 import type * as identity from "../identity.js";
 import type * as lib_appearance from "../lib/appearance.js";
@@ -68,6 +69,7 @@ declare const fullApi: ApiFromModules<{
   botVoice: typeof botVoice;
   captures: typeof captures;
   crons: typeof crons;
+  homepage: typeof homepage;
   http: typeof http;
   identity: typeof identity;
   "lib/appearance": typeof lib_appearance;

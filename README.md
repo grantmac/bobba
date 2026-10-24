@@ -254,3 +254,29 @@ Checks: `node --test test/layout.test.js test/furniture-model.test.js`,
 `npx vitest run test/multiplayer.test.js`, and `test/terraces-browser-smoke.mjs`
 with a local Vite origin and `CHROME_EXECUTABLE_PATH`. The browser fixture
 checks desktop/mobile rendering and controls without changing the live room.
+
+## Grant's Homepage
+
+An eight-by-eight study sits directly beside the lobby on the middle tier.
+Furniture opens the corresponding section: the
+computer for current work, shelves for projects, clippings board for the archive,
+records for music, bike for cycling, telephone for contact, and vintage Mac for
+the original website. The original `grantm.ac` site remains available.
+
+Content and links live in `src/homepage-content.js`. Signed-in visitors can
+leave guestbook notes and suggestions; admins can hide notes or complete a
+suggestion with a reply, which adds it to the scrapbook. Notes are plain text,
+limited to 500 characters and one submission per player every 30 seconds.
+The admin's Edit furniture toggle lets these pieces be rearranged normally.
+
+After deploying the backend and client, run `npx convex run homepage:install`.
+This repeatable setup creates the Grant-owned space once, using the normal atomic
+layout rules to shift later rooms and their furniture and saved players together.
+Existing browser tabs need a refresh for the new homepage controls.
+
+The telephone artwork was generated for this room; its source and build helper
+are in `tools/homepage/`. The bike reuses Grant's existing PNS Ivory Road Bike art.
+Checks: `npx vitest run test/homepage.test.js` and
+`node test/homepage-browser-smoke.mjs` against the local Vite server on port 5200.
+The browser fixture checks desktop/mobile navigation and furniture interactions
+without joining or changing the shared room.

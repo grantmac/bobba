@@ -1,0 +1,186 @@
+[
+  {
+    "name": "Red telephone",
+    "category": "Decor",
+    "width": 1,
+    "depth": 1,
+    "spriteDensity": 3,
+    "tableOffsetY": -2,
+    "icon": "homepage-telephone-4.png",
+    "parts": [
+      {
+        "direction": 0,
+        "width": 40,
+        "height": 34,
+        "reg": {
+          "x": -12,
+          "y": 20
+        },
+        "file": "homepage-telephone-0.png",
+        "layer": "base",
+        "z": 0,
+        "ink": 8,
+        "alphaPrepared": true
+      },
+      {
+        "direction": 2,
+        "width": 40,
+        "height": 34,
+        "reg": {
+          "x": -12,
+          "y": 20
+        },
+        "file": "homepage-telephone-1.png",
+        "layer": "base",
+        "z": 0,
+        "ink": 8,
+        "alphaPrepared": true
+      },
+      {
+        "direction": 4,
+        "width": 40,
+        "height": 34,
+        "reg": {
+          "x": -12,
+          "y": 20
+        },
+        "file": "homepage-telephone-2.png",
+        "layer": "base",
+        "z": 0,
+        "ink": 8,
+        "alphaPrepared": true
+      },
+      {
+        "direction": 6,
+        "width": 40,
+        "height": 38,
+        "reg": {
+          "x": -12,
+          "y": 24
+        },
+        "file": "homepage-telephone-3.png",
+        "layer": "base",
+        "z": 0,
+        "ink": 8,
+        "alphaPrepared": true
+      }
+    ],
+    "views": [
+      {
+        "direction": 0,
+        "source": 0,
+        "mirror": false
+      },
+      {
+        "direction": 2,
+        "source": 2,
+        "mirror": false
+      },
+      {
+        "direction": 4,
+        "source": 4,
+        "mirror": false
+      },
+      {
+        "direction": 6,
+        "source": 6,
+        "mirror": false
+      }
+    ],
+    "id": "homepage_telephone"
+  },
+  {
+    "category": "Decor",
+    "depth": 2,
+    "icon": "homepage-bike-icon.png",
+    "id": "homepage_bike",
+    "name": "Grant's road bike",
+    "parts": [
+      {
+        "alphaPrepared": true,
+        "direction": 0,
+        "file": "homepage-bike-0.png",
+        "foreground": false,
+        "height": 96,
+        "ink": 8,
+        "layer": "base",
+        "reg": {
+          "x": 29,
+          "y": 66
+        },
+        "width": 90,
+        "z": 0
+      },
+      {
+        "alphaPrepared": true,
+        "direction": 2,
+        "file": "homepage-bike-2.png",
+        "foreground": false,
+        "height": 89,
+        "ink": 8,
+        "layer": "base",
+        "reg": {
+          "x": -3,
+          "y": 59
+        },
+        "width": 90,
+        "z": 0
+      },
+      {
+        "alphaPrepared": true,
+        "direction": 4,
+        "file": "homepage-bike-4.png",
+        "foreground": false,
+        "height": 89,
+        "ink": 8,
+        "layer": "base",
+        "reg": {
+          "x": 29,
+          "y": 59
+        },
+        "width": 90,
+        "z": 0
+      },
+      {
+        "alphaPrepared": true,
+        "direction": 6,
+        "file": "homepage-bike-6.png",
+        "foreground": false,
+        "height": 96,
+        "ink": 8,
+        "layer": "base",
+        "reg": {
+          "x": -3,
+          "y": 66
+        },
+        "width": 90,
+        "z": 0
+      }
+    ],
+    "spriteDensity": 3,
+    "surfaceHeight": 0,
+    "views": [
+      {
+        "direction": 0,
+        "mirror": false,
+        "source": 0
+      },
+      {
+        "direction": 2,
+        "mirror": false,
+        "source": 2
+      },
+      {
+        "direction": 4,
+        "mirror": false,
+        "source": 4
+      },
+      {
+        "direction": 6,
+        "mirror": false,
+        "source": 6
+      }
+    ],
+    "width": 1
+  }
+]
