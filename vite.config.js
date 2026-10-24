@@ -9,6 +9,10 @@ const entryGuide=server=>{server.middlewares.use((request,response,next)=>{
   next();
 });};
 export default defineConfig({
-  plugins:[{name:'room-entry',configureServer:entryGuide,configurePreviewServer:entryGuide}],
+  plugins:[{name:'room-entry',configureServer:entryGuide,configurePreviewServer:entryGuide},
+    {name:'webp-preview',configurePreviewServer(server){server.middlewares.use((request,response,next)=>{
+      if(request.url)request.url=request.url.replace(/(\.(?:png|jpe?g))(?=\?|$)/i,'$1.webp');
+      next();
+    });}}],
   server:{fs:{deny:['.env','.env.*','*.{crt,pem}','**/.git/**','**/ADMIN-ENTRY.md']}}
 });

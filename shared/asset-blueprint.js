@@ -1,6 +1,7 @@
 import {Jimp,loadFont} from 'jimp';
 import {SANS_16_BLACK,SANS_10_BLACK} from 'jimp/fonts';
 import {isoPoint} from './asset-geometry.js';
+import {encodeWebp} from './image-codec.js';
 let fonts;
 export async function assetBlueprint({width=1,depth=1,frames,kind='floor'}){
   if(![width,depth].every(n=>Number.isInteger(n)&&n>=1&&n<=4))throw new Error('Footprint must be 1 to 4 tiles each way.');
@@ -22,5 +23,5 @@ export async function assetBlueprint({width=1,depth=1,frames,kind='floor'}){
     image.print({font:tiny,x:ox+318,y:oy+183,text:'95 px'});
     image.print({font:tiny,x:ox+12,y:oy+252,text:'1:1 room pixels; (0,0) is the back/top tile'});
   }
-  return (await image.getBuffer('image/png')).toString('base64');
+  return (await encodeWebp(image)).toString('base64');
 }

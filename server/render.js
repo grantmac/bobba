@@ -1,6 +1,7 @@
 // A fresh, read-only browser per render. Only scene data is passed into the page, never keys.
 import puppeteer from 'puppeteer-core';
 import chromium from '@sparticuz/chromium';
+import {decodeImage,encodeWebp} from '../shared/image-codec.js';
 export async function renderInBrowser(origin,payload){
   const local=process.env.CHROME_EXECUTABLE_PATH;
   const browser=await puppeteer.launch({executablePath:local||await chromium.executablePath(),headless:true,
@@ -22,6 +23,7 @@ export async function renderInBrowser(origin,payload){
     catch{throw new Error('Server render did not become ready. Check that ROOM_RENDER_ORIGIN serves this frontend and permits the renderer to open it.');}
     const result=await page.evaluate(()=>({image:window.__ROOM_RENDER_RESULT__,error:window.__ROOM_RENDER_ERROR__}));
     if(result.error)throw new Error(result.error);
-    return result.image.replace(/^data:image\/png;base64,/,'');
+    const png=Buffer.from(result.image.replace(/^data:image\/png;base64,/,''),'base64');
+    return (await encodeWebp(await decodeImage(png))).toString('base64');
   }finally{await browser.close();}
 }

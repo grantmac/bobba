@@ -2,6 +2,79 @@
 
 The room is personally funded. Cost is an implementation constraint, including development and agent tooling. This pass adds no services or paid dependencies.
 
+## Lossless WebP — 24 October 2026
+
+New published sprites, foregrounds, catalogue thumbnails, floor/wall textures,
+blueprints and rendered previews use lossless WebP. PNG input remains accepted;
+the hosted endpoint converts it before publishing. The encoder preserves exact
+RGBA values, including colour underneath transparent pixels. Frame rectangles,
+sprite dimensions and registration metadata do not change.
+
+The build converts copied PNG/JPEG artwork to WebP and verifies every decoded
+pixel. Source files in `public/` remain authoring originals; SVG stays vector.
+Vercel rewrites existing image URLs to the converted files, with no browser
+redirect. Vite preview applies the same mapping. Future static images therefore
+receive the same conversion automatically. The first complete build converted
+7,696 images from 20,736,759 to 13,700,578 bytes (33.9% smaller).
+
+Sharp is pinned and installed as a Convex Node external package. Lossless quality
+75 / effort 4 controls compression work, not pixel quality: a large car layer took
+about 1.8 seconds versus 20 seconds at quality 100 / effort 6, with a 5% larger
+file. Measurements were local and are not a server latency guarantee.
+
+Deploy the upload pipeline before the backfill. Save current `assets`, `rooms`
+and `_storage` inventories, then run:
+
+```sh
+node tools/migrate-webp.mjs --deployment-name perfect-peacock-308
+node tools/migrate-webp.mjs --deployment-name perfect-peacock-308 --apply > webp-migration.jsonl
+```
+
+The default is read-only. Apply checks every pixel before storage, retains
+originals, and compares current references in the commit transaction. An edit
+conflict stops the run; rerunning skips converted files and includes the latest
+images. Ambiguous failures retain candidate uploads rather than risk deleting a
+committed image. Keep the pre-migration inventories as well as JSONL output:
+an action failure may occur after an earlier asset on that page committed.
+Rollback restores only image references that still equal the recorded replacement,
+using the saved originals, without overwriting later asset or space edits.
+
+Post-migration verification must enumerate all current asset icons, parts,
+foregrounds and space floor/wall IDs, confirm they exist and have
+`image/webp` metadata, and fetch representative URLs. A second apply should
+report no changes. Originals deliberately remain in storage, so this reduces
+download bytes rather than immediately reducing stored bytes.
+
+## Identical sprite files — 24 October 2026
+
+A read-only inventory of the live `perfect-peacock-308` deployment found 415
+assets referencing 1,559 distinct image files (sprites, foregrounds and icons),
+totaling 76,080,664 bytes. Comparing storage SHA-256, size and content type
+within each asset found 75 duplicate files across 28 assets: 3,312,850 bytes,
+or 4.35% of that catalogue payload. The inventory reads storage metadata, not
+image contents. These are full-catalogue figures, not measured traffic savings;
+a visitor benefits only when they need multiple duplicate images.
+
+The local upload pipeline now reuses a storage ID for identical encoded images
+within a piece. Rotations and foreground layers keep their own placement and
+animation metadata. Separate assets do not share files because deleting an asset
+deletes its referenced files. The existing browser cache can reuse a common URL.
+
+`spriteMaintenance.deduplicate` provides an internal migration for existing
+pieces, five assets per transaction. Its default mode reports candidates without
+changing records. Apply mode rereads current records transactionally and replaces
+only duplicate references; it neither downloads nor deletes original files.
+Existing storage usage therefore stays unchanged. Refreshed clients receive the
+shared URLs; already-open clients may retain their old sprite URLs.
+
+This change is tested locally but **not deployed or applied**. After deploying
+the backend and upload pipeline, inventory with
+`node tools/deduplicate-sprites.mjs --deployment-name perfect-peacock-308`,
+then add `--apply` to consolidate references. Retain the JSONL output as the
+old/new reference inventory. Tests cover shared and distinct images, foregrounds,
+rotation offsets, animation metadata, dry runs, pagination, reruns, retained
+originals and independence between separately deletable assets.
+
 ## Connected furniture and proximity — 23 October 2026
 
 Proximity uses existing sampled player presence and local worker ticks: it adds
