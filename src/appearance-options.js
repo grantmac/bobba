@@ -14,6 +14,7 @@ export function appearanceGender(catalog,look,fallback='M'){
 }
 export function changeAppearanceGender(catalog,look,gender){
   return Object.fromEntries(Object.entries(look).map(([group,part])=>{
+    if(group==='_wearables')return [group,part];
     const choices=appearanceChoices(catalog,group,gender);
     const model=catalog.aliases[group]?.[part.model]??part.model;
     return [group,{...part,model:choices.includes(model)?model:choices[0]}];

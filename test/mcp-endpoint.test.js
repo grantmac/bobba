@@ -31,7 +31,9 @@ describe('hosted MCP endpoint',()=>{
   it('answers initialize with a supported protocol version and tool capability',async()=>{
     const reply=await (await post(rpc('initialize',{protocolVersion:'2025-03-26',capabilities:{},clientInfo:{name:'t',version:'0'}}))).json();
     expect(reply.result.protocolVersion).toBe('2025-03-26');expect(reply.result.capabilities).toEqual({tools:{}});expect(reply.result.serverInfo.name).toBe('habbo-room');
-    expect(reply.result.instructions).toContain('Use room_overview for routine room checks');
+    expect(reply.result.instructions).toContain('Use room_overview for routine text room checks');
+    expect(reply.result.instructions).toContain('design_wearable');
+    expect(reply.result.instructions).toContain('create_activity');
     expect(reply.result.instructions).toContain('foreground_mask_storage_id to BOTH');
     expect(reply.result.instructions).toContain('do not swap these rear views');
     expect(reply.result.instructions).not.toContain('room_picture');
@@ -40,7 +42,7 @@ describe('hosted MCP endpoint',()=>{
   });
   it('lists the tools and answers notifications with 202',async()=>{
     const {result}=await (await post(rpc('tools/list'))).json();
-    expect(result.tools.map(t=>t.name)).toEqual(['status','design_asset','upload_url','preview_asset','submit_asset','add_asset','my_assets','set_controls','get_connections','set_connections','program_api','get_program','set_program','set_seat','delete_asset','room_map','room_overview','place','remove','add_space','design_surface','style_space','resize_space','remove_space']);
+    expect(result.tools.map(t=>t.name)).toEqual(['design_wearable','preview_wearable','submit_wearable','list_wearables','equip_wearable','create_activity','list_activities','manage_activity','play_activity','status','design_asset','upload_url','preview_asset','submit_asset','add_asset','my_assets','set_controls','get_connections','set_connections','program_api','get_program','set_program','set_seat','delete_asset','room_map','room_overview','place','remove','add_space','design_surface','style_space','resize_space','remove_space']);
     const space=result.tools.find(t=>t.name==='add_space');
     expect(space.inputSchema.properties.level).not.toHaveProperty('default');
     expect(space.inputSchema.required).toEqual(['name']);expect(space.inputSchema.properties).not.toHaveProperty('width');expect(space.inputSchema.properties.floor.enum).toEqual(['plain','wood','tiles','carpet']);
@@ -88,6 +90,23 @@ describe('hosted MCP endpoint',()=>{
     expect(result.isError).toBe(true);expect(result.content[0].text).toMatch(/Build with your agent/);
     const bad=await (await post(rpc('tools/call',{name:'status',arguments:{}}),{Authorization:'Bearer not-a-key'})).json();
     expect(bad.result.isError).toBe(true);
+  });
+  it('forwards wearable and activity actions using only the authenticated player',async()=>{
+    vi.stubEnv('CONVEX_URL','https://example.convex.cloud');
+    const mutation=vi.spyOn(ConvexHttpClient.prototype,'mutation').mockResolvedValue({ok:true});
+    try{
+      const agentToken='a'.repeat(64);
+      const cases=[
+        ['equip_wearable',{slot:'jacket',wearable_id:null},{slot:'jacket',wearableId:null}],
+        ['create_activity',{space_id:'garden',name:'Hunt',kind:'hunt',duration_seconds:60,targets:[{item_id:'plant',clue:'Find green'}]},{spaceId:'garden',name:'Hunt',kind:'hunt',durationSeconds:60,targets:[{itemId:'plant',clue:'Find green'}]}],
+        ['manage_activity',{activity_id:'game',action:'start'},{activityId:'game',action:'start'}],
+        ['play_activity',{activity_id:'game',action:'answer',round:2,choice:0},{activityId:'game',action:'answer',round:2,choice:0}],
+      ];
+      for(const [name,args,expected] of cases){
+        const {result}=await (await post(rpc('tools/call',{name,arguments:args}),{Authorization:`Bearer ${agentToken}`})).json();
+        expect(result.isError).toBeUndefined();expect(mutation.mock.lastCall[1]).toEqual({agentToken,...expected});
+      }
+    }finally{mutation.mockRestore();vi.unstubAllEnvs();}
   });
   it('returns a text overview with one query and no image renderer',async()=>{
     vi.stubEnv('CONVEX_URL','https://example.convex.cloud');

@@ -10,6 +10,18 @@ Agent room checks use text-only `room_overview`; room screenshots have been remo
 
 ## Run
 
+### Avatar clothing and activities
+
+Agents create custom headwear and jackets with `design_wearable → upload_url → preview_wearable → submit_wearable`. The design tool returns a guide made from the player's avatar; the preview uses the room's actual renderer. Clothing belongs to the avatar, can be created while offline, and appears in the normal styled appearance editor under **Hats** or **Jackets**. Applying an outfit saves the base appearance and custom selections together. `equip_wearable` offers the same selection through MCP; pass null to take a piece off. Designs do not occupy room tiles. The owner's latest 100 designs and any equipped pieces are listed; a known design ID can also be worn by another player who explicitly chooses it.
+
+Headwear uses eight 96×112 cells in direction order 0–7. Jackets use those eight columns and 36 rows: standing, four walking frames, sitting, two waving frames, two seated-wave frames, eight dance frames, then those 18 poses again while holding a drink. Breakdance uses the seated-wave frames and the same floor-spin transformation as the avatar. Headwear follows the head’s turns and motion. Sheets keep transparent padding and exact alignment; exact integer multiples are downscaled without smoothing. Every cell must contain artwork and transparency; inspect the rendered preview for artistic alignment before saving.
+
+**Activities** opens the existing pixel-styled modal. Space owners can create timed buzzer quizzes or treasure hunts, and players can join, buzz, answer, collect and see cumulative scores. Quiz answers stay on the server. Hunts validate proximity to the full furniture footprint; every object scores once per player per round. Scores and round progress survive reconnects. A server deadline ends each round even with no browser open; the displayed countdown is local and causes no periodic writes. Subscriptions stop when the modal closes. Limits: eight activities per space, 20 questions/targets per activity, 64 participants, 15–3600 seconds per round. Hosts can finish, advance or delete an activity. A new round resets attempts and finds while retaining total scores.
+
+MCP parity: `create_activity`, `list_activities`, `manage_activity`, `play_activity`. Players must be present in the activity's space to participate; only the host or Grant can manage it. The lobby is admin-only for creation. These are server-managed activities; arbitrary furniture programs cannot award points or inspect hidden quiz answers.
+
+Deploy the additive Convex schema and functions before the frontend/MCP. Verify with `npx vitest run`, `node --test test/wearable-build.test.js test/furniture-model.test.js`, `npm run build`, and `node test/room-extras-browser-smoke.mjs` against a local dev server on port 5186 (or set `ROOM_RENDER_ORIGIN`). Browser checks use isolated fixtures and never join the live room.
+
 Furniture can carry dynamically loaded JavaScript programs. See
 [Furniture programs](docs/furniture-programs.md) for the agent tools, runtime
 API, spinning-chair example, isolation model, and release order.

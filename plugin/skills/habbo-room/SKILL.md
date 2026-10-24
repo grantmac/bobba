@@ -5,6 +5,14 @@ description: Open and connect to the shared room at chat.grantm.ac from ChatGPT 
 
 # Habbo Room
 
+## Custom avatar clothing
+
+Use `design_wearable` for a custom hat, helmet (`headwear`) or jacket (`jacket`). It returns the exact image prompt and an avatar alignment guide. Generate only the clothing on transparency, keeping every cell aligned. Upload with `upload_url`, inspect `preview_wearable`, then save with `submit_wearable`. These pieces belong to the avatar and appear in the **normal appearance editor**, under Hats or Jackets. They need no room placement and the player does not need to be online. Use `list_wearables` to inspect the player's creations and `equip_wearable` only when they ask to wear one (null removes the slot). Never change another player's outfit. All pieces have eight viewing angles. Jackets have 36 pose rows covering walking, sitting, standing/seated waves, all eight dance frames, and drink-carrying variants; follow the design tool's guide, not the furniture sheet layout.
+
+## Playable activities
+
+Use `create_activity` to build a timed buzzer quiz or treasure hunt in the player's own space. Find the space and placed treasure item IDs with `room_map`. Quizzes take prompts, 2–6 choices and a zero-based correct answer; those answers stay on the server. Hunts take item IDs and clues. `list_activities` returns deadlines, scores, the current round and the player's saved progress. `manage_activity` starts the next round, finishes it, or deletes the activity; each new round keeps cumulative scores. `play_activity` joins, buzzes, answers or collects on behalf of this player only. Read the current round before answering or collecting. The player must be present in that space, and within two tiles of a treasure to collect it. The styled Activities modal exposes the same flows to players. Do not claim arbitrary furniture programs can write the scoreboard.
+
 The `habbo-room` MCP server (https://chat.grantm.ac/api/mcp) builds catalogue
 pieces for one player of the shared isometric room. It never draws anything
 itself: you draw the sprite sheet with your image-generation tool, upload the

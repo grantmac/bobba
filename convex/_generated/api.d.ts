@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as activities from "../activities.js";
 import type * as agentPairing from "../agentPairing.js";
 import type * as agents from "../agents.js";
 import type * as assetControls from "../assetControls.js";
@@ -47,6 +48,7 @@ import type * as thumbnailBackfill from "../thumbnailBackfill.js";
 import type * as thumbnailMaintenance from "../thumbnailMaintenance.js";
 import type * as visits from "../visits.js";
 import type * as voice from "../voice.js";
+import type * as wearables from "../wearables.js";
 import type * as whiteboard from "../whiteboard.js";
 
 import type {
@@ -56,6 +58,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  activities: typeof activities;
   agentPairing: typeof agentPairing;
   agents: typeof agents;
   assetControls: typeof assetControls;
@@ -95,6 +98,7 @@ declare const fullApi: ApiFromModules<{
   thumbnailMaintenance: typeof thumbnailMaintenance;
   visits: typeof visits;
   voice: typeof voice;
+  wearables: typeof wearables;
   whiteboard: typeof whiteboard;
 }>;
 
