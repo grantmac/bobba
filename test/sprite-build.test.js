@@ -26,7 +26,7 @@ test('a strip splits into equal frames cut to one shared box',async()=>{
   assert.equal(cells.length,3);
   assert.ok(cells.every(c=>c.width===cells[0].width&&c.height===cells[0].height));
   assert.deepEqual([cells[0].width,cells[0].height],[32,52]);
-  assert.throws(()=>splitStrip(strip(2),5),/2 to 4/);
+  for(const frames of [1,9,2.5])assert.throws(()=>splitStrip(strip(2),frames),/2 to 8/);
 });
 test('an animated piece packs its frames into one sheet with cells, a frame time and a switch',async()=>{
   const uploads=[],upload=async buffer=>{uploads.push(buffer);return `id${uploads.length}`;};
@@ -41,4 +41,19 @@ test('an animated piece packs its frames into one sheet with cells, a frame time
   assert.deepEqual(spec.views.map(v=>v.direction),[2,4]);
   assert.deepEqual(summary({id:'a',type:'asset_a'}).frames,3);
   await assert.rejects(prepareAsset({name:'Lamp',kind:'lamp',width:1,depth:1,switchable:true},{2:strip(1)},upload),/animated/);
+});
+
+test('eight distinct frames survive splitting and packing in order',async()=>{
+  const image=new Jimp({width:64*8,height:64,color:0});
+  const colors=Array.from({length:8},(_,i)=>((i+1)*0x18000000+0x004488ff)>>>0);
+  for(let f=0;f<8;f++)for(let y=16;y<48;y++)for(let x=16;x<48;x++)image.setPixelColor(colors[f],f*64+x,y);
+  const cells=splitStrip(image,8);
+  assert.equal(cells.length,8);
+  const uploads=[];
+  const {spec,summary}=await prepareAsset({name:'Eight frames',kind:'lamp',width:1,depth:1,frames:8,frame_ms:100},{2:cells},async buffer=>{uploads.push(buffer);return `id${uploads.length}`;});
+  const sheet=await Jimp.read(uploads[0]);
+  assert.equal(spec.parts[0].frames.length,8);
+  for(const [i,cell] of spec.parts[0].frames.entries())assert.equal(sheet.getPixelColor(cell.x+Math.floor(cell.width/2),Math.floor(cell.height/2)),colors[i]);
+  assert.equal(spec.frameDuration,100);
+  assert.equal(summary({id:'a',type:'asset_a'}).frames,8);
 });

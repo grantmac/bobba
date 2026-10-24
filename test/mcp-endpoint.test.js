@@ -24,6 +24,7 @@ describe('hosted MCP endpoint',()=>{
     expect(space.inputSchema.properties.level).not.toHaveProperty('default');
     expect(space.inputSchema.required).toEqual(['name']);expect(space.inputSchema.properties).not.toHaveProperty('width');expect(space.inputSchema.properties.floor.enum).toEqual(['plain','wood','tiles','carpet']);
     for(const tool of result.tools)expect(tool.inputSchema.type).toBe('object');
+    for(const name of ['design_asset','add_asset','preview_asset'])expect(result.tools.find(t=>t.name===name).inputSchema.properties.frames).toMatchObject({minimum:2,maximum:8});
     expect(result.tools.find(t=>t.name==='place').inputSchema.properties.support_id.type).toBe('string');
     expect(result.tools.find(t=>t.name==='preview_asset').inputSchema.properties.foreground_mask_storage_id.type).toBe('string');
     const controls=result.tools.find(t=>t.name==='set_controls');

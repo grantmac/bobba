@@ -73,7 +73,7 @@ async function render(origin,payload){const {renderInBrowser}=await import('../s
 async function sourceViews(token,args,format){
   const image=await loadSource(token,args),mask=args.foreground_mask_storage_id?await loadSource(token,{storage_id:args.foreground_mask_storage_id}):null;
   if(format==='sheet')return splitSheet(image,mask);
-  if(format==='strip'&&!args.frames)throw new Error('An animation strip needs frames (2 to 4).');
+  if(format==='strip'&&!args.frames)throw new Error(`An animation strip needs frames (2 to ${FRAME_MAX}).`);
   return {[args.facing==='left'?4:2]:format==='strip'?splitStrip(image,args.frames,mask):singleSprite(image,mask)};
 }
 async function loadSource(token,{storage_id,image_url,image_base64}){

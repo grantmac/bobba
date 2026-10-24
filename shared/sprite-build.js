@@ -3,7 +3,8 @@
 import {Jimp,ResizeStrategy} from 'jimp';
 import {encodePng} from './png.js';
 import {assetThumbnail} from './asset-thumbnail.js';
-import {DENSITY,KINDS} from './sprite-conventions.js';
+import {DENSITY,KINDS,FRAME_MAX} from './sprite-conventions.js';
+export {FRAME_MAX} from './sprite-conventions.js';
 import {seatReport,designBrief,validateSeatOffsets} from './asset-geometry.js';
 export async function readImage(buffer){
   if(buffer.length>12*1024*1024)throw new Error('Image is over 12 MB.');
@@ -55,9 +56,8 @@ export function splitSheet(sheet,mask){
   }
   return views;
 }
-// An animated piece is one view drawn as a strip of 2 to 4 equal frames side by side. The frames
+// An animated piece is one view drawn as a strip of equal frames side by side. The frames
 // are cut to one shared bounding box so the piece never jumps between them.
-export const FRAME_MAX=4;
 export function splitStrip(image,frames,mask){
   checkMask(image,mask);
   if(!Number.isInteger(frames)||frames<2||frames>FRAME_MAX)throw new Error(`frames must be 2 to ${FRAME_MAX}.`);

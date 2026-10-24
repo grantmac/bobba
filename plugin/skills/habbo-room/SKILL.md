@@ -177,7 +177,7 @@ changes positions only, not the artwork or mask.
 
 ## 5. Animated pieces
 
-A piece can animate with a strip of 2 to 4 frames of one view (the
+A piece can animate with a strip of 2 to 8 frames of one view (the
 facing-right view; the other side is mirrored). Call `design_asset` with
 `frames` set: the prompt then asks your image tool for a single row of equal
 frames of the same piece, identical apart from the part that moves (a flame,
