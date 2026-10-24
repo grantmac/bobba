@@ -1,4 +1,6 @@
 import {internal} from '../_generated/api.js';
+import {atTime} from './rules.js';
+import {hearsChat} from './bot_policy.js';
 
 export const identityVersion=player=>player.identityVersion??0;
 export const botState=ctx=>ctx.db.query('botState').withIndex('by_key',q=>q.eq('key','main')).unique();
@@ -32,6 +34,13 @@ export async function queueBotEvent(ctx,player,kind,body='',messageId){
   if(kind==='arrival')await wakeBotRoaming(ctx,player);
   const state=await botState(ctx);
   if(!state?.enabled||player.kind==='bot'||!process.env.FIREWORKS_API_KEY)return;
+  if(kind==='chat'){
+    const bot=await ctx.db.get(state.playerId),now=Date.now();
+    const heardByBot=!!bot&&hearsChat(body,state.name,atTime(player,now),atTime(bot,now));
+    // Preserve hearing at send time, even if either avatar moves before the AI responds.
+    if(messageId)await ctx.db.patch(messageId,{heardByBot});
+    if(!heardByBot)return;
+  }
   await ctx.db.insert('botEvents',{kind,playerId:player._id,identityVersion:identityVersion(player),body,
     ...(messageId?{messageId}:{}),createdAt:Date.now(),status:'pending',attempts:0});
   await wakeBot(ctx,state);

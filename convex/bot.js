@@ -7,7 +7,7 @@ import {zoneTiles} from '../shared/room-layout.js';
 import {loadZones} from './lib/furnitureStore.js';
 import {closeVisits} from './lib/visits.js';
 import {botState,identityVersion,wakeBot,scheduleBotTick} from './lib/bot_events.js';
-import {BOT_LOOK,DEFAULT_BOT_NAME,DEFAULT_MODEL,DEFAULT_PERSONALITY} from './lib/bot_policy.js';
+import {BOT_LOOK,DEFAULT_BOT_NAME,DEFAULT_MODEL,DEFAULT_PERSONALITY,hearsChat} from './lib/bot_policy.js';
 import {seatFor} from '../shared/furniture-model.js';
 
 const mode=v.union(v.literal('off'),v.literal('warn'),v.literal('kick'));
@@ -109,11 +109,16 @@ export const claim=internalMutation({args:{},handler:async ctx=>{
   if(!configured()){await ctx.db.patch(state._id,{scheduled:false,lastError:'Add FIREWORKS_API_KEY to the backend environment.'});return null;}
   for(const old of await ctx.db.query('botEvents').withIndex('by_status',q=>q.eq('status','running')).take(20))await ctx.db.patch(old._id,{status:old.attempts>=3?'failed':'pending'});
   const pending=await ctx.db.query('botEvents').withIndex('by_status',q=>q.eq('status','pending')).take(20),events=[];
-  // Typed chat is world-wide, like worldChatFeed. Arrivals and movement stay local.
+  // Chat hearing is recorded when sent. Arrivals and movement stay local.
   const botPlayer=await ctx.db.get(state.playerId),zone=playerZone(botPlayer);
   for(const event of pending){
     const p=await ctx.db.get(event.playerId);
     if(!p||identityVersion(p)!==event.identityVersion||!isOnline(p)||event.createdAt<now-120000||p.blockedUntil>now||(event.kind==='arrival'&&playerZone(p)!==zone)){await ctx.db.patch(event._id,{status:'done'});continue;}
+    if(event.kind==='chat'){
+      const message=event.messageId?await ctx.db.get(event.messageId):null;
+      // Older queued messages have no hearing snapshot; apply the current range rule.
+      if(!(message?.heardByBot??hearsChat(event.body,state.name,message??atTime(p,now),atTime(botPlayer,now)))){await ctx.db.patch(event._id,{status:'done'});continue;}
+    }
     events.push({...event,name:p.name,role:p.role});
   }
   if(!events.length){await ctx.db.patch(state._id,{scheduled:false,busyUntil:0});return null;}
@@ -124,7 +129,7 @@ export const claim=internalMutation({args:{},handler:async ctx=>{
   const players=await zonePlayers(ctx,zone,now),room=await roomFor(ctx),bot=botPlayer;
   await loadZones(ctx,room,[zone]);
   const memories=(await ctx.db.query('botMemories').withIndex('by_updated').order('desc').take(100)).filter(m=>!m.playerId||players.some(p=>p._id===m.playerId&&identityVersion(p)===m.identityVersion)||events.some(e=>e.playerId===m.playerId&&e.identityVersion===m.identityVersion));
-  const recent=(await ctx.db.query('messages').withIndex('by_time',q=>q.gt('sentAt',now-120000)).order('desc').take(25)).reverse();
+  const recent=(await ctx.db.query('messages').withIndex('by_time',q=>q.gt('sentAt',now-120000)).order('desc').take(25)).reverse().filter(m=>m.playerId===state.playerId||(m.heardByBot??hearsChat(m.body,state.name,m,atTime(bot,now))));
   const at=atTime(bot,now),occupied=playerTiles(players,now,bot._id);
   const tiles=zoneTiles(layoutFor(room.options,room.spaces??[]),zone).filter(([x,z])=>!occupied.has(`${x},${z}`)&&!blocked(room,x,z)).sort((a,b)=>Math.hypot(a[0]-at.x,a[1]-at.z)-Math.hypot(b[0]-at.x,b[1]-at.z)).slice(0,80);
   const seats=room.furniture.filter(i=>i.x!==null).flatMap(i=>{const seat=seatFor(i,room.definitions[i.type]);return seat?seat.cells.map(([x,z])=>({seatId:i.id,x,z})):[];}).slice(0,40);

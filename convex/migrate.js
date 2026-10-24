@@ -1,4 +1,4 @@
-// One-off moves for a deployment from before zones. Each is safe to run again.
+// One-off deployment migrations. Each is safe to run again.
 import {internalMutation} from './_generated/server.js';
 import {layoutFor,zoneAt,MAIN_ZONE} from './lib/rules.js';
 import {replaceAll} from './lib/furnitureStore.js';
@@ -19,4 +19,19 @@ export const furniture=internalMutation({args:{},handler:async ctx=>{
     await ctx.db.patch(p._id,{zone:layout.tileSet.has(`${x},${z}`)?zoneAt(layout,x,z):MAIN_ZONE,lookVersion:p.lookVersion??0});players++;
   }
   return {moved:items.length,players};
+}});
+
+// Replace only Grant's obsolete name-only instruction when releasing local hearing.
+export const botHearingPreference=internalMutation({args:{},handler:async ctx=>{
+  let updated=0;
+  for(const memory of await ctx.db.query('botMemories').take(100)){
+    if(!memory.locked||memory.source!=='Grant'||memory.text!=="Assume people aren't talking to you unless they explicitly use your name.")continue;
+    await ctx.db.patch(memory._id,{text:'Consider replying to typed messages from within six tiles, or from anywhere when your name is explicitly mentioned. Stay quiet when you have nothing useful to add.',updatedAt:Date.now()});
+    updated++;
+  }
+  if(updated){
+    const state=await ctx.db.query('botState').withIndex('by_key',q=>q.eq('key','main')).unique();
+    if(state)await ctx.db.patch(state._id,{revision:state.revision+1});
+  }
+  return {updated};
 }});
