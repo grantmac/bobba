@@ -26,7 +26,7 @@ document.querySelector('#run').onclick=async()=>{try{
  assert(copied.includes("After status succeeds, tell me you're connected"),"Prompt must ask for a connection confirmation");
  assert(!copied.includes('click Enter room')&&copied.includes('I am already in the room')&&copied.includes('ask what the player wants to create'),'Catalogue prompt must know the player is already in the room');
  assert(copied.includes('decorate its floor and walls')&&copied.includes('Turn pictures or ideas into furniture'),'Prompt must explain supported capabilities');
- assert(copied.includes('hats, helmets and jackets')&&copied.includes('normal Hats and Jackets style tabs')&&copied.includes('quizzes and treasure hunts'),'Prompt must introduce clothing and activities');
+ assert(copied.includes('hats, helmets and jackets')&&copied.includes('normal Hats, Tops and Jackets style tabs')&&copied.includes('quizzes and treasure hunts'),'Prompt must introduce clothing and activities');
  assert(copied.includes('Do not repeat the introduction on routine status checks'),'Introduction must not repeat on routine checks');
  attachedUpdate([]);assert(getComputedStyle(copy).display!=='none','Disconnecting must restore the copy action');
  copy.click();await tick();assert(keys===1,'Copying again must reuse the same key');

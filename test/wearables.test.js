@@ -12,6 +12,17 @@ async function create(slot='headwear'){
   return t.mutation(api.wearables.create,{agentToken,name:'Space helmet',slot,storageId});
 }
 describe('custom wearables',()=>{
+  it('stores a fitted top alongside a hat and jacket and restores the base shirt when removed',async()=>{
+    const storageId=await t.run(async ctx=>{const id=await ctx.storage.store(new Blob(['png'],{type:'image/png'}));await ctx.db.patch(id,{contentType:'image/png'});return id;});
+    const top=await t.mutation(api.wearables.create,{agentToken,name:'Custom shirt',slot:'top',templateModel:'1',storageId});
+    const hat=await create(),jacket=await create('jacket');
+    await t.mutation(api.wearables.applyOutfit,{token,look,wearableIds:[hat.id,top.id,jacket.id]});
+    expect((await t.query(api.room.me,{token})).look._wearables.find(w=>w.slot==='top')).toMatchObject({id:top.id,templateModel:'1'});
+    await t.mutation(api.wearables.equipAgent,{agentToken,slot:'top',wearableId:null});
+    const me=await t.query(api.room.me,{token});
+    expect(me.look.top).toEqual(look.top);expect(me.look._wearables).toHaveLength(2);
+    await expect(t.mutation(api.wearables.create,{agentToken,name:'Missing fit',slot:'top',storageId})).rejects.toThrow('template');
+  });
   it('belongs to the avatar and can be created offline, then selected atomically in the normal appearance editor',async()=>{
     await t.run(ctx=>ctx.db.patch(player.id,{online:false}));
     const item=await create();

@@ -1,5 +1,5 @@
 export const CAPABILITY_SUMMARY=[
-  'Create custom hats, helmets and jackets for your avatar, available in the normal Hats and Jackets style tabs, with all eight angles and walking, waving and dancing poses. Clothing belongs to your avatar and needs no room placement.',
+  'Create custom shirts, tops, hats, helmets and jackets for your avatar, available in the normal Hats, Tops and Jackets style tabs, with all eight angles and walking, waving and dancing poses. Custom tops replace the shirt using exact fitting templates. Clothing belongs to your avatar and needs no room placement.',
   'Host timed buzzer quizzes and treasure hunts in your space, with scoreboards and saved scores.',
   'Turn pictures or ideas into furniture, place and rearrange it, and give it interactive behaviour.',
   'Create your own space and decorate its floor and walls.',

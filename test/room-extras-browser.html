@@ -50,5 +50,30 @@ window.__checkJacket=async()=>{
   }
   return checked;
 };
+// Use an authored shirt as a known-good texture, then replace a different base
+// shirt. Matching the native renderer proves sleeves, occlusion and every pose.
+const topSheet=document.createElement('canvas');topSheet.width=768;topSheet.height=4032;
+const topCtx=topSheet.getContext('2d');
+for(const [row,p] of WEARABLE_POSES.entries())for(let direction=0;direction<8;direction++){
+  topCtx.drawImage(await appearance.previewFrame(look,direction,p.frame,p.sitting,p.action,p.actionFrame??0,p.carry,{onlyGroup:'top'}),direction*96,row*112);
+  topCtx.fillStyle='#ff00ff';topCtx.fillRect(direction*96+2,row*112+2,1,1);
+}
+const customTop={id:'top',name:'Custom shirt',slot:'top',templateModel:'1',url:topSheet.toDataURL()};catalogue.push(customTop);
+window.__checkTop=async()=>{
+  const original={...look,jackets:{model:'set:1812',color:'#624631'}},outfit={...original,top:{model:'2',color:'#b34c43'},_wearables:[customTop]};
+  let checked=0;
+  const equal=(a,b,label)=>{
+    const x=a.getContext('2d').getImageData(0,0,96,112).data,y=b.getContext('2d').getImageData(0,0,96,112).data;
+    if(x.some((v,i)=>v!==y[i]))throw new Error('Custom top differs from fitted original: '+label);
+    checked++;
+  };
+  for(const [row,p] of WEARABLE_POSES.entries())for(let direction=0;direction<8;direction++){
+    const args=[direction,p.frame,p.sitting,p.action,p.actionFrame??0,p.carry];
+    equal(await appearance.previewFrame(original,...args),await appearance.previewFrame(outfit,...args),row+':'+direction);
+  }
+  const native=await appearance.frames(original),custom=await appearance.frames(outfit);
+  for(const [key,frame] of native)if(key.includes('breakdance'))equal(frame,custom.get(key),key);
+  return checked;
+};
 window.__ready=true;
 </script>

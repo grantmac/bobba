@@ -9,7 +9,7 @@ description: Open and connect to the shared room at chat.grantm.ac from ChatGPT 
 
 After the first successful authenticated `status` or `connection_status` check,
 confirm the returned player name and give a brief introduction. Lead with
-custom hats, helmets and jackets in the normal style editor, with all eight
+custom shirts, tops, hats, helmets and jackets in the normal style editor, with all eight
 angles and walking, waving and dancing poses; clothing belongs to the avatar
 and needs no room placement. Then mention timed quizzes and treasure hunts
 with saved scores, furniture creation, and decorating a space. Follow the
@@ -20,7 +20,9 @@ anything. Do not repeat the introduction on routine status checks.
 
 ## Custom avatar clothing
 
-Use `design_wearable` for a custom hat, helmet (`headwear`) or jacket (`jacket`). It returns the exact image prompt and an avatar alignment guide. Generate only the clothing on transparency, keeping every cell aligned. Upload with `upload_url`, inspect `preview_wearable`, then save with `submit_wearable`. These pieces belong to the avatar and appear in the **normal appearance editor**, under Hats or Jackets. They need no room placement and the player does not need to be online. Use `list_wearables` to inspect the player's creations and `equip_wearable` only when they ask to wear one (null removes the slot). Never change another player's outfit. All pieces have eight viewing angles. Jackets have 36 pose rows covering walking, sitting, standing/seated waves, all eight dance frames, and drink-carrying variants; follow the design tool's guide, not the furniture sheet layout.
+Use `design_wearable` for a custom shirt/T-shirt/top (`top`), hat or helmet (`headwear`), or jacket (`jacket`). It returns the exact image prompt and an avatar alignment guide. Generate only the clothing on transparency, keeping every cell aligned. Upload with `upload_url`, inspect `preview_wearable`, then save with `submit_wearable`. These pieces belong to the avatar and appear in the **normal appearance editor**, under Hats, Tops or Jackets. They need no room placement and the player does not need to be online. Use `list_wearables` to inspect the player's creations and `equip_wearable` only when they ask to wear one (null removes the slot). Never change another player's outfit. All pieces have eight viewing angles. Tops and jackets have 36 pose rows covering walking, sitting, standing/seated waves, all eight dance frames, and drink-carrying variants; follow the design tool's guide, not the furniture sheet layout.
+
+Custom tops **replace the base shirt**. Do not describe them as limited to overlays or switch to browser editing for a custom shirt. `design_wearable` returns two images for tops: the avatar alignment guide and a clothing-only fitting template, plus `template_model` and a structured `layout` with each direction and pose row. Repaint every visible template pixel with opaque clothing artwork. Keep the template's shirt cut, sleeves and cell positions; use a different built-in top before designing if the player wants a different cut. Pass the returned `template_model` unchanged to preview and submission. Missing coverage is rejected and stray pixels are clipped; the renderer places the chest and sleeves in their original layers under hands, hair and outerwear. The template controls fit; inspect the generated design in the preview for visual quality.
 
 ## Playable activities
 
