@@ -90,6 +90,7 @@ export const discardUpload=mutation({args:{agentToken:v.string(),storageId:v.str
   const {player}=await agentFor(ctx,agentToken),id=await uploadFor(ctx,storageId);
   const owned=await ctx.db.query('assets').withIndex('by_owner',q=>q.eq('ownerId',player._id)).collect();
   if(owned.some(a=>a.icon===id||a.parts.some(p=>p.storageId===id||p.foregroundStorageId===id)))fail('That file belongs to a piece.');
+  if(await ctx.db.query('wearables').withIndex('by_storage',q=>q.eq('storageId',id)).first())fail('That file belongs to a wearable.');
   await ctx.storage.delete(id);
 }});
 // An animated part carries its frame cells (in the stored sheet's pixels); the piece then

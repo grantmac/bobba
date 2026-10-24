@@ -2,6 +2,8 @@
 // replies. Each request carries the player's agent key as a Bearer token, made in the room
 // under Furniture → Build with your agent. Sprites are cut here (shared/sprite-build.js).
 import {ConvexHttpClient} from 'convex/browser';
+import {wearableTools,wearableHandlers} from '../server/wearables-mcp.js';
+import {activityTools,activityHandlers} from '../server/activities-mcp.js';
 import {anyApi} from 'convex/server';
 import {sheetPrompt,surfacePrompt,stripPrompt} from '../shared/agent-prompts.js';
 import {prepareSurface,surfaceSize,SURFACE_COLORS} from '../shared/surface-build.js';
@@ -15,8 +17,8 @@ import {assetCatalogueEntry} from '../convex/lib/assets.js';
 import {SPACES_PER_PLAYER,SPACE_SIZE,SPACE_MIN_WIDTH,SPACE_MAX_WIDTH,SPACE_NAME_MAX,SPACE_FLOORS,SPACE_WALLS,SPACE_FITS} from '../shared/spaces.js';
 
 export const maxDuration=120;
-const api=anyApi,SERVER={name:'habbo-room',version:'0.9.1'},PROTOCOLS=['2024-11-05','2025-03-26','2025-06-18'];
-const INSTRUCTIONS=`Builds furniture into the shared Habbo-style room for the player whose agent key you hold. For any picture that is not already a game sprite: design_asset (prompt + reference image URLs) → draw the 2 by 2 sprite sheet with your image tool → upload_url → POST the PNG to it → submit_asset with the storage id. Then place it from room_map when the player says where. The player can also add one block of floor to the room with add_space: it joins the end of its chosen tier (upper, middle, or lower), with stairs between tiers, and the room_map shows it with its tiles; style_space then restyles that space's floor and back wall with colours, wallpapers or pictures; any picture starts with design_surface, and is remade at the game's pixel scale on the way in. Before publishing, preview_asset renders the prepared piece with footprint tiles and a test sitter. Use room_overview for routine room checks and room_map for placement. Mutation replies confirm changes; do not automatically take a picture after each change. Room observation is text-only; use preview_asset only to inspect an individual piece before publishing. ${CONVENTIONS}`;
+const api=anyApi,SERVER={name:'habbo-room',version:'0.12.0'},PROTOCOLS=['2024-11-05','2025-03-26','2025-06-18'];
+const INSTRUCTIONS=`Build furniture, avatar clothing and activities for the player whose agent key you hold. Furniture: design_asset (prompt + reference image URLs) → draw the 2 by 2 sprite sheet with your image tool → upload_url → POST the PNG → preview_asset → submit_asset. Then place it from room_map when the player says where. Clothing: design_wearable returns an exact avatar alignment guide covering all eight angles and jacket animations. Generate transparent clothing, upload_url → preview_wearable → submit_wearable. Inspect every pose before saving; never treat a single clothing picture as a complete sheet. Clothing belongs to the avatar, works offline, and appears in the normal Hats/Jackets editor without room placement. equip_wearable changes only the authenticated player's outfit. Activities: create_activity makes quizzes or treasure hunts in the player's space; list_activities, manage_activity and play_activity expose host controls and play. add_space creates a space on the chosen tier (upper, middle, lower); style_space restyles its floor and walls, with pictures starting at design_surface. Use room_overview for routine text room checks and room_map for placement. Mutation replies confirm changes; do not automatically take a picture after each change. Use preview_asset or preview_wearable to inspect individual creations before publishing. ${CONVENTIONS}`;
 const NO_KEY='No agent key. Send the player\'s key as "Authorization: Bearer <key>": in the room, open Furniture → Build with your agent → Copy agent prompt, then paste the prompt into your agent.';
 const message=error=>typeof error?.data==='string'?error.data:(error?.message||String(error)).replace(/\[(CONVEX|Request ID)[^\]]*\]\s*/g,'').replace(/^Server Error\s*/,'').replace(/^Uncaught (\w*Error): /,'').split('\n')[0];
 function convexUrl(){const url=process.env.CONVEX_URL||process.env.VITE_CONVEX_URL;if(!url)throw new Error('The room server is not configured (CONVEX_URL).');return url;}
@@ -33,6 +35,8 @@ const source={storage_id:{type:'string',description:'The storageId returned when
 const object=(properties,required=[])=>({type:'object',properties,required,additionalProperties:false});
 seatOptions.seat_offsets={type:'array',maxItems:4,description:'Seats only: per-rotation screen-pixel nudges, replacing the shared x/y offsets for these views (not added or mirrored). Positive x is right, positive y is down; y still combines with seat_height. Include the full seat settings when calling set_seat: it replaces them. Omitted rotations use the shared offsets.',items:object({rotation:{type:'integer',enum:[0,2,4,6]},x:{type:'integer',minimum:-24,maximum:24},y:{type:'integer',minimum:-24,maximum:24}},['rotation','x','y'])};
 const TOOLS=[
+  ...wearableTools,
+  ...activityTools,
   {name:'status',description:'Who this agent builds for, the pieces they have built and placed, and the sprite conventions.',inputSchema:object({})},
   {name:'design_asset',description:'START HERE for any picture that is not already a finished game sprite (a photo, a logo, concept art, a real object). Returns the exact prompt for YOUR image-generation tool to redraw the piece in the room\'s isometric pixel-art style as a 2 by 2 sprite sheet of its four rotations, plus the reference images to attach (the player\'s picture, the room, an existing sprite). Generate it, save the PNG, upload it with upload_url, then call submit_asset. Never upload the player\'s picture with add_asset: it would appear in the room as-is.',
     inputSchema:object({name:{type:'string',maxLength:40,description:'Short name for the catalogue'},description:{type:'string',description:'What the piece is, in a sentence'},...size,frames:{type:'integer',minimum:2,maximum:FRAME_MAX,description:'For an animated piece: ask for a strip of this many frames of one view instead of the four-view sheet, then add_asset with frames'},reference_image_path:{type:'string',description:'Path of the player\'s picture on your machine, if there is one; it is only echoed back in the list of images to attach'},details:{type:'string',description:'Materials, colours, parts and accessories to keep or add'}},['name','description'])},
@@ -104,6 +108,8 @@ async function register(token,args,views){
   return summary(result);
 }
 const HANDLERS={
+  ...wearableHandlers({call,api,render,loadSource,uploader}),
+  ...activityHandlers({call,api}),
   async get_connections({item_id},{token}){
     const result=await call('query',api.programs.getConnections,{agentToken:token,itemId:item_id});
     return {item_id:result.itemId,connections:result.connections.map(({name,targetId})=>({name,target_item_id:targetId}))};

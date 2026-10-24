@@ -64,8 +64,9 @@ async function patchSignals(ctx,patch){
 const publicSignals=s=>({danceFloorOn:s.danceFloorOn??true,fridge:s.fridge??null});
 // What others see of a player. Movement updates leave the appearance out: it travels once, by
 // `look`, whenever `lookVersion` changes. Legacy callers still get it inline.
+const dressedLook=p=>(p.wearables?.length?{...p.look,_wearables:p.wearables}:p.look);
 export function publicPlayer(p,withLook=false){
-  return {id:p._id,name:p.name,role:p.role,away:p.away??false,...(p.kind?{kind:p.kind}:{}),...(withLook?{look:p.look}:{}),lookVersion:p.lookVersion??0,zone:playerZone(p),route:p.route,startedAt:p.startedAt,direction:p.direction,seatId:p.seatId,action:p.action??null,actionStarted:p.actionStarted??0,drink:p.drink??null,typingUntil:p.typingUntil??0};
+  return {id:p._id,name:p.name,role:p.role,away:p.away??false,...(p.kind?{kind:p.kind}:{}),...(withLook?{look:dressedLook(p)}:{}),lookVersion:p.lookVersion??0,zone:playerZone(p),route:p.route,startedAt:p.startedAt,direction:p.direction,seatId:p.seatId,action:p.action??null,actionStarted:p.actionStarted??0,drink:p.drink??null,typingUntil:p.typingUntil??0};
 }
 const publicMessage=({_id,name,color,body,mode,x,z,sentAt,playerId,zone})=>({id:_id,name,color,body,mode,x,z,sentAt,playerId,zone:zone??MAIN_ZONE});
 async function checkEntryCode(code){
@@ -169,7 +170,7 @@ export const population=query({args:{},handler:async ctx=>{
 // One player's appearance, fetched when their lookVersion changes rather than sent with every move.
 export const look=query({args:{id:v.id('players')},handler:async(ctx,{id})=>{
   const p=await ctx.db.get(id);if(!p)return null;
-  return {look:p.look,lookVersion:p.lookVersion??0};
+  return {look:dressedLook(p),lookVersion:p.lookVersion??0};
 }});
 // The last few messages said in a zone (the player's own zone when none is given).
 export const chatFeed=query({args:{token:v.string(),zone:v.optional(v.string())},handler:async(ctx,{token,zone})=>{

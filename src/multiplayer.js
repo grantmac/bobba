@@ -198,7 +198,18 @@ export function createMultiplayer(){
       if(!looks.has(key)){looks.set(key,client.query(api.room.look,{id}).then(value=>{if(!value)throw new Error('That player has left.');return value.look;}).catch(error=>{looks.delete(key);throw error;}));if(looks.size>400)looks.delete(looks.keys().next().value);}
       return looks.get(key);
     },
-    appearance:look=>mutate('appearance',{look}),
+    appearance:({_wearables=[],...look})=>identityCall('mutation',api.wearables.applyOutfit,{token,look,wearableIds:_wearables.map(w=>w.id)}),
+    wearables:{
+      list:()=>identityCall('query',api.wearables.list,{token}),
+      equip:(slot,wearableId)=>identityCall('mutation',api.wearables.equip,{token,slot,wearableId}),
+    },
+    activities:{
+      watch:(spaceId,receive,onError)=>client.onUpdate(api.activities.list,{token,spaceId},receive,error=>onError(errorMessage(error))),
+      create:args=>identityCall('mutation',api.activities.createPlayer,{token,...args}),
+      objects:spaceId=>identityCall('query',api.activities.objects,{token,spaceId}),
+      control:(activityId,action)=>identityCall('mutation',api.activities.control,{token,activityId,action}),
+      play:(activityId,action,args={})=>identityCall('mutation',api.activities.play,{token,activityId,action,...args}),
+    },
     async voiceCredentials(tab){try{return await client.action(api.voice.connect,{token,...(tab?{tab}:{})});}catch(error){throw new Error(errorMessage(error));}},
     move:(x,z,seatId,direction=null)=>mutate('move',{x,z,...(seatId?{seatId}:{}),...(direction===null?{}:{direction})}),
     teleport:spaceId=>mutate('teleport',{spaceId}),

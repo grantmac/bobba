@@ -1,0 +1,54 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Wardrobe and activities preview</title>
+<link rel="stylesheet" href="/src/style.css"><main id="scene" tabindex="0"></main><div class="room-toolbar"><div class="bar-icons"></div></div>
+<script type="module">
+import {createAppearance} from '/src/appearance.js';
+import {prepareImage} from '/src/sprite-image.js';
+import {createActivitiesPanel} from '/src/activities-panel.js';
+import {WEARABLE_POSES,wearableSize} from '/shared/wearables.js';
+const look={hair:{model:'1',color:'#624631'},skin:{model:'1',color:'#e8b18a'},top:{model:'1',color:'#6b8c64'},bottom:{model:'1',color:'#55677e'},shoes:{model:'1',color:'#42454c'}};
+const player={id:'me',zone:'garden',look};
+// Synthetic markers test alignment without uploading art or joining the live room.
+const sheet=document.createElement('canvas');sheet.width=768;sheet.height=112;const ctx=sheet.getContext('2d');
+for(let i=0;i<8;i++){ctx.fillStyle=['#5d80e0','#d7ac44','#f04b4b','#53af70'][i%4];ctx.fillRect(i*96+37,14,25,12);ctx.fillRect(i*96+33,24,33,4);}
+const url=sheet.toDataURL(),catalogue=[{id:'hat',name:'Explorer cap',ownerName:'Maker',slot:'headwear',url}];
+window.__equipped=[];window.__created=[];window.__stops=0;window.__actions=[];
+const appearance=await createAppearance({prepareImage,onApply:async(frames,next)=>{player.look=next;window.__equipped.push(next._wearables??[]);},onOpen(){},wearables:{list:async()=>catalogue}});
+const edit=document.createElement('button');edit.textContent='Appearance';edit.onclick=()=>appearance.open();document.querySelector('.bar-icons').append(edit);
+let receive;
+const game={id:'quiz',name:'Friday room quiz',kind:'quiz',status:'waiting',round:0,endsAt:null,buzzer:null,canManage:true,question:{prompt:'Which planet has rings?',options:['Mars','Saturn','Venus']},targets:[],scores:[],me:null};
+createActivitiesPanel({getPlayer:()=>player,canCreate:()=>true,api:{
+  watch:(id,cb)=>{receive=cb;cb([structuredClone(game)]);return()=>{window.__stops++;};},
+  objects:async()=>[{id:'plant',name:'Fern',x:25,z:3}],
+  create:async args=>{window.__created.push(args);},
+  control:async(id,action)=>{window.__actions.push(action);game.status=action==='start'?'playing':'finished';if(action==='start'){game.round++;game.endsAt=Date.now()+60000;}receive([structuredClone(game)]);},
+  play:async(id,action,args)=>{window.__actions.push(action);if(action==='join'){game.me={found:[],answered:false};game.scores=[{playerId:'me',name:'You',score:0}];}if(action==='buzz')game.buzzer='me';if(action==='answer'){game.status='finished';game.buzzer=null;game.me.answered=true;game.scores[0].score=1;}receive([structuredClone(game)]);return {correct:action==='answer'?true:undefined};}
+}});
+window.__appearance=appearance;window.__look=look;window.__hat=catalogue[0];
+// Every cell carries a different marker, so wrong direction/pose/offset selection
+// is detectable through the real renderer, including seated waves and carry.
+window.__checkJacket=async()=>{
+  const atlas=document.createElement('canvas'),size=wearableSize('jacket');atlas.width=size.width;atlas.height=size.height;
+  const c=atlas.getContext('2d');
+  for(let row=0;row<WEARABLE_POSES.length;row++)for(let direction=0;direction<8;direction++){
+    c.fillStyle=`rgb(${row+1},${direction+1},199)`;c.fillRect(direction*96+45,row*112+45,2,2);
+  }
+  const jacket={id:'jacket',slot:'jacket',url:atlas.toDataURL()},outfit={...look,_wearables:[jacket]};
+  let checked=0;
+  for(const [row,p] of WEARABLE_POSES.entries())for(let direction=0;direction<8;direction++){
+    const frame=await appearance.previewFrame(outfit,direction,p.frame,p.sitting,p.action,p.actionFrame??0,p.carry);
+    const pixel=[...frame.getContext('2d').getImageData(45,45,1,1).data];
+    if(pixel.join()!==[row+1,direction+1,199,255].join())throw new Error('Wrong jacket pose: '+row+':'+direction+' = '+pixel);
+    checked++;
+  }
+  const frames=await appearance.frames(outfit);
+  for(const direction of [0,2,4,6])for(let frame=0;frame<16;frame++){
+    const spin=frame<8?(direction+2*frame)%8:direction,bounce=[0,2,4,2,0,2,4,2];
+    const y=45+14+(frame<8?(frame%2?2:0):bounce[frame-8]);
+    const pixel=[...frames.get(`${direction}:breakdance:${frame}`).getContext('2d').getImageData(45,y,1,1).data];
+    if(pixel.join()!==[9+(frame<8?frame%2:1),spin+1,199,255].join())throw new Error('Wrong breakdance clothing frame');
+    checked++;
+  }
+  return checked;
+};
+window.__ready=true;
+</script>

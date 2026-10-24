@@ -2,13 +2,14 @@ import {createAgentSetup} from './agent-link.js';
 import {makeDraggable} from './draggable.js';
 import {randomAppearance} from './random-appearance.js';
 import {appearanceChoices,appearanceGender,changeAppearanceGender} from './appearance-options.js';
+import {wearableCell} from '../shared/wearables.js';
 const ROOT = '/assets/appearance/';
 const KEY = 'habbo-room-appearance-v1';
 const LABELS = {hair:'Hair',skin:'Faces',top:'Tops',bottom:'Trousers',shoes:'Shoes',hats:'Hats',headwear:'Headwear',glasses:'Glasses',facewear:'Facewear',jackets:'Jackets',waist:'Waist'};
 const DEFAULT = {hair:{model:'1',color:'#624631'},skin:{model:'1',color:'#e8b18a'},top:{model:'1',color:'#6b8c64'},bottom:{model:'1',color:'#55677e'},shoes:{model:'1',color:'#42454c'}};
 const copy = value => structuredClone(value);
 
-export async function createAppearance({prepareImage, onApply, onOpen, onRoomKey}) {
+export async function createAppearance({prepareImage, onApply, onOpen, onRoomKey,wearables}) {
   const response = await fetch(ROOT+'catalog.json');
   if (!response.ok) throw new Error('Appearance choices could not be loaded.');
   const catalog = await response.json();
@@ -24,6 +25,7 @@ export async function createAppearance({prepareImage, onApply, onOpen, onRoomKey
   }
   function normalize(value){
     const result={};
+    if(Array.isArray(value?._wearables))result._wearables=value._wearables;
     for(const group of Object.keys(LABELS)){
       const selected=value?.[group]??DEFAULT[group]??{model:'none',color:'#624631'};
       const model=catalog.aliases[group]?.[selected.model]??selected.model;
@@ -36,12 +38,32 @@ export async function createAppearance({prepareImage, onApply, onOpen, onRoomKey
     return Object.keys(LABELS).every(group=>catalog.sets[group]?.[normalized[group].model]&&catalog.colors[group].includes(normalized[group].color));
   }
   let current=normalize(DEFAULT);
+  let customItems=[];
+  const customSlot=group=>group==='hats'||group==='headwear'?'headwear':group==='jackets'?'jacket':null;
+  function selectModel(look,group,model){
+    const slot=customSlot(group);
+    if(model.startsWith('wearable:')){
+      const item=customItems.find(w=>w.id===model.slice(9));
+      if(item)look._wearables=[...(look._wearables??[]).filter(w=>w.slot!==slot),item];
+    }else{
+      look[group].model=model;
+      if(slot)look._wearables=(look._wearables??[]).filter(w=>w.slot!==slot);
+    }
+  }
   try {const saved=JSON.parse(localStorage.getItem(KEY));if(saved&&validate(saved))current=normalize(saved);} catch {}
-  let draft=copy(current), category='hair', version=0, busy=false, previewDirection=2,entry=null,page=0,colorChannel='color';
+  let draft=copy(current), category='hair', version=0, openVersion=0, busy=false, previewDirection=2,entry=null,page=0,colorChannel='color';
   let preferredGender='M';
   try{if(localStorage.getItem(KEY+'-gender')==='F')preferredGender='F';}catch{}
   let gender=appearanceGender(catalog,current,preferredGender),genderDrafts={};
   const painted=new Map();
+  const wearableImages=new Map();
+  function loadWearable(url){
+    if(!wearableImages.has(url))wearableImages.set(url,new Promise((resolve,reject)=>{
+      const image=new Image();image.crossOrigin='anonymous';image.onload=()=>resolve(image);
+      image.onerror=()=>{wearableImages.delete(url);reject(new Error('A wearable could not be loaded.'));};image.src=url;
+    }));
+    return wearableImages.get(url);
+  }
   function paintedPart(asset,tint){
     const key=asset.file+tint;
     if(!painted.has(key))painted.set(key,load(asset.file).then(image=>prepareImage(image,{matte:!asset.alphaPrepared,tint})));
@@ -54,6 +76,8 @@ export async function createAppearance({prepareImage, onApply, onOpen, onRoomKey
     const order=catalog.orders[action==='wave'?'lh-up':sitting?'sit':'std']?.[direction]??catalog.orders.std[direction];
     const flips={lh:'rh',rh:'lh',ls:'rs',rs:'ls'},layers=new Map(),hidden=new Set();
     const normalized=normalize(look);
+    if(look?._wearables?.some(w=>w.slot==='headwear'))for(const group of ['hats','headwear'])normalized[group]={...normalized[group],model:'none'};
+    if(look?._wearables?.some(w=>w.slot==='jacket'))normalized.jackets={...normalized.jackets,model:'none'};
     if(carry)layers.set('ri',[{type:'ri',model:'1',index:0,colorable:false,tint:'#ffffff'}]);
     for(const group of Object.keys(LABELS)){
       const selection=normalized[group],set=catalog.sets[group][selection.model];
@@ -93,6 +117,13 @@ export async function createAppearance({prepareImage, onApply, onOpen, onRoomKey
       ctx.save();if(mirrored){ctx.translate(96,0);ctx.scale(-1,1);}
       ctx.drawImage(image,16-asset.regPoint.x+offsetX,94-asset.regPoint.y+offsetY+bob);ctx.restore();
       }
+    }
+    for(const wearable of [...(look?._wearables??[])].sort((a,b)=>(a.slot==='headwear')-(b.slot==='headwear'))){
+      const dance=action==='dance'&&wearable.slot==='headwear'?catalog.dance.hd:null;
+      const i=actionFrame%8,cell=wearableCell(wearable.slot,direction+(dance?.OffD[i]??0),frame,sitting,action,actionFrame,carry);
+      const bob=wearable.slot==='headwear'&&frame>=0&&!action&&frame%2?1:0;
+      const image=await loadWearable(wearable.url);
+      ctx.drawImage(image,cell.x,cell.y,96,112,dance?.OffX[i]??0,(dance?.OffY[i]??0)+bob,96,112);
     }
     return canvas;
   }
@@ -162,17 +193,22 @@ export async function createAppearance({prepareImage, onApply, onOpen, onRoomKey
     dialog.querySelector('#choice-title').textContent=`Choose your ${LABELS[category].toLowerCase()}`;
     itemGrid.replaceChildren();colorGrid.replaceChildren();
     itemGrid.hidden=false;
-    const models=appearanceChoices(catalog,category,gender),pages=Math.ceil(models.length/15);page=Math.max(0,Math.min(page,pages-1));
+    const customs=['hats','jackets'].includes(category)?customItems.filter(w=>w.slot===customSlot(category)):[];
+    const customSelected=look._wearables?.some(w=>w.slot===customSlot(category));
+    colorGrid.hidden=!!customSelected;colorGrid.previousElementSibling.hidden=!!customSelected;
+    const models=[...customs.map(w=>'wearable:'+w.id),...appearanceChoices(catalog,category,gender)],pages=Math.ceil(models.length/15);page=Math.max(0,Math.min(page,pages-1));
     const pageButtons=dialog.querySelectorAll('.style-pages button');pageButtons[0].disabled=page===0;pageButtons[1].disabled=page>=pages-1;
     dialog.querySelector('.style-pages span').textContent=`${page+1} / ${pages} · ${models.length} styles`;
     const channel=dialog.querySelector('.color-channel');channel.hidden=!catalog.sets[category][look[category].model].parts.some(p=>p.colorindex>1);channel.textContent=colorChannel==='color'?'Primary':'Secondary';
     if(channel.hidden)colorChannel='color';
     const buttons=[];
     for(const [i,model] of models.slice(page*15,page*15+15).entries()){
-      const button=document.createElement('button');button.type='button';button.title=model==='none'?`No ${LABELS[category].toLowerCase()}`:`${LABELS[category]} style ${page*15+i+1}`;button.setAttribute('aria-label',button.title);
-      button.setAttribute('aria-pressed',String(look[category].model===model));
+      const custom=customs.find(w=>'wearable:'+w.id===model);
+      const button=document.createElement('button');button.type='button';button.title=custom?custom.name+' · Your creation':model==='none'?`No ${LABELS[category].toLowerCase()}`:`${LABELS[category]} style ${page*15+i+1}`;button.setAttribute('aria-label',button.title);
+      const equipped=look._wearables?.find(w=>w.slot===customSlot(category));
+      button.setAttribute('aria-pressed',String(custom?equipped?.id===custom.id:!equipped&&look[category].model===model));
       const canvas=document.createElement('canvas');canvas.width=96;canvas.height=112;button.append(canvas);
-      button.onclick=()=>{if(busy)return;draft[selectedCategory].model=model;update();};
+      button.onclick=()=>{if(busy)return;selectModel(draft,selectedCategory,model);update();};
       itemGrid.append(button);buttons.push({canvas,model});
     }
     for(const color of catalog.colors[category]){
@@ -183,7 +219,7 @@ export async function createAppearance({prepareImage, onApply, onOpen, onRoomKey
       colorGrid.append(button);
     }
     try {
-      const [main,...thumbnails]=await Promise.all([render(look,previewDirection),...buttons.map(({model})=>{const option=copy(look);option[selectedCategory].model=model;return render(option);})]);
+      const [main,...thumbnails]=await Promise.all([render(look,previewDirection),...buttons.map(({model})=>{const option=copy(look);selectModel(option,selectedCategory,model);return render(option);})]);
       if(request!==version||!dialog.open)return;
       draw(preview,main);buttons.forEach(({canvas},i)=>draw(canvas,thumbnails[i]));apply.disabled=false;
     }catch(error){if(request===version)status.textContent=error.message;}
@@ -244,6 +280,8 @@ export async function createAppearance({prepareImage, onApply, onOpen, onRoomKey
     dialog.querySelector('.entry-name').hidden=true;dialog.querySelector('h1').textContent='Your appearance';
     apply.textContent='Apply';dialog.querySelector('.appearance-close').hidden=false;dialog.querySelector('.appearance-cancel').hidden=false;
     draft=copy(current);gender=appearanceGender(catalog,current,preferredGender);genderDrafts={};page=0;previewDirection=2;dialog.showModal();dialog.focus();onOpen();update();
+    const opened=++openVersion;
+    if(wearables)wearables.list().then(items=>{if(!dialog.open||entry||opened!==openVersion)return;customItems=items;update();}).catch(error=>{if(dialog.open&&opened===openVersion)status.textContent=error.message;});
   }
   function close(){if(busy||entry)return;version++;dialog.close();document.querySelector('#scene').focus({preventScroll:true});}
   dialog.querySelector('.appearance-close').onclick=close;
