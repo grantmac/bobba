@@ -735,7 +735,18 @@ installTouchNavigation(container,{
   setView:view=>{zoom=view.zoom;panX=view.panX;panY=view.panY;resize();},
   cancelTap:()=>{down=null;hover.visible=false;}
 });
-const chat=createChat({getSpeaker:()=>({name:network?.me?.name??'You',color:appearance?.chatColor()??'#6b8c64'}),onSelectSpeaker:speaker=>{const peer=[...peers.values()].find(p=>p.data.name===speaker.name);if(peer)selectPeer(peer);else if(speaker.name===network?.me?.name)appearance?.open();}});
+const chat=createChat({
+  getSpeaker:()=>({id:network?.me?.id,name:network?.me?.name??'You',color:appearance?.chatColor()??'#6b8c64',...position}),
+  getSpeakerPosition:speaker=>{
+    const player=speaker.id===network?.me?.id?selfPlayer:peers.get(speaker.id)?.data;
+    const sample=player?samplePlayer(player,network.now()):speaker;
+    const seat=player&&!sample.moving&&player.seatId?seatInfo(player.seatId,sample):null;
+    const point=characterPoint(sample.x,sample.z);
+    point.x+=seat?.offsetX??0;point.y+=seat?.offsetY??0;
+    return {x:view.left+view.halfW+viewOffsetX+point.x*displayScale,y:view.top+view.halfH+viewOffsetY+(point.y-CENTER_Y-100)*displayScale};
+  },
+  onSelectSpeaker:speaker=>{const peer=peers.get(speaker.id);if(peer)selectPeer(peer);else if(speaker.id===network?.me?.id)appearance?.open();}
+});
 let localTyping=false;
 function positionTyping(player,point,visible){
   const active=player.id===network.me?.id?localTyping:(player.typingUntil??0)>network.now();
@@ -1018,7 +1029,7 @@ try{
       for(const message of state.messages){
         if(seenMessages.has(message.id))continue;seenMessages.add(message.id);
         if(network.now()-message.sentAt>28000)continue;
-        chat.say(message.body,message.mode,{name:message.name,color:message.color});
+        chat.say(message.body,message.mode,{id:message.playerId,name:message.name,color:message.color,x:message.x,z:message.z});
       }
       // Bound deduplication memory to the server's current message window.
       const recentIds=new Set(state.messages.map(m=>m.id));for(const id of seenMessages)if(!recentIds.has(id))seenMessages.delete(id);

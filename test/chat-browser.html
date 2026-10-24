@@ -1,89 +1,82 @@
-<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Chat positioning verification</title>
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Speech bubble positioning</title>
 <link rel="stylesheet" href="/src/style.css">
-<style>body{background:#333;color:#eee}#checks{padding:16px;font:12px/1.6 Verdana,sans-serif}#checks button{margin:8px;padding:8px;color:#222}#head{position:absolute;width:6px;height:6px;background:#e6b879;transform:translate(-50%,0)}</style>
-<div id="checks"><p id="result">Checking chat positioning…</p><button id="pan">Pan and zoom demo</button><button id="message">Add message</button></div><div id="head"></div>
+<style>
+body{background:#333;color:#eee}#checks{padding:16px;font:12px/1.6 Verdana,sans-serif}#checks button{margin:8px;padding:8px;color:#222}
+.head{position:absolute;width:16px;height:38px;border-radius:8px 8px 2px 2px;transform:translateX(-50%);background:#6b8c64;pointer-events:none}.head:after{content:attr(data-name);position:absolute;top:44px;left:50%;transform:translateX(-50%);font:11px Verdana,sans-serif}
+</style>
+<div id="checks"><p id="result">Checking speech bubble positioning…</p><button id="pan">Pan and zoom demo</button><button id="message">Add message</button></div>
 <script type="module">
 import {createChat} from '/src/chat.js';
-const assert=(ok,message)=>{if(!ok)throw Error(message);},near=(a,b)=>Math.abs(a-b)<.1;
-const layout={originX:innerWidth/2,originY:innerHeight/2,centerY:0,scale:1};
-const speaker={name:'Preview',color:'#6b8c64',x:0,y:96};let selected=null;
-const chat=createChat({getSpeaker:()=>speaker,onSelectSpeaker:value=>selected=value});
-// Background previews may pause animation frames; still run layout assertions there.
-const rect=element=>element.getBoundingClientRect(),frame=()=>new Promise(resolve=>{
-  const timer=setTimeout(resolve,50);requestAnimationFrame(()=>{clearTimeout(timer);resolve();});
-});
-const bubble=()=>document.querySelector('.chat-bubble');
-async function settle(){
-  await frame();
-  // Finish transitions deterministically even when the preview is in a background tab.
-  for(const element of document.querySelectorAll('.chat-bubble'))for(const animation of element.getAnimations())animation.finish();
-  await frame();
-}
-function assertStack(){
-  const boxes=[...document.querySelectorAll('.chat-bubble')].map(rect);
-  for(let i=1;i<boxes.length;i++)assert(boxes[i-1].bottom<=boxes[i].top-1.9,'Messages must not overlap, including speakers at different depths');
-}
-function update(){chat.update(performance.now());const head=document.querySelector('#head');head.style.left=`${layout.originX+speaker.x*layout.scale}px`;head.style.top=`${layout.originY+(speaker.y-layout.centerY-96)*layout.scale}px`;}
-try{
-  chat.say('Visible from anywhere in the room');update();await frame();
-  assert(rect(bubble()).bottom<=document.querySelector('.chat-stream').clientHeight*.5,'Short messages must float in the upper half of the room');
-  let before=rect(bubble());layout.originY+=37.5;update();
-  let after=rect(bubble());assert(near(after.y,before.y),'Vertical panning must leave the bubble on screen');
-  before=after;layout.originX+=20.5;layout.originY-=13.5;update();after=rect(bubble());
-  assert(near(after.x,before.x)&&near(after.y,before.y),'Diagonal panning must leave the bubble stack fixed');
-  const width=after.width,height=after.height;layout.centerY=24;layout.scale=1.5;update();after=rect(bubble());
-  assert(near(after.bottom,before.bottom),'Zoom and room centre must not shift the bubble stack');
-  assert(near(after.width,width)&&near(after.height,height),'Zoom must preserve readable bubble size');
-  const old=bubble();chat.say('Messages still rise smoothly');await frame();await frame();
-  before=rect(old);layout.originY+=25.5;layout.originX-=15.5;update();after=rect(old);
-  assert(near(after.x,before.x)&&near(after.y,before.y),'Panning during a message scroll must not displace bubbles');
-  const latest=[...document.querySelectorAll('.chat-bubble')].at(-1);latest.click();assert(selected===speaker,'Speaker selection must still work');
-  for(let i=0;i<9;i++)chat.say(`Message ${i}`);
-  assert(document.querySelectorAll('.chat-bubble').length===7,'Only seven messages should remain');
-  for(let i=1;i<=7;i++)chat.update(performance.now()+i*5000);
-  assert(!bubble(),'Idle scrolling must eventually clear messages');
-  const long='Ha, “bla bla” — the classic admin greeting. 😊 Anything on your mind, Grant? '.repeat(4);
-  chat.say(long);await settle();
-  assert(rect(bubble()).height>height,'Long messages must wrap onto multiple lines');
-  assert(rect(bubble()).width<=320,'Long messages must have a readable maximum width');
-  assert(bubble().textContent===speaker.name+': '+long.trim(),'Wrapped messages must preserve all text');
-  chat.say('A reply from further back','Say',{...speaker,name:'Lobby',y:speaker.y-21/layout.scale});await settle();assertStack();
-  chat.say(long,'Say',{...speaker,name:'Nearby',y:speaker.y+50});await settle();assertStack();
-  layout.scale=2;update();await settle();assertStack();
-  for(let i=0;i<7;i++)chat.say(long);await settle();assertStack();
-  assert(document.querySelectorAll('.chat-bubble').length===7,'Tall bubbles must not expire just because of their height');
-  for(let i=1;i<=7;i++)chat.update(performance.now()+i*5000);
-  assert(!bubble(),'Wrapped messages must expire after seven idle scrolls');
-  chat.say('x'.repeat(400),'Say',{...speaker,name:'N'.repeat(80),x:-innerWidth});await settle();
-  assert(rect(bubble()).left>=5.9&&bubble().scrollWidth<=bubble().clientWidth,'Long words and names must wrap inside the left edge');
-  for(let i=1;i<=7;i++)chat.update(performance.now()+i*5000);
-  chat.say(long,'Say',{...speaker,x:innerWidth});await settle();
-  assert(rect(bubble()).right<=innerWidth-5.9,'Wide messages must stay inside the right edge');
-  for(let i=1;i<=7;i++)chat.update(performance.now()+i*5000);
-  chat.typing('preview','Preview',true,100,150);assert(document.querySelector('.typing-bubble'),'Typing indicator missing');chat.removeTyping('preview');assert(!document.querySelector('.typing-bubble'),'Typing indicator not cleared');
-  for(const point of [{x:-100000,y:-100000},{x:100000,y:100000}]){
-    chat.say('Hello from the far end of the map','Say',{...speaker,...point});await settle();
-    const newest=[...document.querySelectorAll('.chat-bubble')].at(-1),box=rect(newest);
-    assert(box.left>=6&&box.right<=innerWidth-6&&box.top>=0&&box.bottom<innerHeight-54,'Distant speakers must have fully visible bubbles');
-    newest.click();assert(selected.x===point.x,'Distant bubble must retain its speaker');
+const assert=(ok,message)=>{if(!ok)throw Error(message);},near=(a,b)=>Math.abs(a-b)<1;
+const layout={x:innerWidth/2,y:innerHeight*.62,scale:1};
+const speaker={id:'grant',name:'Grant',color:'#6b8c64',x:0,y:0};let selected=null;
+const head=s=>({x:layout.x+s.x*layout.scale,y:layout.y+s.y*layout.scale});
+const chat=createChat({getSpeaker:()=>speaker,getSpeakerPosition:head,onSelectSpeaker:s=>selected=s});
+const boxes=()=>[...document.querySelectorAll('.chat-bubble:not([hidden])')];
+const newest=()=>[...document.querySelectorAll('.chat-bubble')].at(-1);
+const rect=el=>el.getBoundingClientRect();
+const settle=()=>new Promise(resolve=>setTimeout(resolve,40));
+const clear=()=>{for(let i=1;i<=8;i++)chat.update(performance.now()+i*5000);};
+function noOverlap(){
+  const all=boxes().map(rect);
+  for(let i=0;i<all.length;i++)for(let j=i+1;j<all.length;j++){
+    const a=all[i],b=all[j];
+    assert(a.right+7.9<=b.left||b.right+7.9<=a.left||a.bottom+7.9<=b.top||b.bottom+7.9<=a.top,'Nearby bubbles must not overlap');
   }
-  assert(!document.querySelector('.chat-panel'),'Chat must retain floating bubbles without a panel');
-  chat.say('<img src=x onerror=alert(1)>','Shout',{...speaker,name:'<b>Someone</b>'});await settle();
-  const newest=[...document.querySelectorAll('.chat-bubble')].at(-1);
-  assert(!newest.querySelector('img,b')&&newest.textContent.includes('<img'),'Names and messages must render as literal text');
-  assert(newest.dataset.mode==='Shout','Speech mode styling must be preserved');
-  const stream=document.querySelector('.chat-stream');
-  stream.style.height='240px';await settle();
-  assert(rect(newest).bottom<=224&&rect(newest).top>=0,'Viewport shrink must keep the latest bubble above the keyboard');
-  stream.style.height='';await settle();
-  assertStack();
-  for(let i=1;i<=7;i++)chat.update(performance.now()+i*5000);
-  document.querySelector('#result').textContent='PASS: fixed bubbles, pan, zoom, wrapping, stacking, expiry, distant speakers, safe text, keyboard resize and typing.';
-}catch(error){document.querySelector('#result').textContent='FAIL: '+error.message;throw error;}
-layout.originX=innerWidth/2;layout.originY=innerHeight/3;layout.scale=1;layout.centerY=0;
-chat.say('bla bla','Say',{...speaker,name:'Grant',color:'#6b8c64'});
-chat.say('Ha, “bla bla” — the classic admin greeting. 😊 Anything on your mind, Grant?','Say',{...speaker,name:'Lobby',color:'#6484b8',y:speaker.y-10});
-chat.say('Just making this little room feel like home.','Say',{...speaker,name:'Grant',color:'#6b8c64'});update();await settle();
-document.querySelector('#message').onclick=()=>chat.say('Another message above the same point');
-document.querySelector('#pan').onclick=()=>{const start=performance.now(),x=layout.originX,y=layout.originY,scale=layout.scale;function animate(now){const t=Math.min(1,(now-start)/2400);layout.originX=x+Math.sin(t*Math.PI*2)*70;layout.originY=y+Math.sin(t*Math.PI*4)*45;layout.scale=scale+Math.sin(t*Math.PI*2)*.25;update();if(t<1)requestAnimationFrame(animate);}requestAnimationFrame(animate);};
+}
+function atHead(el,s){const r=rect(el),p=head(s);assert(near(r.x+r.width/2,p.x)&&near(r.bottom,p.y-8),'Newest bubble must sit directly above its speaker');}
+try{
+  chat.say('yooooo');await settle();atHead(newest(),speaker);
+  const before=rect(newest());layout.x+=20;layout.y+=30;chat.update(performance.now());
+  const after=rect(newest());assert(near(after.x-before.x,20)&&near(after.y-before.y,30),'Panning must move the bubble with the speaker');
+  speaker.x=15;speaker.y=20;chat.update(performance.now());atHead(newest(),speaker);
+  layout.scale=1.5;chat.update(performance.now());atHead(newest(),speaker);
+  assert(near(rect(newest()).width,before.width)&&near(rect(newest()).height,before.height),'Zoom must preserve readable text size');
+  speaker.y+=18;chat.update(performance.now());atHead(newest(),speaker);
+  newest().click();assert(selected===speaker,'Clicking must select the right speaker');
+  chat.update(performance.now()+5000);atHead(newest(),speaker);
+  clear();speaker.x=0;speaker.y=0;layout.x=innerWidth/2;layout.y=innerHeight*.62;layout.scale=1;
+  const other={id:'tnarg',name:'Tnarg',color:'#6484b8',x:0,y:-30};
+  chat.say('Grant! Back again — the lounge missed you. 🎉','Say',other);
+  chat.say('yooooo');noOverlap();atHead(newest(),speaker);
+  const wide=innerWidth>700;
+  other.x=wide?-200:-30;speaker.x=wide?200:30;chat.update(performance.now());noOverlap();
+  if(wide){atHead(boxes()[0],other);atHead(newest(),speaker);assert(rect(boxes()[0]).right<rect(newest()).left,'Distant speakers must have separate bubble stacks');}
+  clear();speaker.x=0;
+  const long='Ha, “bla bla” — the classic admin greeting. 😊 Anything on your mind, Grant? '.repeat(4);
+  chat.say(long);assert(newest().textContent===speaker.name+': '+long.trim(),'All wrapped text must be retained');
+  assert(rect(newest()).width<=260&&rect(newest()).height>24,'Long messages must wrap');
+  for(let i=0;i<8;i++)chat.say(long);noOverlap();
+  assert(document.querySelectorAll('.chat-bubble').length===7,'Keep at most seven messages');
+  assert(boxes().every(el=>rect(el).top>=6),'Older messages that cannot fit must not cover the newest message');
+  assert(!newest().hidden,'Newest message must stay visible');
+  clear();assert(!newest(),'Idle messages must expire');
+  for(const p of [{x:-100000,y:-100000},{x:100000,y:100000}]){
+    const far={...speaker,...p};chat.say('Hello from the far end of the map','Say',far);noOverlap();
+    const r=rect(newest());assert(r.left>=5.9&&r.right<=innerWidth-5.9&&r.top>=5.9&&r.bottom<=innerHeight-54,'Offscreen messages must stay readable at the viewport edge');
+    newest().click();assert(selected===far,'Offscreen messages must retain the speaker');clear();
+  }
+  chat.say('x'.repeat(400),'Say',{...speaker,name:'N'.repeat(80)});
+  assert(newest().scrollWidth<=newest().clientWidth,'Long words and names must not overflow');clear();
+  chat.say('<img src=x onerror=alert(1)>','Shout',{...speaker,name:'<b>Someone</b>'});
+  assert(!newest().querySelector('img,b')&&newest().dataset.mode==='Shout','Safe literal text and speech mode must be retained');clear();
+  chat.say('Visible above the keyboard');const stream=document.querySelector('.chat-stream');
+  stream.style.height='240px';stream.style.top='40px';await settle();
+  const r=rect(newest());assert(r.top>=46&&r.bottom<=272,'Keyboard viewport and offset must keep the newest message visible');
+  stream.style.height='';stream.style.top='';await settle();clear();
+  chat.say('Near the left edge','Say',{...speaker,x:-innerWidth/2+12});
+  const tail=parseFloat(newest().style.getPropertyValue('--chat-tail'));
+  assert(tail<rect(newest()).width/2,'A clamped bubble tail must still point towards its speaker');clear();
+  chat.typing('preview','Preview',true,100,150);assert(document.querySelector('.typing-bubble'),'Typing indicator must appear');
+  chat.removeTyping('preview');assert(!document.querySelector('.typing-bubble'),'Typing indicator must clear');
+  document.querySelector('#result').textContent='PASS: speaker anchoring, movement, pan, zoom, separate speakers, collisions, viewport edges, keyboard, wrapping and expiry.';
+  window.__chatTest='passed';
+}catch(error){document.querySelector('#result').textContent='FAIL: '+error.message;window.__chatTest='failed';throw error;}
+clear();layout.x=innerWidth/2;layout.y=innerHeight*.62;layout.scale=1;speaker.x=Math.min(140,innerWidth*.15);speaker.y=40;
+const other={id:'tnarg',name:'Tnarg',color:'#6484b8',x:-Math.min(140,innerWidth*.15),y:-60};
+const markers=[speaker,other].map(s=>{const el=document.createElement('div');el.className='head';el.dataset.name=s.name;el.style.background=s.color;document.body.append(el);return {s,el};});
+function update(){chat.update(performance.now());for(const {s,el} of markers){const p=head(s);el.style.left=p.x+'px';el.style.top=p.y+'px';}}
+chat.say('Grant! Back again — the lounge missed you. 🎉','Say',other);chat.say('yooooo');update();
+document.querySelector('#message').onclick=()=>{chat.say('Another message above my character');update();};
+document.querySelector('#pan').onclick=()=>{const start=performance.now(),x=layout.x,y=layout.y;function animate(now){const t=Math.min(1,(now-start)/2400);layout.x=x+Math.sin(t*Math.PI*2)*30;layout.y=y+Math.sin(t*Math.PI*4)*30;layout.scale=1+Math.sin(t*Math.PI*2)*.25;update();if(t<1)requestAnimationFrame(animate);}requestAnimationFrame(animate);};
 </script>
