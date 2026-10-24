@@ -70,6 +70,131 @@ it('does not pass distant unaddressed chat as context for a later named message'
   expect((await t.query(api.room.worldChatFeed,{token})).map(m=>m.body)).toEqual(['An unrelated distant conversation.','Tnarg, hello!']);
 });
 
+it('continues a distant named greeting and renews the window after each reply',async()=>{
+  const {visitor}=await hearingSetup(20);
+  const greeting=await message('Hi Tnarg'),openedAt=Date.now();
+  expect(greeting.context.events[0].conversation).toBe(true);
+  vi.setSystemTime(openedAt+20000);
+  await finish(greeting,{...emptyTurn(),reply:'Hey!',replyToEventId:greeting.context.events[0].id});
+  expect((await t.run(ctx=>ctx.db.get(visitor.id))).botConversation.until).toBe(openedAt+80000);
+  vi.setSystemTime(openedAt+65000);
+  const followup=await message("What's up?");
+  expect(followup.context.events[0]).toMatchObject({body:"What's up?",conversation:true});
+  expect(followup.context.recent.map(m=>m.body)).toEqual(['Hi Tnarg','Hey!',"What's up?"]);
+  await finish(followup,{...emptyTurn(),reply:'Just enjoying the room.',replyToEventId:followup.context.events[0].id});
+  const renewedAt=Date.now();
+  expect((await t.run(ctx=>ctx.db.get(visitor.id))).botConversation.until).toBe(renewedAt+60000);
+  vi.setSystemTime(renewedAt+50000);
+  expect(await message('Want to dance?')).not.toBeNull();
+});
+
+it.each([[59999,true],[60000,false],[60001,false]])('expires a distant conversation at exactly 60 seconds (%s ms)',async(elapsed,heard)=>{
+  await hearingSetup(20);
+  const greeting=await message('Hi Tnarg'),openedAt=Date.now();
+  await finish(greeting,emptyTurn());
+  vi.setSystemTime(openedAt+elapsed);
+  await t.mutation(api.room.chat,{token,body:"What's up?",mode:'Say'});
+  expect((await t.mutation(internal.bot.claim,{}))!==null).toBe(heard);
+});
+
+it('does not extend the window when the visitor keeps talking without a bot reply',async()=>{
+  const {visitor}=await hearingSetup(20);
+  const greeting=await message('Hi Tnarg'),openedAt=Date.now();
+  await finish(greeting,emptyTurn());
+  vi.setSystemTime(openedAt+30000);
+  await finish(await message('Still there?'),emptyTurn());
+  expect((await t.run(ctx=>ctx.db.get(visitor.id))).botConversation.until).toBe(openedAt+60000);
+  vi.setSystemTime(openedAt+60000);
+  expect(await message('Still talking.')).toBeNull();
+  expect(await message('Tnarg, new conversation?')).not.toBeNull();
+});
+
+it('preserves a follow-up sent before expiry when the bot processes it after expiry',async()=>{
+  await hearingSetup(20);
+  const greeting=await message('Hi Tnarg'),openedAt=Date.now();
+  await finish(greeting,emptyTurn());
+  vi.setSystemTime(openedAt+59000);
+  await t.mutation(api.room.chat,{token,body:"What's up?",mode:'Say'});
+  vi.setSystemTime(openedAt+65000);
+  const followup=await t.mutation(internal.bot.claim,{});
+  expect(followup.context.events[0]).toMatchObject({body:"What's up?",conversation:true});
+  expect(followup.context.recent.map(m=>m.body)).toContain("What's up?");
+});
+
+it('does not open a conversation window from an ordinary nearby reply',async()=>{
+  const {visitor}=await hearingSetup(2);
+  const job=await message('Hello there!');
+  await finish(job,{...emptyTurn(),reply:'Hi!',replyToEventId:job.context.events[0].id});
+  expect((await t.run(ctx=>ctx.db.get(visitor.id))).botConversation).toBeUndefined();
+  await t.run(ctx=>ctx.db.patch(visitor.id,{route:[{x:21.5,z:1.5}],startedAt:Date.now()}));
+  expect(await message("What's up?")).toBeNull();
+});
+
+it('does not share a window with a different distant visitor',async()=>{
+  await hearingSetup(20);
+  await finish(await message('Hi Tnarg'),{...emptyTurn(),reply:'Hey!'});
+  const grant=await t.query(api.room.me,{token:adminToken});
+  await t.run(ctx=>ctx.db.patch(grant.id,{route:[{x:21.5,z:2.5}],startedAt:Date.now()}));
+  await t.mutation(api.room.chat,{token:adminToken,body:'Can you hear me too?',mode:'Say'});
+  expect(await t.mutation(internal.bot.claim,{})).toBeNull();
+  const followup=await message("What's up?");
+  expect(followup.context.recent.map(m=>m.body)).not.toContain('Can you hear me too?');
+});
+
+it('does not transfer a conversation across an identity change or restore it from stale output',async()=>{
+  const {visitor}=await hearingSetup(20),greeting=await message('Hi Tnarg');
+  await t.run(ctx=>ctx.db.patch(visitor.id,{identityVersion:1}));
+  await finish(greeting,{...emptyTurn(),reply:'Hey!',replyToEventId:greeting.context.events[0].id});
+  expect((await t.run(ctx=>ctx.db.get(visitor.id))).botConversation.identityVersion).toBe(0);
+  expect(await message("What's up?")).toBeNull();
+});
+
+it.each(['first','second','missing','invalid'])('renews only the addressed speaker in a mixed turn (%s target)',async target=>{
+  const {visitor}=await hearingSetup(20),grant=await t.query(api.room.me,{token:adminToken});
+  await t.run(ctx=>ctx.db.patch(grant.id,{route:[{x:21.5,z:2.5}],startedAt:Date.now()}));
+  await t.mutation(api.room.chat,{token,body:'Hi Tnarg',mode:'Say'});
+  await t.mutation(api.room.chat,{token:adminToken,body:'Hello Tnarg',mode:'Say'});
+  const job=await t.mutation(internal.bot.claim,{}),openedAt=Date.now();
+  vi.setSystemTime(openedAt+10000);
+  const targetId=target==='first'?job.context.events.find(e=>e.playerId===visitor.id).id:target==='second'?job.context.events.find(e=>e.playerId===grant.id).id:target==='invalid'?'invented':undefined;
+  await finish(job,{...emptyTurn(),reply:'Hey!',...(targetId?{replyToEventId:targetId}:{})});
+  expect((await t.run(ctx=>ctx.db.get(visitor.id))).botConversation.until).toBe(openedAt+(target==='first'?70000:60000));
+  expect((await t.run(ctx=>ctx.db.get(grant.id))).botConversation.until).toBe(openedAt+(target==='second'?70000:60000));
+});
+
+it('supports older single-speaker replies but does not renew a suppressed reply',async()=>{
+  const {visitor}=await hearingSetup(20),greeting=await message('Hi Tnarg'),openedAt=Date.now();
+  vi.setSystemTime(openedAt+10000);
+  await finish(greeting,{...emptyTurn(),reply:'Hey!'});
+  const until=(await t.run(ctx=>ctx.db.get(visitor.id))).botConversation.until;
+  expect(until).toBe(openedAt+70000);
+  const followup=await message("What's up?");
+  await t.run(async ctx=>{const state=await ctx.db.query('botState').first();await ctx.db.patch(state._id,{lastReplyAt:Date.now()});});
+  await finish(followup,{...emptyTurn(),reply:'Suppressed by cooldown',replyToEventId:followup.context.events[0].id});
+  expect((await t.run(ctx=>ctx.db.get(visitor.id))).botConversation.until).toBe(until);
+});
+
+it('passes distant follow-ups through the complete model action and persists its reply',async()=>{
+  await hearingSetup(20);
+  const requests=[];
+  vi.stubGlobal('fetch',vi.fn(async(_url,options)=>{
+    const request=JSON.parse(options.body),context=JSON.parse(request.messages[1].content);
+    requests.push({request,context});
+    const reply=requests.length===1?'Hey!':'Just hanging out!';
+    return {ok:true,json:async()=>({choices:[{message:{tool_calls:[{function:{name:'room_turn',arguments:JSON.stringify({...emptyTurn(),reply,replyToEventId:context.events[0].id})}}]}}]})};
+  }));
+  await t.mutation(api.room.chat,{token,body:'Hi Tnarg',mode:'Say'});
+  await t.action(internal.botBrain.respond,{});
+  vi.setSystemTime(Date.now()+5000);
+  await t.mutation(api.room.chat,{token,body:"What's up?",mode:'Say'});
+  await t.action(internal.botBrain.respond,{});
+  expect(requests).toHaveLength(2);
+  expect(requests[1].context.events[0]).toMatchObject({body:"What's up?",conversation:true});
+  expect(requests[1].request.messages[0].content).toContain('without requiring your name again');
+  expect((await t.query(api.room.worldChatFeed,{token})).filter(m=>m.name==='Tnarg').map(m=>m.body)).toEqual(['Hey!','Just hanging out!']);
+  expect(()=>parseTurn({tool_calls:[{function:{name:'room_turn',arguments:JSON.stringify({...emptyTurn(),replyToEventId:42})}}]})).toThrow('invalid reply target');
+});
+
 it('uses positions at send time even when both avatars move before processing',async()=>{
   const {visitor,bot}=await hearingSetup(6);
   await t.mutation(api.room.chat,{token,body:'Hello there!',mode:'Say'});
@@ -295,9 +420,11 @@ it('learns visitor memories without allowing visitors to overwrite protected roo
   expect((await t.query(api.bot.manage,{token:adminToken})).memories.map(m=>m.text)).toEqual(['Be kind.']);
 });
 
-it('migrates only the obsolete protected hearing instruction once and invalidates an old turn',async()=>{
+it.each([
+  "Assume people aren't talking to you unless they explicitly use your name.",
+  'Consider replying to typed messages from within six tiles, or from anywhere when your name is explicitly mentioned. Stay quiet when you have nothing useful to add.',
+])('migrates only the exact obsolete protected instruction once: %s',async oldText=>{
   await setup();
-  const oldText="Assume people aren't talking to you unless they explicitly use your name.";
   const locked=await t.mutation(api.bot.saveMemory,{token:adminToken,text:oldText});
   await t.mutation(api.bot.saveMemory,{token:adminToken,text:'Be kind.'});
   await t.run(ctx=>ctx.db.insert('botMemories',{text:oldText,locked:false,source:'Visitor',updatedAt:Date.now()}));
@@ -305,7 +432,7 @@ it('migrates only the obsolete protected hearing instruction once and invalidate
   expect(await t.mutation(internal.migrate.botHearingPreference,{})).toEqual({updated:1});
   const after=await t.query(api.bot.manage,{token:adminToken});
   expect(after.memories).toHaveLength(3);
-  expect(after.memories.find(m=>m._id===locked)).toMatchObject({locked:true,source:'Grant',text:expect.stringContaining('within six tiles')});
+  expect(after.memories.find(m=>m._id===locked)).toMatchObject({locked:true,source:'Grant',text:expect.stringContaining('60-second conversation window')});
   expect(after.memories.filter(m=>m._id!==locked)).toEqual(before.memories.filter(m=>m._id!==locked));
   expect(after.settings.revision).toBe(before.settings.revision+1);
   expect(await t.mutation(internal.migrate.botHearingPreference,{})).toEqual({updated:0});

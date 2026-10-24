@@ -21,12 +21,13 @@ export const furniture=internalMutation({args:{},handler:async ctx=>{
   return {moved:items.length,players};
 }});
 
-// Replace only Grant's obsolete name-only instruction when releasing local hearing.
+// Update only Grant's exact previous hearing instructions when releasing conversation windows.
 export const botHearingPreference=internalMutation({args:{},handler:async ctx=>{
   let updated=0;
   for(const memory of await ctx.db.query('botMemories').take(100)){
-    if(!memory.locked||memory.source!=='Grant'||memory.text!=="Assume people aren't talking to you unless they explicitly use your name.")continue;
-    await ctx.db.patch(memory._id,{text:'Consider replying to typed messages from within six tiles, or from anywhere when your name is explicitly mentioned. Stay quiet when you have nothing useful to add.',updatedAt:Date.now()});
+    if(!memory.locked||memory.source!=='Grant'||!["Assume people aren't talking to you unless they explicitly use your name.",
+      'Consider replying to typed messages from within six tiles, or from anywhere when your name is explicitly mentioned. Stay quiet when you have nothing useful to add.'].includes(memory.text))continue;
+    await ctx.db.patch(memory._id,{text:'Consider replying to typed messages from within six tiles, or from anywhere when your name is mentioned. Mentioning your name opens a 60-second conversation window for that person; each reply to them renews it. Answer their follow-ups without requiring your name again. Stay quiet when you have nothing useful to add.',updatedAt:Date.now()});
     updated++;
   }
   if(updated){
