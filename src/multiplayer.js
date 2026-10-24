@@ -70,7 +70,7 @@ export function createMultiplayer(){
     },
     async entryAppearance(){if(!entryCode)return null;try{return await client.query(api.room.entryAppearance,{entryCode});}catch(error){throw new Error(errorMessage(error));}},
     async checkName(name){try{return await client.query(api.room.checkName,{name,...(entryCode?{entryCode}:{})});}catch(error){throw new Error(errorMessage(error));}},
-    async join(name,look,{appearanceChanged=false}={}){
+    async join(name,{_wearables,...look},{appearanceChanged=false}={}){
       if(!token||entryCode)token=randomToken();
       try{me=await client.mutation(api.room.join,{token,name,look,pageOrigin:location.origin,...(entryCode?{entryCode,replaceLook:appearanceChanged}:{})});}catch(error){throw new Error(errorMessage(error));}
       entryCode='';remember();return me;

@@ -31,7 +31,9 @@ describe('hosted MCP endpoint',()=>{
   it('answers initialize with a supported protocol version and tool capability',async()=>{
     const reply=await (await post(rpc('initialize',{protocolVersion:'2025-03-26',capabilities:{},clientInfo:{name:'t',version:'0'}}))).json();
     expect(reply.result.protocolVersion).toBe('2025-03-26');expect(reply.result.capabilities).toEqual({tools:{}});expect(reply.result.serverInfo.name).toBe('habbo-room');
-    expect(reply.result.instructions).toContain('Use room_overview for routine room checks');
+    expect(reply.result.instructions).toContain('Use room_overview for routine text room checks');
+    expect(reply.result.instructions).toContain('design_wearable');
+    expect(reply.result.instructions).toContain('create_activity');
     expect(reply.result.instructions).toContain('foreground_mask_storage_id to BOTH');
     expect(reply.result.instructions).toContain('do not swap these rear views');
     expect(reply.result.instructions).not.toContain('room_picture');

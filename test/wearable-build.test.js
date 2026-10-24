@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {Jimp} from 'jimp';
 import {prepareWearable} from '../shared/wearable-build.js';
 import {wearableCell,wearableSize,WEARABLE_POSES,WEARABLE_DIRECTIONS} from '../shared/wearables.js';
+import {wearableHandlers} from '../server/wearables-mcp.js';
 test('wearable processing preserves transparent cell alignment at native scale',async()=>{
   const source=new Jimp({width:1536,height:224,color:0});
   for(let col=0;col<8;col++)source.setPixelColor(col===1?0x00ff00ff:0xff0000ff,col*192+100,60);
@@ -30,4 +31,17 @@ test('every authored direction, action and carry cell is selected exactly',()=>{
 test('missing angles or poses cannot be published',async()=>{
   const image=new Jimp({...wearableSize('jacket'),color:0});image.setPixelColor(0xff0000ff,40,30);
   await assert.rejects(prepareWearable(image,'jacket'),/Cell 2, row 1/);
+});
+test('submission cleans the source after saving and cleans a failed processed upload',async()=>{
+  for(const fail of [false,true]){
+    const source=new Jimp({...wearableSize('headwear'),color:0});
+    for(let col=0;col<8;col++)source.setPixelColor(0xff0000ff,col*96+40,30);
+    const removed=[];
+    const handlers=wearableHandlers({api:{wearables:{create:'save'},agents:{discardUpload:'discard'}},loadSource:async()=>source,uploader:()=>async()=>'processed',
+      call:async(kind,fn,args)=>{if(fn==='save'){if(fail)throw new Error('Save failed');return {id:'hat'};}removed.push(args.storageId);}
+    });
+    const submission=handlers.submit_wearable({slot:'headwear',name:'Hat',storage_id:'source'},{token:'key'});
+    if(fail){await assert.rejects(submission,/Save failed/);assert.deepEqual(removed,['processed']);}
+    else{assert.deepEqual(await submission,{id:'hat'});assert.deepEqual(removed,['source']);}
+  }
 });
