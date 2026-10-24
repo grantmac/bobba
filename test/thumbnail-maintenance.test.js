@@ -2,6 +2,7 @@
 import {it,expect} from 'vitest';
 import {convexTest} from 'convex-test';
 import {Jimp} from 'jimp';
+import {decodeImage} from '../shared/image-codec.js';
 import schema from '../convex/schema.js';
 import {internal} from '../convex/_generated/api.js';
 const modules=import.meta.glob('../convex/**/*.js');
@@ -20,7 +21,7 @@ it('backfills icons once, keeps source sprites and safely handles concurrent rep
   expect((await t.run(ctx=>ctx.db.get(id))).icon).toBe(source);
   const applied=await t.action(internal.thumbnailBackfill.run,{apply:true});expect(applied.converted).toBe(1);
   const asset=await t.run(ctx=>ctx.db.get(id));expect(asset.icon).not.toBe(source);
-  const bytes=await t.run(async ctx=>(await ctx.storage.get(asset.icon)).arrayBuffer()),icon=await Jimp.read(Buffer.from(bytes));
+  const bytes=await t.run(async ctx=>(await ctx.storage.get(asset.icon)).arrayBuffer()),icon=await decodeImage(Buffer.from(bytes));
   expect([icon.width,icon.height]).toEqual([72,72]);expect(await t.run(async ctx=>!!await ctx.storage.get(source))).toBe(true);
   expect((await t.action(internal.thumbnailBackfill.run,{apply:true})).converted).toBe(0);
   const stale=await t.run(ctx=>ctx.storage.store(new Blob([new Uint8Array(png)],{type:'image/png'})));

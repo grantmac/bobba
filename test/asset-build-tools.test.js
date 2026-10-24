@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {Jimp} from 'jimp';
+import {decodeImage} from '../shared/image-codec.js';
 import {splitSheet,splitStrip,prepareAsset} from '../shared/sprite-build.js';
 import {seatSpots,seatReport,designBrief} from '../shared/asset-geometry.js';
 import {seatFor} from '../shared/furniture-model.js';
@@ -46,10 +47,12 @@ test('foreground mask is aligned through trimming and scaling and metadata descr
   const image=sheet(),mask=new Jimp({width:128,height:128,color:0});
   for(let row=0;row<2;row++)for(let col=0;col<2;col++)for(let y=45;y<54;y++)for(let x=12;x<52;x++)mask.setPixelColor(0xffffffff,col*64+x,row*64+y);
   const files=[];const {spec,summary}=await prepareAsset(args,splitSheet(image,mask),async b=>{files.push(b);return `file${files.length}`;});
-  assert.equal(files.length,9);assert.ok(spec.parts.every(p=>p.foregroundStorageId));
   assert.ok(!summary({}).validation.warnings.some(w=>w.code==='seat_foreground_review'));
-  const icon=await Jimp.read(files[8]);assert.ok(icon.width<=72&&icon.height<=72);
-  const base=await Jimp.read(files[0]),front=await Jimp.read(files[1]);
+  assert.equal(files.length,3);assert.ok(spec.parts.every(p=>p.foregroundStorageId));
+  assert.equal(new Set(spec.parts.map(p=>p.storageId)).size,1);
+  assert.equal(new Set(spec.parts.map(p=>p.foregroundStorageId)).size,1);
+  const icon=await decodeImage(files[2]);assert.ok(icon.width<=72&&icon.height<=72);
+  const base=await decodeImage(files[0]),front=await decodeImage(files[1]);
   assert.equal(front.width,base.width);assert.equal(front.height,base.height);
   assert.equal(front.bitmap.data[3],0);assert.ok(front.bitmap.data.at(-1)>0);
   assert.equal(summary({id:'test'}).views.length,4);

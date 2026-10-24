@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "vite build",
+    "build": "vite build && node tools/build-webp.mjs",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
@@ -17,6 +17,7 @@
     "livekit-client": "^2.23.0",
     "livekit-server-sdk": "^2.19.1",
     "puppeteer-core": "25.15.0",
+    "sharp": "0.35.5",
     "three": "0.186.1"
   },
   "devDependencies": {

@@ -1,14 +1,14 @@
 // Turns a picture (or a 2x2 sheet of four rotations) into the sprites and placement
 // metadata of a catalogue piece. Shared by the local stdio server and the hosted endpoint.
 import {Jimp,ResizeStrategy} from 'jimp';
-import {encodePng} from './png.js';
+import {encodeWebp,decodeImage} from './image-codec.js';
 import {assetThumbnail} from './asset-thumbnail.js';
 import {DENSITY,KINDS,FRAME_MAX} from './sprite-conventions.js';
 export {FRAME_MAX} from './sprite-conventions.js';
 import {seatReport,designBrief,validateSeatOffsets} from './asset-geometry.js';
 export async function readImage(buffer){
   if(buffer.length>12*1024*1024)throw new Error('Image is over 12 MB.');
-  const image=await Jimp.read(buffer);
+  const image=await decodeImage(buffer);
   if(image.width>4096||image.height>4096)throw new Error('Image is over 4096 px on a side.');
   return image;
 }
@@ -100,7 +100,7 @@ export function buildSprite(image,{kind,width,depth,display_width,facing,base_in
   return {width:W,height:H,reg,views,category,
     ...(kind==='wall'?{wallWidth:W}:{}),...(kind==='tabletop'?{tableOffsetY:-2}:{}),...(kind==='table'?{surfaceHeight:Math.max(8,Math.min(64,H-(width+depth)*16+inset))}:{})};
 }
-// Prepare the sprites of a piece: `views` maps direction to a Jimp image, `upload(pngBuffer)`
+// Prepare the sprites of a piece: `views` maps direction to a Jimp image, `upload(webpBuffer)`
 // stores one and returns its storage id. Gives the createAsset arguments (minus the agent
 // token) and a function that turns the mutation's result into the agent's summary.
 // The seat settings an agent gives, in the shape the server stores.
@@ -118,6 +118,14 @@ export async function prepareAsset(args,views,upload){
   if(animated&&args.frame_ms!==undefined&&(!Number.isInteger(args.frame_ms)||args.frame_ms<80||args.frame_ms>2000))throw new Error('frame_ms must be 80 to 2000 milliseconds.');
   const parts=[],viewList=[],warnings=[];let meta=null,iconImage=null;
   if(args.kind==='seat'&&!seatGiven)warnings.push({code:'default_seat_position',message:'No seat position was supplied: every footprint tile seats at chair height. Set the cushion tile and height, then inspect a sitter in every rotation.'});
+  // Identical rotations/layers need one URL so downloads can share the browser's
+  // cache. Keep sharing inside this asset: deleting another piece must stay safe.
+  const uploaded=[];
+  const store=async buffer=>{
+    const existing=uploaded.find(file=>file.buffer.equals(buffer));
+    if(existing)return existing.id;
+    const id=await upload(buffer);uploaded.push({buffer,id});return id;
+  };
   for(const direction of Object.keys(views).map(Number).sort((a,b)=>a-b)){
     if(args.kind==='wall'&&![2,4].includes(direction))continue;
     const source=views[direction],single=Object.keys(views).length===1,strip=Array.isArray(source)?source:null,image=strip?strip[0]:source;
@@ -133,14 +141,14 @@ export async function prepareAsset(args,views,upload){
       // Every frame is scaled like the first and packed side by side; the client plays the cells in turn.
       const W=sprite.width*DENSITY,H=sprite.height*DENSITY,sheet=new Jimp({width:W*strip.length,height:H,color:0x00000000});
       strip.forEach((frame,i)=>{if(i>0)frame.resize({w:W,h:H,mode:ResizeStrategy.BICUBIC});sheet.composite(frame,i*W,0);});
-      buffer=await encodePng(sheet);cells=strip.map((_,i)=>({x:i*W,y:0,width:W,height:H}));
-    }else buffer=await encodePng(image);
-    const storageId=await upload(buffer);
+      buffer=await encodeWebp(sheet);cells=strip.map((_,i)=>({x:i*W,y:0,width:W,height:H}));
+    }else buffer=await encodeWebp(image);
+    const storageId=await store(buffer);
     let foregroundStorageId;
     if(foregrounds[0]){
       const W=sprite.width*DENSITY,H=sprite.height*DENSITY,fg=new Jimp({width:W*foregrounds.length,height:H,color:0});
       foregrounds.forEach((image,i)=>fg.composite(image.resize({w:W,h:H,mode:ResizeStrategy.BICUBIC}),i*W,0));
-      foregroundStorageId=await upload(await encodePng(fg));
+      foregroundStorageId=await store(await encodeWebp(fg));
     }
     parts.push({storageId,direction:single?sprite.views.find(v=>!v.mirror).source:direction,width:sprite.width,height:sprite.height,reg:sprite.reg,...(foregroundStorageId?{foregroundStorageId}:{}),...(cells?{frames:cells}:{})});
     viewList.push(...sprite.views);
@@ -151,7 +159,7 @@ export async function prepareAsset(args,views,upload){
   }
   // A seat may name the tile sat on and the seat top's height; anything else must not.
   if(seatGiven&&args.kind!=='seat')throw new Error('seat_x, seat_z, seat_height and seat offsets apply to kind "seat" only.');
-  const icon=await upload(await assetThumbnail(iconImage));
+  const icon=await store(await assetThumbnail(iconImage));
   const spec={name:args.name,category:meta.category,width:args.width,depth:args.depth,spriteDensity:DENSITY,...(seatGiven?{seat:seatSpec(args)}:{}),...(animated?{frameDuration:args.frame_ms??250,...(args.switchable?{switchable:true}:{})}:{}),
     ...(meta.wallWidth!==undefined?{wallWidth:meta.wallWidth}:{}),...(meta.tableOffsetY!==undefined?{tableOffsetY:meta.tableOffsetY}:{}),...(meta.surfaceHeight!==undefined?{surfaceHeight:meta.surfaceHeight}:{}),
     icon,parts,views:viewList.sort((a,b)=>a.direction-b.direction)};

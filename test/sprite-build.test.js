@@ -1,6 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {Jimp} from 'jimp';
+import {decodeImage} from '../shared/image-codec.js';
 import {buildSprite,splitStrip,prepareAsset} from '../shared/sprite-build.js';
 test('height limits scale both sprite axes instead of flattening the isometric projection',()=>{
   for(const [kind,w,h,display_width,expected] of [['floor',100,400,100,[50,200]],['wall',100,600,48,[16,96]],['floor',100,50,100,[100,50]]]){
@@ -32,9 +33,9 @@ test('an animated piece packs its frames into one sheet with cells, a frame time
   const uploads=[],upload=async buffer=>{uploads.push(buffer);return `id${uploads.length}`;};
   const {spec,summary}=await prepareAsset({name:'Lamp',kind:'lamp',width:1,depth:1,frames:3,frame_ms:400,switchable:true},{2:splitStrip(strip(3),3)},upload);
   assert.equal(uploads.length,2);
-  const icon=await Jimp.read(uploads[1]);
+  const icon=await decodeImage(uploads[1]);
   assert.ok(icon.width<=72&&icon.height<=72);assert.notEqual(spec.icon,spec.parts[0].storageId);
-  const sheet=await Jimp.read(uploads[0]);
+  const sheet=await decodeImage(uploads[0]);
   assert.equal(spec.parts.length,1);assert.equal(spec.parts[0].frames.length,3);
   assert.equal(sheet.width,spec.parts[0].frames.reduce((w,c)=>w+c.width,0));
   assert.deepEqual([spec.frameDuration,spec.switchable],[400,true]);
@@ -51,9 +52,24 @@ test('eight distinct frames survive splitting and packing in order',async()=>{
   assert.equal(cells.length,8);
   const uploads=[];
   const {spec,summary}=await prepareAsset({name:'Eight frames',kind:'lamp',width:1,depth:1,frames:8,frame_ms:100},{2:cells},async buffer=>{uploads.push(buffer);return `id${uploads.length}`;});
-  const sheet=await Jimp.read(uploads[0]);
+  const sheet=await decodeImage(uploads[0]);
   assert.equal(spec.parts[0].frames.length,8);
   for(const [i,cell] of spec.parts[0].frames.entries())assert.equal(sheet.getPixelColor(cell.x+Math.floor(cell.width/2),Math.floor(cell.height/2)),colors[i]);
   assert.equal(spec.frameDuration,100);
   assert.equal(summary({id:'a',type:'asset_a'}).frames,8);
+});
+
+test('identical rotations upload once per asset while different pixels and separate assets stay independent',async()=>{
+  const uploads=[],upload=async buffer=>{uploads.push(buffer);return `id${uploads.length}`;};
+  const build=()=>prepareAsset({name:'Lamp',kind:'lamp',width:2,depth:1},
+    {0:strip(1),2:strip(1),4:strip(1),6:strip(1).setPixelColor(0xff0000ff,30,30)},upload);
+  const {spec}=await build();
+  assert.equal(uploads.length,3); // one shared sprite, one different sprite, one icon
+  assert.equal(new Set(spec.parts.slice(0,3).map(p=>p.storageId)).size,1);
+  assert.notEqual(spec.parts[3].storageId,spec.parts[0].storageId);
+  assert.notDeepEqual(spec.parts[0].reg,spec.parts[1].reg);
+  assert.deepEqual(spec.views.map(v=>v.direction),[0,2,4,6]);
+  const second=await build();
+  assert.equal(uploads.length,6);
+  assert.notEqual(second.spec.parts[0].storageId,spec.parts[0].storageId);
 });

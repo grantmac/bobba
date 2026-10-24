@@ -8,5 +8,6 @@ sprite-audit.html
 appearance-catalogue-audit.json
 furniture-catalogue-audit.json
 furniture-audit.html
-tools
+tools/*
+!tools/build-webp.mjs
 ADMIN-ENTRY.md

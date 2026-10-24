@@ -4,11 +4,30 @@
 // the agent tests in multiplayer.test.js through the same backend functions.
 import {describe,it,expect,vi} from 'vitest';
 import {ConvexHttpClient} from 'convex/browser';
+import {Jimp} from 'jimp';
+import sharp from 'sharp';
 import {POST,GET} from '../api/mcp.js';
 const URL_='https://chat.example.test/api/mcp';
 const post=(body,headers={})=>POST(new Request(URL_,{method:'POST',headers:{'Content-Type':'application/json',...headers},body:typeof body==='string'?body:JSON.stringify(body)}));
 const rpc=(method,params,id=1)=>({jsonrpc:'2.0',id,method,params});
 describe('hosted MCP endpoint',()=>{
+  it('publishes PNG input as WebP sprites and thumbnails with matching upload headers',async()=>{
+    vi.stubEnv('CONVEX_URL','https://example.convex.cloud');
+    const source=new Jimp({width:8,height:8,color:0});source.setPixelColor(0x123456ff,3,3);
+    const bytes=await source.getBuffer('image/png'),uploads=[];
+    const mutation=vi.spyOn(ConvexHttpClient.prototype,'mutation').mockImplementation(async(_fn,args)=>args.name?{id:'new',type:'asset_new'}:'https://upload.example.test');
+    const fetch=vi.spyOn(globalThis,'fetch').mockImplementation(async(_url,request)=>{
+      uploads.push(request);return Response.json({storageId:'file-'+uploads.length});
+    });
+    try{
+      const {result}=await (await post(rpc('tools/call',{name:'add_asset',arguments:{name:'Test sprite',image_base64:bytes.toString('base64'),kind:'floor',width:1,depth:1,display_width:8}}),{Authorization:`Bearer ${'a'.repeat(64)}`})).json();
+      expect(result.isError).toBeUndefined();expect(uploads.length).toBeGreaterThan(0);
+      for(const request of uploads){
+        expect(request.headers['Content-Type']).toBe('image/webp');
+        expect((await sharp(request.body).metadata()).format).toBe('webp');
+      }
+    }finally{mutation.mockRestore();fetch.mockRestore();vi.unstubAllEnvs();}
+  });
   it('answers initialize with a supported protocol version and tool capability',async()=>{
     const reply=await (await post(rpc('initialize',{protocolVersion:'2025-03-26',capabilities:{},clientInfo:{name:'t',version:'0'}}))).json();
     expect(reply.result.protocolVersion).toBe('2025-03-26');expect(reply.result.capabilities).toEqual({tools:{}});expect(reply.result.serverInfo.name).toBe('habbo-room');
@@ -98,7 +117,7 @@ describe('hosted MCP endpoint',()=>{
     expect(design.then).toMatch(/upload_url/);
     expect(design.then).toMatch(/preview_asset/);expect(design.brief.scale.tile_px).toEqual([64,32]);
     expect(design.brief.views.map(v=>v.direction)).toEqual([2,4,6,0]);
-    expect(result.content[1]).toMatchObject({type:'image',mimeType:'image/png'});
+    expect(result.content[1]).toMatchObject({type:'image',mimeType:'image/webp'});
     const wall=JSON.parse((await (await post(rpc('tools/call',{name:'design_asset',arguments:{name:'Sign',description:'A neon sign.',kind:'wall'}}),{Authorization:`Bearer ${key}`})).json()).result.content[0].text);
     expect(wall.attach).toEqual(['https://chat.example.test/agent-reference/room-style.png','https://chat.example.test/agent-reference/sprite-wall-speaker.png']);
   });
