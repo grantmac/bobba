@@ -1,8 +1,12 @@
 import {internal} from '../_generated/api.js';
 import {atTime} from './rules.js';
-import {hearsChat} from './bot_policy.js';
+import {CONVERSATION_MS,hearsChat,mentionsBot} from './bot_policy.js';
 
 export const identityVersion=player=>player.identityVersion??0;
+export const inBotConversation=(player,now)=>player.botConversation?.identityVersion===identityVersion(player)&&player.botConversation.until>now;
+export async function renewBotConversation(ctx,player){
+  await ctx.db.patch(player._id,{botConversation:{identityVersion:identityVersion(player),until:Date.now()+CONVERSATION_MS}});
+}
 export const botState=ctx=>ctx.db.query('botState').withIndex('by_key',q=>q.eq('key','main')).unique();
 
 // One durable wake-up per bot. Earlier wake-ups replace later ones; obsolete jobs
@@ -34,14 +38,18 @@ export async function queueBotEvent(ctx,player,kind,body='',messageId){
   if(kind==='arrival')await wakeBotRoaming(ctx,player);
   const state=await botState(ctx);
   if(!state?.enabled||player.kind==='bot'||!process.env.FIREWORKS_API_KEY)return;
+  let conversation=false;
   if(kind==='chat'){
     const bot=await ctx.db.get(state.playerId),now=Date.now();
-    const heardByBot=!!bot&&hearsChat(body,state.name,atTime(player,now),atTime(bot,now));
+    const mentioned=mentionsBot(body,state.name);
+    conversation=mentioned||inBotConversation(player,now);
+    const heardByBot=!!bot&&(conversation||hearsChat(body,state.name,atTime(player,now),atTime(bot,now)));
     // Preserve hearing at send time, even if either avatar moves before the AI responds.
     if(messageId)await ctx.db.patch(messageId,{heardByBot});
     if(!heardByBot)return;
+    if(mentioned)await renewBotConversation(ctx,player);
   }
-  await ctx.db.insert('botEvents',{kind,playerId:player._id,identityVersion:identityVersion(player),body,
+  await ctx.db.insert('botEvents',{kind,playerId:player._id,identityVersion:identityVersion(player),body,conversation,
     ...(messageId?{messageId}:{}),createdAt:Date.now(),status:'pending',attempts:0});
   await wakeBot(ctx,state);
 }

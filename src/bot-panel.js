@@ -6,7 +6,7 @@ export function createBotPanel({api,admin=false,mount=document.querySelector('.b
   const panel=document.createElement('section');panel.className='voice-panel resident-bot-panel';panel.hidden=true;panel.tabIndex=-1;panel.setAttribute('role','dialog');panel.setAttribute('aria-label','Room bot');
   panel.innerHTML=`<header><h1>Room bot</h1><button type="button" class="appearance-close" aria-label="Close room bot">×</button></header>
     <div class="resident-bot-body"><p class="bot-summary" role="status">Connecting…</p>
-    <p class="bot-disclosure">The resident bot hears typed chat within six tiles, or messages mentioning its name from anywhere. It can remember useful things you share, but does not listen to voice yet. Ask it to remember or forget something by name.</p>
+    <p class="bot-disclosure">The resident bot hears typed chat within six tiles, or messages mentioning its name from anywhere. Mentioning its name lets you keep chatting from anywhere for 60 seconds; each reply to you renews that time. It can remember useful things you share, but does not listen to voice yet. Ask it to remember or forget something by name.</p>
     <div class="bot-admin" hidden><form class="bot-settings">
       <label>Name<input name="name" required maxlength="20" autocomplete="off"></label>
       <label>Personality<textarea name="personality" required maxlength="2000" rows="3"></textarea></label>

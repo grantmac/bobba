@@ -6,7 +6,7 @@ import {atTime,zonePlayers,playerZone,playerTiles,freePosition,validName,fail,is
 import {zoneTiles} from '../shared/room-layout.js';
 import {loadZones} from './lib/furnitureStore.js';
 import {closeVisits} from './lib/visits.js';
-import {botState,identityVersion,wakeBot,scheduleBotTick} from './lib/bot_events.js';
+import {botState,identityVersion,wakeBot,scheduleBotTick,renewBotConversation} from './lib/bot_events.js';
 import {BOT_LOOK,DEFAULT_BOT_NAME,DEFAULT_MODEL,DEFAULT_PERSONALITY,hearsChat} from './lib/bot_policy.js';
 import {seatFor} from '../shared/furniture-model.js';
 
@@ -75,6 +75,7 @@ async function say(ctx,state,text){
   await ctx.db.insert('messages',{playerId:p._id,zone:playerZone(p),name:p.name,color:p.look.top.color,body:text.slice(0,400),mode:'Say',...atTime(p,now),sentAt:now});
   await ctx.db.patch(p._id,{lastChat:now});
   await ctx.db.patch(state._id,{lastReplyAt:now});
+  return true;
 }
 
 async function moderate(ctx,state,event,reason){
@@ -133,7 +134,7 @@ export const claim=internalMutation({args:{},handler:async ctx=>{
   const at=atTime(bot,now),occupied=playerTiles(players,now,bot._id);
   const tiles=zoneTiles(layoutFor(room.options,room.spaces??[]),zone).filter(([x,z])=>!occupied.has(`${x},${z}`)&&!blocked(room,x,z)).sort((a,b)=>Math.hypot(a[0]-at.x,a[1]-at.z)-Math.hypot(b[0]-at.x,b[1]-at.z)).slice(0,80);
   const seats=room.furniture.filter(i=>i.x!==null).flatMap(i=>{const seat=seatFor(i,room.definitions[i.type]);return seat?seat.cells.map(([x,z])=>({seatId:i.id,x,z})):[];}).slice(0,40);
-  return {run,revision:state.revision,state,model:model(),context:{events:events.map(e=>({id:e._id,kind:e.kind,playerId:e.playerId,name:e.name,role:e.role,body:e.body})),recent:recent.map(m=>({name:m.name,body:m.body,bot:m.playerId===state.playerId})),players:players.map(p=>({id:p._id,name:p.name,kind:p.kind??'human',action:p.action==='wave'&&now-(p.actionStarted??0)>=3000?null:p.action??null,...atTime(p,now)})),memories:memories.map(m=>({id:m._id,text:m.text,playerId:m.playerId??null,locked:m.locked})),position:at,action:bot.action==='wave'&&now-(bot.actionStarted??0)>=3000?null:bot.action??null,nearbyTiles:tiles,seats}};
+  return {run,revision:state.revision,state,model:model(),context:{events:events.map(e=>({id:e._id,kind:e.kind,playerId:e.playerId,name:e.name,role:e.role,body:e.body,conversation:e.conversation??false})),recent:recent.map(m=>({name:m.name,body:m.body,bot:m.playerId===state.playerId})),players:players.map(p=>({id:p._id,name:p.name,kind:p.kind??'human',action:p.action==='wave'&&now-(p.actionStarted??0)>=3000?null:p.action??null,...atTime(p,now)})),memories:memories.map(m=>({id:m._id,text:m.text,playerId:m.playerId??null,locked:m.locked})),position:at,action:bot.action==='wave'&&now-(bot.actionStarted??0)>=3000?null:bot.action??null,nearbyTiles:tiles,seats}};
 }});
 
 export const finish=internalMutation({args:{run:v.number(),revision:v.number(),turn:v.any()},handler:async(ctx,{run,revision,turn})=>{
@@ -181,7 +182,15 @@ export const finish=internalMutation({args:{run:v.number(),revision:v.number(),t
         await ctx.db.patch(bot._id,{action:turn.dance,actionStarted:current.action===turn.dance?current.actionStarted??now:now});
       }catch{/* Stay seated if there is no free floor tile. */}
     }else if(turn.wave===true)await ctx.db.patch(bot._id,{action:'wave',actionStarted:Date.now()});
-    if(turn.reply.trim()&&Date.now()-state.lastReplyAt>=3000&&!turn.violations.length)await say(ctx,state,turn.reply.trim());
+    if(turn.reply.trim()&&Date.now()-state.lastReplyAt>=3000&&!turn.violations.length){
+      const chats=[...allowed.values()].filter(source=>source.event.kind==='chat');
+      // Older model output can omit the target only when the speaker is unambiguous.
+      let source=allowed.get(turn.replyToEventId);
+      if(turn.replyToEventId===undefined&&new Set(chats.map(source=>source.player._id)).size===1)source=chats.find(source=>source.event.conversation);
+      if(await say(ctx,state,turn.reply.trim())){
+        if(source?.event.kind==='chat'&&source.event.conversation)await renewBotConversation(ctx,source.player);
+      }
+    }
   }
   for(const event of events)await ctx.db.patch(event._id,{status:'done'});
   await ctx.db.patch(state._id,{busyUntil:0,lastError:undefined});
