@@ -1,0 +1,20 @@
+.appearance-dialog.room-extra-dialog{inset:0;margin:auto;width:min(560px,calc(100vw - 24px));max-height:calc(100dvh - 40px)}
+.room-extra-body{max-height:calc(100dvh - 100px);overflow:auto}
+.room-extra-body button.agent-small{min-height:30px}
+.room-extra-body button:disabled{opacity:.55;cursor:default}
+.room-extra-body button:focus-visible{outline:2px solid #1676b7;outline-offset:2px}
+.room-extra-body input,.room-extra-body select,.room-extra-body textarea{box-sizing:border-box;width:100%;padding:7px;font:inherit;border:1px solid #777;border-radius:3px;background:#fff;color:#222}
+.room-extra-body label{display:grid;gap:5px;margin:10px 0}
+.room-extra-status{min-height:1.5em;margin:12px 0 0}
+.room-extra-actions{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.activity-card{padding:12px;margin:12px 0;background:#f8f7ef;border:1px solid #aaa;border-radius:5px}
+.activity-clock{font-weight:bold}
+.activity-scores{width:100%;border-collapse:collapse;margin-top:12px}
+.activity-scores caption{text-align:left;font-weight:bold;margin-bottom:6px}
+.activity-scores td,.activity-scores th{padding:6px;border-bottom:1px solid #d5d3c6;text-align:left}
+.activity-scores td:last-child{text-align:right}
+.activity-question,.activity-target{border:1px solid #c2bfae;padding:10px;margin:10px 0}
+.activity-target input[type=checkbox]{width:auto}
+.activity-create{border-top:1px solid #aaa;padding-top:14px}
+.room-extra-dialog [hidden]{display:none!important}
+@media(max-width:440px){.room-extra-body{max-height:calc(100dvh - 90px)}.room-extra-body button.agent-small{min-height:36px}}

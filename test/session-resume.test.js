@@ -19,6 +19,14 @@ beforeEach(()=>{
 afterEach(()=>{vi.unstubAllGlobals();vi.unstubAllEnvs();});
 
 describe('restoring a remembered session',()=>{
+  it('keeps wearable metadata out of entry and sends only IDs when saving an outfit',async()=>{
+    client.mutation.mockResolvedValue(player);
+    const network=createMultiplayer(),base={hair:{model:'1',color:'#624631'}},look={...base,_wearables:[{id:'hat',slot:'headwear',url:'https://example.test/hat.png'}]};
+    await network.join('Visitor',look);
+    expect(client.mutation.mock.lastCall[1].look).toEqual(base);
+    await network.appearance(look);
+    expect(client.mutation).toHaveBeenLastCalledWith(api.wearables.applyOutfit,{token,look:base,wearableIds:['hat']});
+  });
   it.each(['join','passkey','backup'])('persists a %s login for a fresh browser client',async method=>{
     storage.clear();client.mutation.mockResolvedValue(player);
     client.action=vi.fn().mockResolvedValue({token,player});

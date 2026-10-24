@@ -18,6 +18,7 @@ import {displayScaleForZoom} from './view-scale.js';
 import {createBotPanel} from './bot-panel.js';
 import {robotFrames} from './robot-avatar.js';
 import {createPlayerFrames} from './player-appearance.js';
+import {createActivitiesPanel} from './activities-panel.js';
 import {roomLayout,tileDrop,walkingDrop,tileAtPoint,isPoolWater,pitSeat,backWallTiles,onWalkway,STEP_DOWN,DANCE_ROWS,zonesIn,zoneBounds,zoneAt,MAIN_ZONE} from '../shared/room-layout.js';
 import {TIER_RISE} from '../shared/spaces.js';
 import {floorSampler,createSpaceFloor,createMetalWalkway,picturePixels,pictureSampler,wallSegment} from './spaces.js';
@@ -938,7 +939,7 @@ try{
   discoBall=await createDiscoBall();discoMesh=sprite(discoBall.canvas,0,0,900);
   discoMesh.scale.setScalar(1/3);discoMesh.material.map.minFilter=THREE.LinearFilter;
   infoStand=await createInfoStand(prepareImage);
-  appearance=await createAppearance({prepareImage,onApply:async(frames,look,context)=>{if(!context.entry)await network.appearance(look);setAppearance(frames);},onOpen:()=>{stopWalking();furniture?.close();},onRoomKey:()=>characterKey.open()});
+  appearance=await createAppearance({prepareImage,wearables:network.wearables,onApply:async(frames,look,context)=>{if(!context.entry)await network.appearance(look);setAppearance(frames);},onOpen:()=>{stopWalking();furniture?.close();},onRoomKey:()=>characterKey.open()});
   setAppearance(appearance.initial);
   stickies=await createStickies({network,prepareImage,worldPoint:groundPoint,getTiles:()=>new Set([...layout.mainTiles,...layout.danceTiles].map(cell=>cell.join(','))),
     makeVisual:canvas=>sprite(canvas,0,0,95),
@@ -1030,6 +1031,7 @@ try{
   window.addEventListener('pagehide',()=>furniture.disposePrograms());
   window.addEventListener('pageshow',event=>{if(event.persisted)furniture.redraw();});
   toolbar.setAdmin(admin);
+  const activitiesPanel=createActivitiesPanel({api:network.activities,getPlayer:()=>network.me,now:network.now,canCreate:id=>network.me.role==='admin'||roomSpaces.some(s=>s.id===id&&s.owner===network.me.id)});
   let roomKey='',ownLook=JSON.stringify(network.me.look),lookVersion=0,ownZone=network.me.zone;
   const seenMessages=new Set();
   await new Promise((resolve,reject)=>{
@@ -1052,6 +1054,7 @@ try{
     };
     network.watch({onJoin:()=>{void notificationSounds.play();},onMessage:()=>{void notificationSounds.play('message');},onState:state=>{
       selfPlayer=state.me;updatePeers(state.players);
+      activitiesPanel.setSpace(state.me.zone??'main');
       // Crossing into another zone keeps that zone in view.
       if(state.me.zone!==ownZone){ownZone=state.me.zone;lastZoneKey='';updateVisibleZones();}
       const nextLook=JSON.stringify(state.me.look);
@@ -1068,7 +1071,7 @@ try{
     },onError:(message,{transient=false}={})=>{
       toolbar.status(message);
       if(transient&&!first)return;
-      ready=false;radio.close();toolbar.setAppearanceEnabled(false);toolbar.setTeleportEnabled(false);
+      ready=false;radio.close();activitiesPanel.close();toolbar.setAppearanceEnabled(false);toolbar.setTeleportEnabled(false);
       if(message.includes('removed from the room')||message.includes('session has ended')){
         network.close();const notice=document.querySelector('#load-error');notice.textContent=message;notice.hidden=false;
       }
