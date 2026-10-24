@@ -24,6 +24,48 @@ const pulses=()=>fake.client.mutation.mock.calls.filter(([fn])=>getFunctionName(
 const watch=async(options={})=>{network=createMultiplayer();await network.resume();await network.watch({onState:vi.fn(),onError:vi.fn(),...options});};
 
 describe('room network budget',()=>{
+  it('restores recently visited furniture before the live refresh and accepts an empty refresh',async()=>{
+    const onFurniture=vi.fn();await watch({onFurniture});
+    const subscriptions=zone=>fake.client.onUpdate.mock.calls.filter(([fn,args])=>getFunctionName(fn)==='room:zoneFurniture'&&args.zone===zone);
+    network.setZones(['garden']);
+    const old=subscriptions('garden')[0][2],chair={id:'chair',type:'small_chair_armas'};
+    old([chair]);await vi.advanceTimersByTimeAsync(0);
+    network.setZones([]);await vi.advanceTimersByTimeAsync(3000);
+    expect(network.zones).not.toContain('garden');
+    expect(onFurniture.mock.lastCall[0].zones.has('garden')).toBe(false);
+    network.setZones(['garden']);await vi.advanceTimersByTimeAsync(0);
+    expect(onFurniture.mock.lastCall[0].zones.get('garden')).toEqual([chair]);
+    expect(subscriptions('garden')).toHaveLength(2);
+    old([{id:'obsolete',type:'asset_deleted'}]);await vi.advanceTimersByTimeAsync(0);
+    expect(onFurniture.mock.lastCall[0].zones.get('garden')).toEqual([chair]);
+    expect(fake.client.onUpdate.mock.calls.some(([fn])=>getFunctionName(fn)==='programs:list')).toBe(false);
+    subscriptions('garden')[1][2]([]);await vi.advanceTimersByTimeAsync(0);
+    expect(onFurniture.mock.lastCall[0].zones.get('garden')).toEqual([]);
+  });
+  it('does not duplicate cached pieces that now belong to a live room or inventory',async()=>{
+    const onFurniture=vi.fn();await watch({onFurniture});
+    const receive=(name,zone)=>fake.client.onUpdate.mock.calls.findLast(([fn,args])=>getFunctionName(fn)===name&&(!zone||args.zone===zone))[2];
+    const chair={id:'chair',type:'small_chair_armas'},lamp={id:'lamp',type:'small_chair_armas'};
+    network.setZones(['garden']);receive('room:zoneFurniture','garden')([chair,lamp]);
+    network.setZones([]);await vi.advanceTimersByTimeAsync(3000);
+    receive('room:zoneFurniture','main')([chair]);receive('room:inventory')([lamp]);
+    network.setZones(['garden']);await vi.advanceTimersByTimeAsync(0);
+    expect(onFurniture.mock.lastCall[0].zones.get('garden')).toEqual([]);
+    expect(onFurniture.mock.lastCall[0].zones.get('main')).toEqual([chair]);
+    expect(onFurniture.mock.lastCall[0].inventory).toEqual([lamp]);
+  });
+  it('bounds the furniture cache without keeping old room subscriptions alive',async()=>{
+    const onFurniture=vi.fn();await watch({onFurniture});
+    for(let i=0;i<25;i++){
+      const zone=`room-${i}`;network.setZones([zone]);
+      fake.client.onUpdate.mock.calls.findLast(([fn,args])=>getFunctionName(fn)==='room:zoneFurniture'&&args.zone===zone)[2]([{id:`piece-${i}`,type:'small_chair_armas'}]);
+      network.setZones([]);await vi.advanceTimersByTimeAsync(3000);
+    }
+    expect(network.zones).toEqual(['main']);
+    network.setZones(['room-0','room-24']);await vi.advanceTimersByTimeAsync(0);
+    expect(onFurniture.mock.lastCall[0].zones.has('room-0')).toBe(false);
+    expect(onFurniture.mock.lastCall[0].zones.get('room-24')).toEqual([{id:'piece-24',type:'small_chair_armas'}]);
+  });
   it('sounds only fresh incoming messages, including while hidden',async()=>{
     const onMessage=vi.fn();await watch({onMessage});
     const receive=fake.client.onUpdate.mock.calls.find(([fn])=>getFunctionName(fn)==='room:worldChatFeed')[2];

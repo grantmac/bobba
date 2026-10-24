@@ -14,6 +14,7 @@ import {createAwayPoster} from './away-poster.js';
 import {createAgentLink} from './agent-link.js';
 import {createStickies} from './stickies.js';
 import {installTouchNavigation} from './touch-navigation.js';
+import {installEdgeNavigation} from './edge-navigation.js';
 import {displayScaleForZoom} from './view-scale.js';
 import {createBotPanel} from './bot-panel.js';
 import {robotFrames} from './robot-avatar.js';
@@ -414,18 +415,18 @@ function syncSpaces(){
 }
 const picturesReady=space=>[space.floorImageUrl,space.wallImageUrl].filter(Boolean).every(url=>spacePictures.has(url)||spacePictureLoads.get(url)?.settled);
 // The zones the camera can see, with a margin so a pan reveals drawn floors rather than gaps.
-function seesBounds(b){
-  const margin=160,left=camera.left-margin,right=camera.right+margin,top=camera.top+margin,bottom=camera.bottom-margin;
+function seesBounds(b,margin=160){
+  const left=camera.left-margin,right=camera.right+margin,top=camera.top+margin,bottom=camera.bottom-margin;
   const corners=[iso(b.x,b.z),iso(b.x+b.width,b.z),iso(b.x,b.z+b.depth),iso(b.x+b.width,b.z+b.depth)];
   for(const p of corners)p.y-=(b.level??0)*TIER_RISE;
   const x0=Math.min(...corners.map(c=>c.x)),x1=Math.max(...corners.map(c=>c.x)),y0=Math.min(...corners.map(c=>c.y))-130,y1=Math.max(...corners.map(c=>c.y))+40;
   return x1>=left&&x0<=right&&CENTER_Y-y0>=bottom&&CENTER_Y-y1<=top;
 }
-function visibleZones(){
+function visibleZones(margin=160){
   if(!layout)return [MAIN_ZONE];
   const ids=[];
-  if(seesBounds(zoneBounds(layout,MAIN_ZONE))||[...layout.walkways,...layout.stairs].some(seesBounds))ids.push(MAIN_ZONE);
-  for(const space of layout.spaces)if(seesBounds(space))ids.push(space.id);
+  if(seesBounds(zoneBounds(layout,MAIN_ZONE),margin)||[...layout.walkways,...layout.stairs].some(b=>seesBounds(b,margin)))ids.push(MAIN_ZONE);
+  for(const space of layout.spaces)if(seesBounds(space,margin))ids.push(space.id);
   return ids;
 }
 let lastZoneKey='';
@@ -434,9 +435,15 @@ function updateVisibleZones(){
   if(renderInput){visibleZoneIds=new Set(renderInput.zones??[MAIN_ZONE,...(layout?.spaces??[]).map(s=>s.id)]);syncSpaces();return;}
   const ids=visibleZones(),mine=network?.me?.zone;
   if(mine&&!ids.includes(mine))ids.push(mine);
-  const key=ids.join('|');if(key===lastZoneKey)return;lastZoneKey=key;
+  // Fetch nearby furniture early enough to download and prepare its sprites before
+  // the floor enters view. Keep the lookahead bounded even when zoomed far out.
+  const preloadIds=visibleZones(Math.max(480,Math.min(960,(camera.right-camera.left)*.75)));
+  if(mine&&!preloadIds.includes(mine))preloadIds.push(mine);
+  const key=JSON.stringify([ids,preloadIds]);if(key===lastZoneKey)return;lastZoneKey=key;
   visibleZoneIds=new Set(ids);
-  syncSpaces();network?.setZones?.(ids);
+  network?.setZones?.(preloadIds);
+  loadSpacePictures(layout?.spaces.filter(s=>preloadIds.includes(s.id))).then(syncSpaces);
+  syncSpaces();
 }
 let avatarAtlas=null,appearance;
 // One texture per player: every pose frame packed into a grid and selected by UV offset,
@@ -709,7 +716,7 @@ function resize(){
   // Phones start at native pixel size and pan around the room rather than shrinking it to fit.
   const fit=Math.max(mobile?1:0,Math.min(1.5,(w-reserved)/((fitWidth+roomDepth)*32+(mobile?80:90)),h/((fitWidth+roomDepth)*16+(mobile?130:160))));
   const pixelRatio=Math.min(window.devicePixelRatio,3);lastFit=fit;
-  renderer.setPixelRatio(pixelRatio);
+  if(renderer.getPixelRatio()!==pixelRatio)renderer.setPixelRatio(pixelRatio);
   // Normal levels use whole device pixels; the extra overview uses half-size sampling.
   // The default fit rounds down so the whole room still fits on screen.
   displayScale=displayScaleForZoom(zoom,fit,pixelRatio);
@@ -724,7 +731,7 @@ function resize(){
   viewOffsetY=Math.round((h/2+panY-CENTER_Y*displayScale)*pixelRatio)/pixelRatio-h/2+CENTER_Y*displayScale;
   camera.left=(-w/2-viewOffsetX)/displayScale;camera.right=(w/2-viewOffsetX)/displayScale;
   camera.top=(h/2+viewOffsetY)/displayScale;camera.bottom=(-h/2+viewOffsetY)/displayScale;camera.updateProjectionMatrix();
-  renderer.setSize(w,h);
+  if(view.halfW!==w/2||view.halfH!==h/2)renderer.setSize(w,h);
   const rect=container.getBoundingClientRect();view.halfW=w/2;view.halfH=h/2;view.top=rect.top;view.left=rect.left;
   updateVisibleZones();
 }
@@ -744,6 +751,10 @@ installTouchNavigation(container,{
   getMinZoom:()=>.5/(lastFit*Math.min(window.devicePixelRatio,3)),
   setView:view=>{zoom=view.zoom;panX=view.panX;panY=view.panY;resize();},
   cancelTap:()=>{down=null;hover.visible=false;}
+});
+const updateEdgeNavigation=installEdgeNavigation(renderer.domElement,{
+  enabled:()=>ready&&!editingRoom&&!teleporting&&!renderInput,
+  pan:(x,y,event)=>{panX+=x;panY+=y;resize();hoverEvent=event;}
 });
 const chat=createChat({
   getSpeaker:()=>({id:network?.me?.id,name:network?.me?.name??'You',color:appearance?.chatColor()??'#6b8c64',...position}),
@@ -835,6 +846,7 @@ function characterFrame(player,point,time,seat){
   return `${point.direction}:${seat?'sit':-1}`;
 }
 function animate(now){
+  updateEdgeNavigation(now);
   updateHover();
   furniture?.animate(network?.now()??Date.now(),reducedMotion.matches,radio?.audible??false);
   if(ready&&selfPlayer){

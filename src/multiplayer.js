@@ -98,12 +98,15 @@ export function createMultiplayer(){
     },
     // The live room, one zone at a time. Fixed subscriptions carry the player, the map, the
     // lobby switches, world chat and what the player holds; `setZones` adds and drops a
-    // presence and furniture subscription per zone as the camera moves. Only the zones in
-    // view cost anything, however many exist.
+    // presence and furniture subscription per zone as the camera moves. Only nearby
+    // zones are live, including a small lookahead for preloading furniture.
     async watch({onState,onError,onMap,onSignals,onFurniture,onPrograms,onJoin,onMessage}){
       try{await pulse();}catch(error){onError(error.message);return;}
       unsubscribe?.();unsubscribeRoom?.();
       const error=e=>onError(errorMessage(e));
+      // Recently visited rooms can draw immediately while their live query refreshes.
+      // Store only furniture data, never old presence or program state.
+      const furnitureCache=new Map(),CACHE_LIMIT=24;
       let queued=false,messages=[],present=null,messageIds=null;
       const emit=()=>{
         if(queued)return;queued=true;
@@ -125,7 +128,13 @@ export function createMultiplayer(){
       let furnitureQueued=false;
       const emitFurniture=()=>{
         if(furnitureQueued)return;furnitureQueued=true;
-        queueMicrotask(()=>{furnitureQueued=false;onFurniture?.({zones:new Map([...zones].filter(([,z])=>z.furniture).map(([id,z])=>[id,z.furniture])),inventory:inventory??[]});});
+        queueMicrotask(()=>{
+          furnitureQueued=false;
+          // A piece may have moved since its old room was cached. Live placements
+          // and inventory take precedence over a cached copy of the same piece.
+          const freshIds=new Set([...(inventory??[]),...[...zones.values()].filter(z=>!z.cached).flatMap(z=>z.furniture??[])].map(item=>item.id));
+          onFurniture?.({zones:new Map([...zones].filter(([,z])=>z.furniture).map(([id,z])=>[id,z.cached?z.furniture.filter(item=>!freshIds.has(item.id)):z.furniture])),inventory:inventory??[]});
+        });
       };
       const stops=[
         client.onUpdate(api.room.worldChatFeed,{token},value=>{
@@ -152,7 +161,9 @@ export function createMultiplayer(){
       unsubscribeRoom=null;
       function addZone(id){
         if(zones.has(id)){const zone=zones.get(id);clearTimeout(zone.release);zone.release=null;return;}
-        const zone={presence:null,furniture:null,programs:null,stopPrograms:null,programEpoch:0,release:null,stops:[]};zones.set(id,zone);
+        const cached=furnitureCache.get(id);furnitureCache.delete(id);
+        const zone={presence:null,furniture:cached??null,cached:!!cached,programs:null,stopPrograms:null,programEpoch:0,release:null,stops:[]};zones.set(id,zone);
+        if(cached)emitFurniture();
         function watchPrograms(items){
           const needed=items.some(item=>item.type.startsWith('asset_'));
           if(needed&&!zone.stopPrograms){
@@ -166,12 +177,16 @@ export function createMultiplayer(){
           }
         }
         zone.stops=[
-          client.onUpdate(heartbeatInterval===30000?api.room.livePresence:api.room.presence,{zone:id},value=>{zone.presence=value;emit();},error),
-          client.onUpdate(api.room.zoneFurniture,{token,zone:id},value=>{zone.furniture=value;watchPrograms(value);emitFurniture();},error)
+          client.onUpdate(heartbeatInterval===30000?api.room.livePresence:api.room.presence,{zone:id},value=>{if(zones.get(id)!==zone)return;zone.presence=value;emit();},error),
+          client.onUpdate(api.room.zoneFurniture,{token,zone:id},value=>{if(zones.get(id)!==zone)return;zone.furniture=value;zone.cached=false;watchPrograms(value);emitFurniture();},error)
         ];
       }
       function dropZone(id){
         const zone=zones.get(id);if(!zone)return;
+        if(zone.furniture){
+          furnitureCache.delete(id);furnitureCache.set(id,zone.furniture);
+          if(furnitureCache.size>CACHE_LIMIT)furnitureCache.delete(furnitureCache.keys().next().value);
+        }
         clearTimeout(zone.release);zone.stopPrograms?.();zone.stops.forEach(stop=>stop());zones.delete(id);emit();emitFurniture();emitPrograms();
       }
       wanted=ids=>{
@@ -189,7 +204,7 @@ export function createMultiplayer(){
       });
       clearInterval(heartbeat);heartbeat=setInterval(refreshConnection,heartbeatInterval);
     },
-    // The zones the camera can see; the player's own zone is always included.
+    // Visible and soon-to-be-visible zones; the player's own zone is always included.
     setZones(ids){lastZones=ids;wanted?.(ids);},
     get zones(){return [...zones.keys()];},
     // An appearance by player and version: fetched once, then remembered.
