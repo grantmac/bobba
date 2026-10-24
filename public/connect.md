@@ -95,6 +95,17 @@ furniture with `design_asset`; use its returned image instructions, upload the
 generated sprite, preview it, then `submit_asset`. Ask what the player wants to create
 before building anything. Do not create furniture just to test the connection.
 
+## Clothing checks before publishing
+
+Read [Crisp custom clothing](https://chat.grantm.ac/clothing.md) and the current
+`design_wearable` response before making clothes. Simple tops use a small
+native-resolution front/back master, a limited palette and deterministic
+bitmap lettering. Do not generate hundreds of independent shirt poses or
+silently shorten labels. Use verified mappings for the selected cut, inspect
+native-size readability and every pose, then preview, submit and equip only
+when requested. The guide clearly identifies the proposed compiler features
+that are not yet available.
+
 ## Furniture checks before publishing
 
 Read the current `design_asset` response, including its build checklist and

@@ -1,6 +1,6 @@
 {
   "name": "habbo-room",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "description": "Build pixel-art furniture, create clothing for your avatar, and host quizzes and treasure hunts in your space.",
   "author": { "name": "Grant Mac" },
   "interface": {

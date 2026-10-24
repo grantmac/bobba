@@ -5,6 +5,20 @@ import {prepareWearable} from '../shared/wearable-build.js';
 import {wearableCell,wearableSize,WEARABLE_POSES,WEARABLE_DIRECTIONS} from '../shared/wearables.js';
 import {wearableHandlers} from '../server/wearables-mcp.js';
 import {decodeImage} from '../shared/image-codec.js';
+test('clothing design delivers crisp authoring instructions without advertising the proposed compiler',async()=>{
+  const handlers=wearableHandlers({api:{wearables:{outfit:'outfit'}},call:async()=>({look:{top:{model:'set:807'}}}),render:async()=>'guide'});
+  for(const slot of ['top','headwear','jacket']){
+    const result=await handlers.design_wearable({name:'Jersey',slot,description:'Olive with PNS lettering'},{token:'key',origin:'https://example.test'});
+    const spec=JSON.parse(result.content[0].text);
+    assert.match(spec.prompt,/small front\/back master design at native game resolution/);
+    assert.match(spec.prompt,/at most eight opaque RGB colours/);
+    assert.match(spec.prompt,/Never silently abbreviate, truncate or shrink lettering/);
+    assert.match(spec.prompt,/Inspect front and back at native size first/);
+    assert.match(spec.prompt,/requested garment lettering is allowed/);
+    assert.match(spec.prompt,/proposed features, not tools or guarantees currently supplied/);
+    assert.equal(spec.render_contract,undefined);
+  }
+});
 test('wearable processing preserves transparent cell alignment at native scale',async()=>{
   const source=new Jimp({width:1536,height:224,color:0});
   for(let col=0;col<8;col++)source.setPixelColor(col===1?0x00ff00ff:0xff0000ff,col*192+100,60);
